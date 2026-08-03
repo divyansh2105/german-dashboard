@@ -757,15 +757,15 @@ h2.section-title {
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   display: flex;
   justify-content: center;
   align-items: center;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 16px;
+  font-size: 22px;
 }
 
 .sound-btn:hover {

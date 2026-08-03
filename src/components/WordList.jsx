@@ -1,8 +1,53 @@
 import React, { useState, useMemo } from 'react';
 
+const CLASS_CATEGORIES = [
+  "Arbeit, Beruf & Büro",
+  "Gesundheit, Körper & Medizin",
+  "Wohnen, Haushalt & Umzug",
+  "Reise, Verkehr & Mobilität",
+  "Einkaufen, Geld & Finanzen",
+  "Essen, Trinken & Gastronomie",
+  "Ausbildung, Schule & Wissenschaft",
+  "Kommunikation, Medien & Technik",
+  "Freizeit, Hobby & Sport",
+  "Natur, Umwelt & Wetter",
+  "Staat, Gesellschaft & Recht",
+  "Familie, Mensch & Beziehungen",
+  "Zeit, Datum & Dokumente",
+  "Emotionen, Geist & Wahrnehmung",
+  "Abstrakte Begriffe & Handlungen"
+];
+
+// Helper to get first letter of actual noun/verb, ignoring der/die/das/ein/eine/sich
+const getActualWordFirstLetter = (word) => {
+  let w = word.trim();
+  w = w.replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
+       .replace(/\(sich(\s+etwas)?\)\s+/i, '')
+       .replace(/^["(]*/, '')
+       .trim();
+       
+  if (w.length === 0) return '';
+  const firstChar = w.charAt(0).toUpperCase();
+  if (firstChar === 'Ä') return 'A';
+  if (firstChar === 'Ö') return 'O';
+  if (firstChar === 'Ü') return 'U';
+  
+  return /[A-Z]/.test(firstChar) ? firstChar : '';
+};
+
+const normalizeCategory = (cat) => {
+  if (!cat) return '';
+  return cat.toLowerCase()
+            .replace(/&amp;/g, '&')
+            .replace(/&/g, 'and')
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
+};
+
 export default function WordList({ vocabData }) {
   const [activeCategory, setActiveCategory] = useState('nouns');
   const [selectedLetter, setSelectedLetter] = useState('A');
+  const [selectedClassFilter, setSelectedClassFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedWord, setExpandedWord] = useState(null);
 
@@ -15,24 +60,17 @@ export default function WordList({ vocabData }) {
   const availableLetters = useMemo(() => {
     const letters = new Set();
     activeWords.forEach(item => {
-      // Clean word to find real first letter (handle parentheses or quotes)
-      const clean = item.word.replace(/^["(]*/, '').trim();
-      if (clean.length > 0) {
-        const firstChar = clean.charAt(0).toUpperCase();
-        // Handle German umlauts (Ä -> A, Ö -> O, Ü -> U)
-        if (firstChar === 'Ä') letters.add('A');
-        else if (firstChar === 'Ö') letters.add('O');
-        else if (firstChar === 'Ü') letters.add('U');
-        else if (/[A-Z]/.test(firstChar)) {
-          letters.add(firstChar);
-        }
+      const firstLetter = getActualWordFirstLetter(item.word);
+      if (firstLetter) {
+        letters.add(firstLetter);
       }
     });
     return Array.from(letters).sort();
   }, [activeWords]);
 
-  // Reset selected letter when category changes
+  // Reset filters when active category changes
   React.useEffect(() => {
+    setSelectedClassFilter('all');
     if (availableLetters.length > 0) {
       if (!availableLetters.includes(selectedLetter)) {
         setSelectedLetter(availableLetters[0]);
@@ -45,22 +83,28 @@ export default function WordList({ vocabData }) {
   // Filtered words
   const filteredWords = useMemo(() => {
     return activeWords.filter(item => {
-      const clean = item.word.replace(/^["(]*/, '').trim();
-      const firstChar = clean.charAt(0).toUpperCase();
-      const mappedChar = firstChar === 'Ä' ? 'A' : (firstChar === 'Ö' ? 'O' : (firstChar === 'Ü' ? 'U' : firstChar));
-      
-      const matchesLetter = selectedLetter ? mappedChar === selectedLetter : true;
-      
+      // 1. Classification Category Filter (only for nouns and verbs)
+      if ((activeCategory === 'nouns' || activeCategory === 'verbs') && selectedClassFilter !== 'all') {
+        const target = normalizeCategory(selectedClassFilter);
+        const matchesClass = normalizeCategory(item.primaryCategory) === target || normalizeCategory(item.secondaryCategory) === target;
+        if (!matchesClass) return false;
+      }
+
+      // 2. Search Query Filter (globally searches German & English meaning)
       const query = searchQuery.toLowerCase().trim();
-      if (query.length === 0) return matchesLetter;
+      if (query.length > 0) {
+        return item.word.toLowerCase().includes(query) || item.meaning.toLowerCase().includes(query);
+      }
+
+      // 3. Alphabetical Letter Filter (ignored if classification filter is active)
+      if ((activeCategory === 'nouns' || activeCategory === 'verbs') && selectedClassFilter !== 'all') {
+        return true;
+      }
       
-      const matchesQuery = item.word.toLowerCase().includes(query) || 
-                           item.meaning.toLowerCase().includes(query);
-      
-      // If there is a search query, ignore letter filter to make searching global
-      return matchesQuery;
+      const firstLetter = getActualWordFirstLetter(item.word);
+      return selectedLetter ? firstLetter === selectedLetter : true;
     });
-  }, [activeWords, selectedLetter, searchQuery]);
+  }, [activeWords, selectedLetter, searchQuery, selectedClassFilter, activeCategory]);
 
   const toggleExpand = (word) => {
     if (expandedWord === word) {
@@ -74,6 +118,15 @@ export default function WordList({ vocabData }) {
     e.stopPropagation();
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(word.replace(/,.*$/, ''));
+      utterance.lang = 'de-DE';
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const speakSentence = (e, sentence) => {
+    e.stopPropagation();
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(sentence);
       utterance.lang = 'de-DE';
       window.speechSynthesis.speak(utterance);
     }
@@ -109,6 +162,24 @@ export default function WordList({ vocabData }) {
           </button>
         </div>
 
+        {/* Classification Filter Dropdown */}
+        {(activeCategory === 'nouns' || activeCategory === 'verbs') && (
+          <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <span style={{fontSize: '14px', color: 'var(--text-secondary)', fontWeight: '600'}}>Category:</span>
+            <select
+              value={selectedClassFilter}
+              onChange={(e) => { setSelectedClassFilter(e.target.value); setSelectedLetter(''); }}
+              className="search-input"
+              style={{padding: '8px 12px', minWidth: '220px', fontSize: '14px', cursor: 'pointer', height: '42px'}}
+            >
+              <option value="all">All Categories</option>
+              {CLASS_CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="search-input-wrapper">
           <span className="search-icon">🔍</span>
           <input 
@@ -121,8 +192,8 @@ export default function WordList({ vocabData }) {
         </div>
       </div>
 
-      {/* Alphabet Index (only visible when not searching) */}
-      {searchQuery.trim().length === 0 && (
+      {/* Alphabet Index (only visible when not searching and no category classification filter is selected) */}
+      {searchQuery.trim().length === 0 && selectedClassFilter === 'all' && (
         <div className="alphabet-bar">
           {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(letter => {
             const isAvailable = availableLetters.includes(letter);
@@ -154,6 +225,7 @@ export default function WordList({ vocabData }) {
                 key={idx}
                 className={`glass-card word-card ${activeCategory.slice(0, -1)}`}
                 onClick={() => toggleExpand(item.word)}
+                style={{display: 'flex', flexDirection: 'column'}}
               >
                 <div className="word-card-header">
                   <span className="word-title">{item.word}</span>
@@ -167,20 +239,65 @@ export default function WordList({ vocabData }) {
                 )}
                 
                 <div className="word-meaning">{item.meaning}</div>
+
+                {/* Primary and Secondary Class Badges */}
+                {(activeCategory === 'nouns' || activeCategory === 'verbs') && (
+                  <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: 'auto', paddingTop: '10px'}}>
+                    {item.primaryCategory && (
+                      <span 
+                        style={{
+                          fontSize: '10px', 
+                          fontWeight: '700', 
+                          padding: '3px 8px', 
+                          borderRadius: '10px', 
+                          background: 'rgba(255, 255, 255, 0.05)', 
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      >
+                        🏷️ {item.primaryCategory}
+                      </span>
+                    )}
+                    {item.secondaryCategory && (
+                      <span 
+                        style={{
+                          fontSize: '10px', 
+                          fontWeight: '700', 
+                          padding: '3px 8px', 
+                          borderRadius: '10px', 
+                          background: 'rgba(255, 255, 255, 0.02)', 
+                          color: 'var(--text-muted)',
+                          border: '1px dashed var(--border-color)'
+                        }}
+                      >
+                        🏷️ {item.secondaryCategory}
+                      </span>
+                    )}
+                  </div>
+                )}
                 
                 {isExpanded && item.examples && item.examples.length > 0 && (
-                  <div className="word-example-section animate-fade-in">
+                  <div className="word-example-section animate-fade-in" style={{marginTop: '12px'}}>
                     {item.examples.map((ex, exIdx) => (
-                      <div key={exIdx} className="example-item">
-                        <p className="example-de">🇩🇪 {ex.de}</p>
-                        <p className="example-en">🇬🇧 {ex.en}</p>
+                      <div key={exIdx} className="example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', margin: '8px 0'}}>
+                        <div style={{flexGrow: 1, textAlign: 'left'}}>
+                          <p className="example-de" style={{margin: 0}}>🇩🇪 {ex.de}</p>
+                          <p className="example-en" style={{margin: '2px 0 0'}}>🇬🇧 {ex.en}</p>
+                        </div>
+                        <button 
+                          className="sound-btn" 
+                          onClick={(e) => speakSentence(e, ex.de)} 
+                          title="Listen to sentence"
+                        >
+                          🔊
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
                 
                 {isExpanded && (!item.examples || item.examples.length === 0) && (
-                  <div className="word-example-section text-muted" style={{fontSize: '12px', fontStyle: 'italic'}}>
+                  <div className="word-example-section text-muted" style={{fontSize: '12px', fontStyle: 'italic', marginTop: '12px'}}>
                     No usage examples listed for this word.
                   </div>
                 )}

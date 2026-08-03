@@ -15,7 +15,7 @@ function App() {
 
   // Fetch vocabulary JSON dataset
   useEffect(() => {
-    fetch('/b1_vocab_data.json')
+    fetch('/b1_vocab_data.json?t=' + Date.now())
       .then(res => res.json())
       .then(data => {
         setVocabData(data);
