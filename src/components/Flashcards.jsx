@@ -183,14 +183,18 @@ export default function Flashcards({ vocabData, onReview }) {
               🔊
             </button>
             
-            <div className="card-instruction">German Word</div>
-            <div className="card-main-word">{currentCard.word}</div>
-            
-            {currentCard.conjugation && (
-              <div className="card-main-conjugation">
-                {currentCard.conjugation}
+            <div className="card-scroll-content">
+              <div className="card-content-wrapper">
+                <div className="card-instruction">German Word</div>
+                <div className="card-main-word">{currentCard.word}</div>
+                
+                {currentCard.conjugation && (
+                  <div className="card-main-conjugation">
+                    {currentCard.conjugation}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
             
             <div className="card-subtext">Click card or press [Space] to Flip</div>
           </div>
@@ -201,19 +205,23 @@ export default function Flashcards({ vocabData, onReview }) {
               {currentCard.category}
             </span>
             
-            <div className="card-instruction">English Translation</div>
-            <div className="card-main-meaning">{currentCard.meaning}</div>
-            
-            {currentCard.examples && currentCard.examples.length > 0 && (
-              <div className="card-examples-list">
-                {currentCard.examples.map((ex, exIdx) => (
-                  <div key={exIdx} className="card-example-item">
-                    <p className="example-de">🇩🇪 {ex.de}</p>
-                    <p className="example-en">🇬🇧 {ex.en}</p>
+            <div className="card-scroll-content">
+              <div className="card-content-wrapper">
+                <div className="card-instruction">English Translation</div>
+                <div className="card-main-meaning">{currentCard.meaning}</div>
+                
+                {currentCard.examples && currentCard.examples.length > 0 && (
+                  <div className="card-examples-list">
+                    {currentCard.examples.map((ex, exIdx) => (
+                      <div key={exIdx} className="card-example-item">
+                        <p className="example-de">🇩🇪 {ex.de}</p>
+                        <p className="example-en">🇬🇧 {ex.en}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
-            )}
+            </div>
             
             <div className="card-subtext">Press rating key or select button below</div>
           </div>

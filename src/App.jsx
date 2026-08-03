@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
+import ClozePractice from './components/ClozePractice';
+import ReorderPractice from './components/ReorderPractice';
 import Stats from './components/Stats';
 import './index.css';
 
@@ -59,7 +61,7 @@ function App() {
   const computedStats = useMemo(() => {
     const uniqueReviewedWords = new Set();
     const lastRatingMap = {};
-    
+
     // Sort chronologically so we get the latest rating
     const sortedReviews = [...reviews].sort((a, b) => a.timestamp - b.timestamp);
     sortedReviews.forEach(r => {
@@ -78,12 +80,12 @@ function App() {
     };
 
     const categoryReviewed = { nouns: 0, verbs: 0, adjectives: 0, connectors: 0 };
-    
+
     const uniqueWordCategory = {};
     sortedReviews.forEach(r => {
       uniqueWordCategory[r.word] = r.category;
     });
-    
+
     Object.entries(uniqueWordCategory).forEach(([word, category]) => {
       if (categoryReviewed[category] !== undefined) {
         categoryReviewed[category]++;
@@ -103,31 +105,31 @@ function App() {
       const uniqueDates = Array.from(new Set(
         reviews.map(r => new Date(r.timestamp).toDateString())
       )).map(d => new Date(d));
-      
+
       uniqueDates.sort((a, b) => b.getTime() - a.getTime()); // Descending order
-      
+
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
-      
+
       if (uniqueDates.length > 0) {
         const latestReviewDate = uniqueDates[0];
         latestReviewDate.setHours(0, 0, 0, 0);
-        
+
         if (latestReviewDate.getTime() === today.getTime() || latestReviewDate.getTime() === yesterday.getTime()) {
           streak = 1;
           for (let i = 0; i < uniqueDates.length - 1; i++) {
             const current = new Date(uniqueDates[i]);
             current.setHours(0, 0, 0, 0);
-            
-            const prev = new Date(uniqueDates[i+1]);
+
+            const prev = new Date(uniqueDates[i + 1]);
             prev.setHours(0, 0, 0, 0);
-            
+
             const diffTime = Math.abs(current.getTime() - prev.getTime());
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            
+
             if (diffDays === 1) {
               streak++;
             } else if (diffDays > 1) {
@@ -149,9 +151,9 @@ function App() {
   if (loading) {
     return (
       <div style={{
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         height: '100vh',
         backgroundColor: '#090a0f',
         color: '#f3f4f6',
@@ -176,19 +178,31 @@ function App() {
         </div>
 
         <nav className="app-nav">
-          <button 
+          <button
             className={`nav-button ${activeTab === 'explorer' ? 'active' : ''}`}
             onClick={() => setActiveTab('explorer')}
           >
-            📖 Explorer
+            📖 Word List
           </button>
-          <button 
+          <button
             className={`nav-button ${activeTab === 'practice' ? 'active' : ''}`}
             onClick={() => setActiveTab('practice')}
           >
-            🗂️ Practice
+            🗂️ Ankii
           </button>
-          <button 
+          <button
+            className={`nav-button ${activeTab === 'cloze' ? 'active' : ''}`}
+            onClick={() => setActiveTab('cloze')}
+          >
+            📝 Fill in blanks
+          </button>
+          <button
+            className={`nav-button ${activeTab === 'reorder' ? 'active' : ''}`}
+            onClick={() => setActiveTab('reorder')}
+          >
+            🧩 Reorder
+          </button>
+          <button
             className={`nav-button ${activeTab === 'stats' ? 'active' : ''}`}
             onClick={() => setActiveTab('stats')}
           >
@@ -197,9 +211,11 @@ function App() {
         </nav>
       </header>
 
-      <main style={{flexGrow: 1}}>
+      <main style={{ flexGrow: 1 }}>
         {activeTab === 'explorer' && <WordList vocabData={vocabData} />}
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'cloze' && <ClozePractice vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'stats' && <Stats stats={computedStats} reviews={reviews} onResetStats={handleResetStats} />}
       </main>
     </div>

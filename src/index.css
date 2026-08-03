@@ -496,10 +496,41 @@ h2.section-title {
   -webkit-backface-visibility: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 32px;
+  padding: 24px;
   text-align: center;
+  box-sizing: border-box;
+}
+
+.card-scroll-content {
+  flex-grow: 1;
+  width: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  margin-top: 16px;
+  
+  /* Scrollbar Styling */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.card-scroll-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.card-scroll-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.card-content-wrapper {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
 }
 
 .card-face.front {
