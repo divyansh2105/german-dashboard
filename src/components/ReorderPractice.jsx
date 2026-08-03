@@ -170,10 +170,8 @@ export default function ReorderPractice({ vocabData, onReview }) {
   };
 
   const speakSentence = () => {
-    if (currentItem && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(currentItem.fullGerman);
-      utterance.lang = 'de-DE';
-      window.speechSynthesis.speak(utterance);
+    if (currentItem && window.speakGerman) {
+      window.speakGerman(currentItem.fullGerman);
     }
   };
 

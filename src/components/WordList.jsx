@@ -116,19 +116,15 @@ export default function WordList({ vocabData }) {
 
   const speakWord = (e, word) => {
     e.stopPropagation();
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(word.replace(/,.*$/, ''));
-      utterance.lang = 'de-DE';
-      window.speechSynthesis.speak(utterance);
+    if (window.speakGerman) {
+      window.speakGerman(word.replace(/,.*$/, ''));
     }
   };
 
   const speakSentence = (e, sentence) => {
     e.stopPropagation();
-    if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.lang = 'de-DE';
-      window.speechSynthesis.speak(utterance);
+    if (window.speakGerman) {
+      window.speakGerman(sentence);
     }
   };
 
