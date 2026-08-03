@@ -3,6 +3,7 @@ import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import ClozePractice from './components/ClozePractice';
 import ReorderPractice from './components/ReorderPractice';
+import SentenceCreator from './components/SentenceCreator';
 import Stats from './components/Stats';
 import './index.css';
 
@@ -203,6 +204,12 @@ function App() {
             🧩 Reorder
           </button>
           <button
+            className={`nav-button ${activeTab === 'creator' ? 'active' : ''}`}
+            onClick={() => setActiveTab('creator')}
+          >
+            ✍️ Creator
+          </button>
+          <button
             className={`nav-button ${activeTab === 'stats' ? 'active' : ''}`}
             onClick={() => setActiveTab('stats')}
           >
@@ -216,6 +223,7 @@ function App() {
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'cloze' && <ClozePractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'stats' && <Stats stats={computedStats} reviews={reviews} onResetStats={handleResetStats} />}
       </main>
     </div>
