@@ -273,6 +273,16 @@ function App() {
   }, [fontScale]);
 
   useEffect(() => {
+    // Dummy speak call to force SpeechSynthesis engine activation on mobile Safari/iOS
+    if ('speechSynthesis' in window) {
+      try {
+        const dummy = new SpeechSynthesisUtterance('');
+        window.speechSynthesis.speak(dummy);
+      } catch (e) {
+        console.error("Speech init error:", e);
+      }
+    }
+
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
@@ -339,13 +349,23 @@ function App() {
     window.speakGerman = (text) => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel(); // Stop current speech instantly
+
+        // Dynamic voice loading fallback: update React state if mobile TTS initialized late
+        const allVoices = window.speechSynthesis.getVoices();
+        const german = allVoices.filter(v => {
+          const lang = v.lang.toLowerCase();
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+        });
+        if (german.length > 0 && voices.length === 0) {
+          setVoices(german);
+        }
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'de-DE';
         utterance.rate = speechRate;
         utterance.pitch = speechPitch;
 
         if (selectedVoiceName) {
-          const allVoices = window.speechSynthesis.getVoices();
           const voice = allVoices.find(v => v.name === selectedVoiceName);
           if (voice) {
             utterance.voice = voice;
