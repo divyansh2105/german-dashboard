@@ -104,7 +104,8 @@ export default function ClozePractice({ vocabData, onReview }) {
       englishTranslation: en,
       originalWord: item.word,
       fullGerman: de,
-      category: item.category
+      category: item.category,
+      priority: item.priority
     };
   };
 
@@ -138,10 +139,50 @@ export default function ClozePractice({ vocabData, onReview }) {
     return copy;
   };
 
+  // Build prioritized queue with a 6:3:1 ratio (High:Medium:Low) per 10 items
+  const buildPrioritizedQueue = (items) => {
+    const high = shuffleArray(items.filter(item => item.priority === 1 || !item.priority));
+    const med = shuffleArray(items.filter(item => item.priority === 2));
+    const low = shuffleArray(items.filter(item => item.priority === 3));
+
+    const finalQueue = [];
+    let hIndex = 0, mIndex = 0, lIndex = 0;
+
+    while (hIndex < high.length || mIndex < med.length || lIndex < low.length) {
+      const batch = [];
+
+      // Add up to 6 high priority items
+      for (let i = 0; i < 6; i++) {
+        if (hIndex < high.length) batch.push(high[hIndex++]);
+      }
+
+      // Add up to 3 medium priority items
+      for (let i = 0; i < 3; i++) {
+        if (mIndex < med.length) batch.push(med[mIndex++]);
+      }
+
+      // Add up to 1 low priority item
+      for (let i = 0; i < 1; i++) {
+        if (lIndex < low.length) batch.push(low[lIndex++]);
+      }
+
+      // Fill up to 10 if any category runs out early
+      while (batch.length < 10 && (hIndex < high.length || mIndex < med.length || lIndex < low.length)) {
+        if (hIndex < high.length) batch.push(high[hIndex++]);
+        else if (mIndex < med.length) batch.push(med[mIndex++]);
+        else if (lIndex < low.length) batch.push(low[lIndex++]);
+      }
+
+      finalQueue.push(...shuffleArray(batch));
+    }
+
+    return finalQueue;
+  };
+
   // Initialize/reshuffle queue
   useEffect(() => {
     if (activeClozeItems.length > 0) {
-      setQueue(shuffleArray(activeClozeItems));
+      setQueue(buildPrioritizedQueue(activeClozeItems));
       setCurrentIndex(0);
       setUserAnswer('');
       setShowFeedback(false);
@@ -179,7 +220,7 @@ export default function ClozePractice({ vocabData, onReview }) {
       setCurrentIndex(currentIndex + 1);
     } else {
       // Loop reshuffle
-      setQueue(shuffleArray(activeClozeItems));
+      setQueue(buildPrioritizedQueue(activeClozeItems));
       setCurrentIndex(0);
     }
   };
