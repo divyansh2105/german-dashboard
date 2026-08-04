@@ -42,7 +42,14 @@ export default async function handler(request, response) {
     }
 
     if (method === 'POST') {
-      const list = request.body;
+      let list = request.body;
+      if (typeof list === 'string') {
+        try {
+          list = JSON.parse(list);
+        } catch (e) {
+          return response.status(400).json({ error: 'Body must be valid JSON.' });
+        }
+      }
       if (!Array.isArray(list)) {
         return response.status(400).json({ error: 'Body must be a JSON array.' });
       }
