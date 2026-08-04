@@ -90,6 +90,27 @@ export default function Flashcards({ vocabData, onReview }) {
     setIsFlipped(!isFlipped);
   };
 
+  const clickTimeoutRef = useRef(null);
+
+  const handleCardClick = (e) => {
+    // If click targeted or bubbled from a button or speaker icon, ignore
+    if (e.target.closest('button') || e.target.closest('.sound-btn')) {
+      return;
+    }
+    
+    if (clickTimeoutRef.current) {
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+      // Double click detected - skip flipping to allow text selection
+      return;
+    }
+    
+    clickTimeoutRef.current = setTimeout(() => {
+      handleFlip();
+      clickTimeoutRef.current = null;
+    }, 220);
+  };
+
   const handleFeedback = (rating) => {
     if (!currentCard) return;
     
@@ -203,7 +224,7 @@ export default function Flashcards({ vocabData, onReview }) {
       {/* 3D Flip Card */}
       <div 
         className={`flashcard-container ${currentCard.category}`}
-        onClick={handleFlip}
+        onClick={handleCardClick}
       >
         <div className={`flashcard-inner ${isFlipped ? 'flipped' : ''}`}>
           
@@ -221,13 +242,13 @@ export default function Flashcards({ vocabData, onReview }) {
               🔊
             </button>
             
-            <div className="card-scroll-content" onClick={(e) => e.stopPropagation()}>
+            <div className="card-scroll-content">
               <div className="card-content-wrapper">
                 <div className="card-instruction">German Word</div>
-                <div className="card-main-word" onClick={(e) => e.stopPropagation()}>{currentCard.word}</div>
+                <div className="card-main-word">{currentCard.word}</div>
                 
                 {currentCard.conjugation && (
-                  <div className="card-main-conjugation" onClick={(e) => e.stopPropagation()}>
+                  <div className="card-main-conjugation">
                     {currentCard.conjugation}
                   </div>
                 )}
@@ -243,13 +264,13 @@ export default function Flashcards({ vocabData, onReview }) {
               {currentCard.category}
             </span>
             
-            <div className="card-scroll-content" onClick={(e) => e.stopPropagation()}>
+            <div className="card-scroll-content">
               <div className="card-content-wrapper">
                 <div className="card-instruction">English Translation</div>
-                <div className="card-main-meaning" onClick={(e) => e.stopPropagation()}>{currentCard.meaning}</div>
+                <div className="card-main-meaning">{currentCard.meaning}</div>
                 
                 {currentCard.examples && currentCard.examples.length > 0 && (
-                  <div className="card-examples-list" onClick={(e) => e.stopPropagation()}>
+                  <div className="card-examples-list">
                     {currentCard.examples.map((ex, exIdx) => (
                       <div key={exIdx} className="card-example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', width: '100%', margin: '8px 0'}}>
                         <div style={{flexGrow: 1, textAlign: 'left'}}>
