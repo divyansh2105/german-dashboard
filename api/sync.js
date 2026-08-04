@@ -1,5 +1,3 @@
-import { kv } from '@vercel/kv';
-
 export default async function handler(request, response) {
   // CORS Headers
   response.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,6 +6,16 @@ export default async function handler(request, response) {
 
   if (request.method === 'OPTIONS') {
     return response.status(200).end();
+  }
+
+  // Support both standard Vercel KV and direct Upstash integrations automatically
+  const redisUrl = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!redisUrl || !redisToken) {
+    return response.status(500).json({ 
+      error: 'Database environment variables are missing on Vercel. Please ensure Upstash is connected to your project.' 
+    });
   }
 
   const { method } = request;
@@ -22,8 +30,15 @@ export default async function handler(request, response) {
 
   try {
     if (method === 'GET') {
-      const data = await kv.get(key);
-      return response.status(200).json(data || []);
+      const res = await fetch(`${redisUrl}/get/${key}`, {
+        headers: { Authorization: `Bearer ${redisToken}` }
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      
+      // Upstash REST API returns value inside the "result" property
+      const list = data.result ? JSON.parse(data.result) : [];
+      return response.status(200).json(list);
     }
 
     if (method === 'POST') {
@@ -31,13 +46,22 @@ export default async function handler(request, response) {
       if (!Array.isArray(list)) {
         return response.status(400).json({ error: 'Body must be a JSON array.' });
       }
-      await kv.set(key, list);
+      
+      const res = await fetch(`${redisUrl}/set/${key}`, {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${redisToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(JSON.stringify(list)) // Stringify the list array to store in Redis
+      });
+      if (!res.ok) throw new Error(await res.text());
       return response.status(200).json({ success: true, count: list.length });
     }
 
     return response.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
-    console.error("Vercel KV Sync Error:", error);
-    return response.status(500).json({ error: 'Internal database sync error. Make sure Vercel KV is linked to the project.' });
+    console.error("Sync Route Error:", error);
+    return response.status(500).json({ error: error.message || 'Internal database sync error.' });
   }
 }
