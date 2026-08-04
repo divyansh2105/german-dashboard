@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import ClozePractice from './components/ClozePractice';
@@ -14,6 +14,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
   const [reviews, setReviews] = useState([]);
+  
+  // Ref to prevent background pulls/syncs from triggering a duplicate cloud upload
+  const skipNextUploadRef = useRef(false);
 
   // Fixed single-user Login credentials
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('b1_logged_in') === 'true');
@@ -101,6 +104,8 @@ function App() {
         finalConfiguredList = Array.isArray(cloudList) ? cloudList : [];
       }
       
+      // Set ref to skip next upload trigger since this change came from a cloud pull
+      skipNextUploadRef.current = true;
       setMyList(finalConfiguredList);
       
       setSyncStatus('success');
@@ -123,18 +128,30 @@ function App() {
   useEffect(() => {
     localStorage.setItem('b1_my_list', JSON.stringify(myList));
     
-    if (syncCode && syncStatus !== 'syncing') {
+    // Skip uploading if this update was triggered by a cloud pull
+    if (skipNextUploadRef.current) {
+      skipNextUploadRef.current = false;
+      return;
+    }
+    
+    if (syncCode) {
       const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       const uploadList = async () => {
+        setSyncStatus('syncing');
         try {
-          await fetch(`/api/sync?code=${cleanCode}`, {
+          const res = await fetch(`/api/sync?code=${cleanCode}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(myList),
             cache: 'no-store'
           });
+          if (!res.ok) throw new Error(await res.text());
+          setSyncStatus('success');
+          setSyncError('');
         } catch (err) {
           console.error("Failed to auto-upload to cloud:", err);
+          setSyncStatus('error');
+          setSyncError(err.message || 'Auto-upload failed');
         }
       };
       uploadList();
