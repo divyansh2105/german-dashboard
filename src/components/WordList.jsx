@@ -46,7 +46,7 @@ const normalizeCategory = (cat) => {
 
 export default function WordList({ vocabData, myList = [], onToggleMyList }) {
   const [activeCategory, setActiveCategory] = useState('nouns');
-  const [selectedLetter, setSelectedLetter] = useState('A');
+  const [selectedLetter, setSelectedLetter] = useState('all');
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,10 +92,12 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
   React.useEffect(() => {
     setSelectedClassFilter('all');
     setSelectedPriorityFilter('all');
+    setSelectedLetter('all'); // Reset selected letter back to 'all' on category tab change
   }, [activeCategory]);
 
   // Handle snapping selectedLetter to the first available index when filters modify list
   React.useEffect(() => {
+    if (selectedLetter === 'all') return;
     if (availableLetters.length > 0) {
       if (!availableLetters.includes(selectedLetter)) {
         setSelectedLetter(availableLetters[0]);
@@ -133,6 +135,10 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
         return true;
       }
       
+      if (selectedLetter === 'all') {
+        return true;
+      }
+
       const firstLetter = getActualWordFirstLetter(item.word);
       return selectedLetter ? firstLetter === selectedLetter : true;
     });
@@ -238,7 +244,15 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
 
       {/* Alphabet Index (only visible when not searching and no category classification filter is selected) */}
       {searchQuery.trim().length === 0 && selectedClassFilter === 'all' && (
-        <div className="alphabet-bar">
+        <div className="alphabet-bar" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          <button
+            type="button"
+            className={`letter-btn ${selectedLetter === 'all' ? 'active' : ''}`}
+            onClick={() => setSelectedLetter('all')}
+            style={{ padding: '0 12px', minWidth: '45px', fontWeight: 'bold' }}
+          >
+            All
+          </button>
           {"ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(letter => {
             const isAvailable = availableLetters.includes(letter);
             return (
