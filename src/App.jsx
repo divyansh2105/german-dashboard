@@ -14,6 +14,26 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
   const [reviews, setReviews] = useState([]);
+
+  // Fixed single-user Login credentials
+  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('b1_logged_in') === 'true');
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const correctUser = 'admin';
+    const correctPass = 'deutschb1';
+
+    if (loginUsername.trim().toLowerCase() === correctUser && loginPassword === correctPass) {
+      setIsLoggedIn(true);
+      localStorage.setItem('b1_logged_in', 'true');
+      setLoginError('');
+    } else {
+      setLoginError('Invalid username or password.');
+    }
+  };
   const [fontScale, setFontScale] = useState(() => {
     const saved = localStorage.getItem('b1_font_scale');
     return saved ? parseFloat(saved) : 1.0;
@@ -257,20 +277,44 @@ function App() {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
         const german = allVoices.filter(v => v.lang.startsWith('de') || v.lang.includes('DE'));
-        setVoices(german);
+        if (german.length > 0) {
+          setVoices(german);
 
-        // Pick default if none selected
-        if (german.length > 0 && !localStorage.getItem('b1_selected_voice')) {
-          const preferred = german.find(v => v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('siri') || v.name.toLowerCase().includes('neural') || v.name.toLowerCase().includes('anna')) || german[0];
-          setSelectedVoiceName(preferred.name);
-          localStorage.setItem('b1_selected_voice', preferred.name);
+          const savedVoice = localStorage.getItem('b1_selected_voice');
+          const hasSavedVoice = german.some(v => v.name === savedVoice);
+
+          if (!savedVoice || !hasSavedVoice) {
+            const preferred = german.find(v => 
+              v.name.toLowerCase().includes('google') || 
+              v.name.toLowerCase().includes('siri') || 
+              v.name.toLowerCase().includes('neural') || 
+              v.name.toLowerCase().includes('anna')
+            ) || german[0];
+            setSelectedVoiceName(preferred.name);
+            localStorage.setItem('b1_selected_voice', preferred.name);
+          }
         }
       }
     };
     loadVoices();
+    
+    let intervalId;
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
+      
+      let attempts = 0;
+      intervalId = setInterval(() => {
+        loadVoices();
+        attempts++;
+        if (attempts > 40) {
+          clearInterval(intervalId);
+        }
+      }, 250);
     }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   useEffect(() => {
@@ -465,6 +509,78 @@ function App() {
     );
   }
 
+  if (!isLoggedIn) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        background: '#090a0f',
+        position: 'relative',
+        padding: '20px',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
+        <div className="glass-card animate-fade-in" style={{
+          maxWidth: '400px',
+          width: '100%',
+          padding: '32px',
+          border: '1px solid rgba(139, 92, 246, 0.25)',
+          textAlign: 'center'
+        }}>
+          <div className="logo-badge" style={{ display: 'inline-block', marginBottom: '16px' }}>DE B1</div>
+          <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '8px', color: '#fff' }}>Antigravity Deutsch</h2>
+          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px' }}>Please log in to access your German B1 Dashboard</p>
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Username:</label>
+              <input 
+                type="text" 
+                className="search-input" 
+                style={{ padding: '12px' }}
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                placeholder="Enter username..."
+                required
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Password:</label>
+              <input 
+                type="password" 
+                className="search-input" 
+                style={{ padding: '12px' }}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="Enter password..."
+                required
+              />
+            </div>
+            
+            {loginError && <p style={{ color: '#ef4444', fontSize: '12px', margin: 0 }}>⚠️ {loginError}</p>}
+
+            <button 
+              type="submit" 
+              className="nav-button active"
+              style={{
+                padding: '12px',
+                borderRadius: '12px',
+                justifyContent: 'center',
+                fontSize: '14px',
+                marginTop: '8px',
+                background: 'linear-gradient(135deg, var(--color-conn), var(--color-verb))',
+                cursor: 'pointer'
+              }}
+            >
+              Login ➔
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container" style={{ zoom: fontScale }}>
       <header className="app-header">
@@ -472,6 +588,35 @@ function App() {
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <div className="logo-badge">DE</div>
           </div>
+
+          {/* Logout button */}
+          <button
+            type="button"
+            className="sound-btn"
+            style={{ 
+              width: '28px', 
+              height: '28px', 
+              fontSize: '12px', 
+              background: 'rgba(239, 68, 68, 0.1)', 
+              color: '#ef4444', 
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              borderRadius: '8px',
+              padding: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              cursor: 'pointer'
+            }}
+            onClick={() => {
+              if (window.confirm("Are you sure you want to log out?")) {
+                setIsLoggedIn(false);
+                localStorage.removeItem('b1_logged_in');
+              }
+            }}
+            title="Logout"
+          >
+            🚪
+          </button>
 
           {/* Font Size controls */}
           <div style={{
