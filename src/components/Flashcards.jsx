@@ -5,9 +5,22 @@ export default function Flashcards({ vocabData, onReview }) {
   const [isFlipped, setIsFlipped] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [queue, setQueue] = useState([]);
+  const [studyAhead, setStudyAhead] = useState(false);
 
-  // Compile words based on selected category
+  // Load Leitner schedules from localStorage on mount
+  const [schedules, setSchedules] = useState(() => {
+    const saved = localStorage.getItem('b1_flashcard_schedules');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Reset studyAhead when category changes to give due cards priority
+  useEffect(() => {
+    setStudyAhead(false);
+  }, [selectedCategory]);
+
+  // Compile words based on selected category and due date status
   const activeWords = useMemo(() => {
+    let baseWords = [];
     if (selectedCategory === 'all') {
       const all = [];
       Object.keys(vocabData).forEach(cat => {
@@ -16,12 +29,24 @@ export default function Flashcards({ vocabData, onReview }) {
           all.push({ ...item, category: cat });
         });
       });
-      return all;
+      baseWords = all;
     } else {
       const items = vocabData[selectedCategory] || [];
-      return items.map(item => ({ ...item, category: selectedCategory }));
+      baseWords = items.map(item => ({ ...item, category: selectedCategory }));
     }
-  }, [vocabData, selectedCategory]);
+
+    // Filter to only show cards that are due, unless studyAhead is active
+    if (!studyAhead) {
+      baseWords = baseWords.filter(w => {
+        const key = w.word.toLowerCase();
+        const sched = schedules[key];
+        if (!sched) return true; // Never studied before -> due!
+        return sched.nextReviewTime <= Date.now();
+      });
+    }
+
+    return baseWords;
+  }, [vocabData, selectedCategory, schedules, studyAhead]);
 
   // Shuffle queue helper
   const shuffleArray = (array) => {
@@ -93,7 +118,6 @@ export default function Flashcards({ vocabData, onReview }) {
   const clickTimeoutRef = useRef(null);
 
   const handleCardClick = (e) => {
-    // If click targeted or bubbled from a button or speaker icon, ignore
     if (e.target.closest('button') || e.target.closest('.sound-btn')) {
       return;
     }
@@ -101,7 +125,6 @@ export default function Flashcards({ vocabData, onReview }) {
     if (clickTimeoutRef.current) {
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
-      // Double click detected - skip flipping to allow text selection
       return;
     }
     
@@ -114,11 +137,40 @@ export default function Flashcards({ vocabData, onReview }) {
   const handleFeedback = (rating) => {
     if (!currentCard) return;
     
-    // Log review to parent
     onReview(currentCard.word, currentCard.category, rating);
     
-    // Anki/Leitner Logic: If rating is 'hard', splice it back into the queue 4 cards later
-    // to prompt recall and repetition during the same study session.
+    // Spaced Repetition Leitner Interval Adjustments
+    const key = currentCard.word.toLowerCase();
+    const currentSched = schedules[key] || { intervalDays: 0, nextReviewTime: 0 };
+    let nextInterval = 0;
+    
+    if (rating === 'easy') {
+      nextInterval = currentSched.intervalDays === 0 ? 4 : currentSched.intervalDays * 2;
+    } else if (rating === 'good') {
+      if (currentSched.intervalDays === 0) {
+        nextInterval = 1;
+      } else if (currentSched.intervalDays === 1) {
+        nextInterval = 3;
+      } else {
+        nextInterval = Math.round(currentSched.intervalDays * 1.5);
+      }
+    } else if (rating === 'hard') {
+      nextInterval = 0; // Reset scheduling interval on failure
+    }
+    
+    const nextReviewTime = Date.now() + nextInterval * 24 * 60 * 60 * 1000;
+    
+    const updatedSchedules = {
+      ...schedules,
+      [key]: {
+        intervalDays: nextInterval,
+        nextReviewTime
+      }
+    };
+    
+    setSchedules(updatedSchedules);
+    localStorage.setItem('b1_flashcard_schedules', JSON.stringify(updatedSchedules));
+
     let updatedQueue = [...queue];
     if (rating === 'hard') {
       const reinsertDistance = 4; 
@@ -127,17 +179,15 @@ export default function Flashcards({ vocabData, onReview }) {
       setQueue(updatedQueue);
     }
     
-    // Go to next card
     setIsFlipped(false);
     setTimeout(() => {
       if (currentIndex + 1 < updatedQueue.length) {
         setCurrentIndex(currentIndex + 1);
       } else {
-        // Reshuffle queue if reached end
         setQueue(shuffleArray(activeWords));
         setCurrentIndex(0);
       }
-    }, 250); // Small timeout to allow transition to reset flip
+    }, 250);
   };
 
   // Keyboard Shortcuts (Space to Flip, 1/2/3 for Hard/Good/Easy)
@@ -170,6 +220,72 @@ export default function Flashcards({ vocabData, onReview }) {
     }
   };
 
+  // 1. Caught Up State
+  if (activeWords.length === 0 && !studyAhead) {
+    let nextDueTime = null;
+    let baseWords = [];
+    if (selectedCategory === 'all') {
+      Object.keys(vocabData).forEach(cat => {
+        const items = vocabData[cat] || [];
+        items.forEach(item => {
+          baseWords.push({ ...item, category: cat });
+        });
+      });
+    } else {
+      const items = vocabData[selectedCategory] || [];
+      baseWords = items.map(item => ({ ...item, category: selectedCategory }));
+    }
+
+    baseWords.forEach(w => {
+      const sched = schedules[w.word.toLowerCase()];
+      if (sched) {
+        if (nextDueTime === null || sched.nextReviewTime < nextDueTime) {
+          nextDueTime = sched.nextReviewTime;
+        }
+      }
+    });
+
+    let dueMsg = "You are all caught up for today!";
+    if (nextDueTime !== null) {
+      const hoursRemaining = Math.max(0, Math.ceil((nextDueTime - Date.now()) / (1000 * 60 * 60)));
+      if (hoursRemaining === 0) {
+        dueMsg = "Your next card review is due in less than an hour.";
+      } else if (hoursRemaining < 24) {
+        dueMsg = `Your next card review is due in ${hoursRemaining} hour${hoursRemaining > 1 ? 's' : ''}.`;
+      } else {
+        const daysRemaining = Math.ceil(hoursRemaining / 24);
+        dueMsg = `Your next card review is due in ${daysRemaining} day${daysRemaining > 1 ? 's' : ''}.`;
+      }
+    }
+
+    return (
+      <div className="flashcard-layout animate-fade-in" style={{maxWidth: '650px'}}>
+        <div className="flashcard-options">
+          <button className={`option-pill ${selectedCategory === 'all' ? 'active' : ''}`} onClick={() => setSelectedCategory('all')}>🌐 Mix All</button>
+          <button className={`option-pill ${selectedCategory === 'nouns' ? 'active' : ''}`} onClick={() => setSelectedCategory('nouns')}>🟢 Nouns</button>
+          <button className={`option-pill ${selectedCategory === 'verbs' ? 'active' : ''}`} onClick={() => setSelectedCategory('verbs')}>🔵 Verbs</button>
+          <button className={`option-pill ${selectedCategory === 'adjectives' ? 'active' : ''}`} onClick={() => setSelectedCategory('adjectives')}>🟡 Adjectives</button>
+          <button className={`option-pill ${selectedCategory === 'connectors' ? 'active' : ''}`} onClick={() => setSelectedCategory('connectors')}>#️⃣ Connectors</button>
+        </div>
+
+        <div className="glass-card" style={{padding: '40px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%'}}>
+          <div style={{fontSize: '48px'}}>🎉</div>
+          <h3 style={{margin: 0, color: '#fff', fontSize: '18px', fontWeight: '700'}}>All Caught Up!</h3>
+          <p style={{margin: 0, color: 'var(--text-secondary)', fontSize: '14px'}}>{dueMsg}</p>
+          <button 
+            type="button" 
+            className="nav-button active"
+            onClick={() => setStudyAhead(true)}
+            style={{marginTop: '10px', padding: '10px 20px', borderRadius: '10px', background: 'linear-gradient(135deg, var(--color-noun), var(--color-verb))', fontWeight: '700'}}
+          >
+            📖 Study Ahead (Practice All Words)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Base fallback if empty queue and studyAhead active
   if (!currentCard) {
     return (
       <div className="flashcard-layout animate-fade-in">
@@ -215,6 +331,29 @@ export default function Flashcards({ vocabData, onReview }) {
           #️⃣ Connectors
         </button>
       </div>
+      
+      {/* Study Ahead Indicator */}
+      {studyAhead && (
+        <div style={{display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'center', marginTop: '-8px', marginBottom: '8px'}}>
+          <span style={{fontSize: '11px', color: 'var(--color-verb)', fontWeight: '700'}}>📖 Study Ahead Mode Active</span>
+          <button 
+            type="button"
+            onClick={() => setStudyAhead(false)}
+            style={{
+              fontSize: '10px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '6px',
+              color: 'var(--text-secondary)',
+              padding: '2px 8px',
+              cursor: 'pointer',
+              fontWeight: '600'
+            }}
+          >
+            Switch to Due
+          </button>
+        </div>
+      )}
 
       {/* Card count indicator */}
       <div style={{fontSize: '12px', color: 'var(--text-secondary)'}}>
