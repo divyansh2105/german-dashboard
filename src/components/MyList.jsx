@@ -358,7 +358,7 @@ export default function MyList({
           {myList.map((item, idx) => {
             const isExpanded = expandedWord === item.word;
             // Map list plural categories to singular CSS matching classes
-            const cssCategory = item.category === 'nouns' ? 'noun' : (item.category === 'verbs' ? 'verb' : (item.category === 'adjectives' ? 'adjective' : 'connector'));
+            const cssCategory = item.category === 'nouns' ? 'noun' : (item.category === 'verbs' ? 'verb' : (item.category === 'adjectives' ? 'adjective' : (item.category === 'reflexive' ? 'reflexive' : 'connector')));
             
             return (
               <div 
@@ -410,7 +410,7 @@ export default function MyList({
                       textTransform: 'uppercase'
                     }}
                   >
-                    🏷️ {item.category.slice(0, -1)}
+                    🏷️ {item.category === 'reflexive' ? 'reflexive' : item.category.slice(0, -1)}
                   </span>
                   {item.isCustom && (
                     <span 

@@ -17,6 +17,8 @@
   --color-adj-rgb: 245, 158, 11;
   --color-conn: #8b5cf6;
   --color-conn-rgb: 139, 92, 246;
+  --color-reflexive: #d946ef;
+  --color-reflexive-rgb: 217, 70, 239;
   
   --text-primary: #f3f4f6;
   --text-secondary: #a1a1aa;
@@ -211,6 +213,7 @@ body::after {
 .category-tag.verbs { background: rgba(59, 130, 246, 0.15); color: var(--color-verb); border: 1px solid rgba(59, 130, 246, 0.25); }
 .category-tag.adjectives { background: rgba(245, 158, 11, 0.15); color: var(--color-adj); border: 1px solid rgba(245, 158, 11, 0.25); }
 .category-tag.connectors { background: rgba(139, 92, 246, 0.15); color: var(--color-conn); border: 1px solid rgba(139, 92, 246, 0.25); }
+.category-tag.reflexive { background: rgba(217, 70, 239, 0.15); color: var(--color-reflexive); border: 1px solid rgba(217, 70, 239, 0.25); }
 
 /* Typography */
 h2.section-title {

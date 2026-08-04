@@ -10,7 +10,7 @@ import Stats from './components/Stats';
 import './index.css';
 
 function App() {
-  const [vocabData, setVocabData] = useState({ nouns: [], verbs: [], adjectives: [], connectors: [] });
+  const [vocabData, setVocabData] = useState({ nouns: [], verbs: [], adjectives: [], connectors: [], reflexive: [] });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
   const [reviews, setReviews] = useState([]);
@@ -254,7 +254,7 @@ function App() {
     const cleanQuery = doubleClickedText.toLowerCase().replace(/[^a-zäöüß]/g, '').trim();
     if (!cleanQuery) return null;
 
-    const categories = ['nouns', 'verbs', 'adjectives', 'connectors'];
+    const categories = ['nouns', 'verbs', 'adjectives', 'connectors', 'reflexive'];
     for (let cat of categories) {
       const match = (vocabData[cat] || []).find(item => {
         // Strip out leading articles/reflexive markers for matches
@@ -470,10 +470,11 @@ function App() {
       nouns: vocabData.nouns?.length || 0,
       verbs: vocabData.verbs?.length || 0,
       adjectives: vocabData.adjectives?.length || 0,
-      connectors: vocabData.connectors?.length || 0
+      connectors: vocabData.connectors?.length || 0,
+      reflexive: vocabData.reflexive?.length || 0
     };
 
-    const categoryReviewed = { nouns: 0, verbs: 0, adjectives: 0, connectors: 0 };
+    const categoryReviewed = { nouns: 0, verbs: 0, adjectives: 0, connectors: 0, reflexive: 0 };
 
     const uniqueWordCategory = {};
     sortedReviews.forEach(r => {
@@ -490,7 +491,8 @@ function App() {
       nouns: { reviewed: categoryReviewed.nouns, total: categoryTotals.nouns },
       verbs: { reviewed: categoryReviewed.verbs, total: categoryTotals.verbs },
       adjectives: { reviewed: categoryReviewed.adjectives, total: categoryTotals.adjectives },
-      connectors: { reviewed: categoryReviewed.connectors, total: categoryTotals.connectors }
+      connectors: { reviewed: categoryReviewed.connectors, total: categoryTotals.connectors },
+      reflexive: { reviewed: categoryReviewed.reflexive, total: categoryTotals.reflexive }
     };
 
     // Calculate streak
@@ -998,6 +1000,7 @@ function App() {
                 >
                   <option value="nouns">Noun</option>
                   <option value="verbs">Verb</option>
+                  <option value="reflexive">Reflexive Verb</option>
                   <option value="adjectives">Adjective / Adverb</option>
                   <option value="connectors">Connector</option>
                 </select>

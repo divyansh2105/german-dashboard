@@ -37903,5 +37903,605 @@
       ],
       "priority": 1
     }
+  ],
+  "reflexive": [
+    {
+      "word": "sich amüsieren",
+      "conjugation": "sich amüsieren, amüsiert sich, amüsierte sich, hat sich amüsiert",
+      "meaning": "to amuse oneself, have fun",
+      "primaryCategory": "Freizeit, Hobby & Sport",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Bei der Party haben wir uns sehr gut amüsiert.",
+          "en": "We had a great time at the party."
+        }
+      ]
+    },
+    {
+      "word": "sich anziehen",
+      "conjugation": "sich anziehen, zieht sich an, zog sich an, hat sich angezogen",
+      "meaning": "to get dressed",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Du musst dich wärmer anziehen, sonst erkältest du dich.",
+          "en": "You have to dress warmer, otherwise you will catch a cold."
+        }
+      ]
+    },
+    {
+      "word": "sich anstrengen",
+      "conjugation": "sich anstrengen, strengt sich an, strengte sich an, hat sich angestrengt",
+      "meaning": "to exert oneself, make an effort",
+      "primaryCategory": "Arbeit, Beruf & Büro",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Wenn du die Prüfung schaffen willst, musst du dich mehr anstrengen.",
+          "en": "If you want to pass the exam, you have to work harder."
+        }
+      ]
+    },
+    {
+      "word": "sich ärgern (über)",
+      "conjugation": "sich ärgern, ärgert sich, ärgerte sich, hat sich geärgert",
+      "meaning": "to get annoyed/angry (about)",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich habe mich sehr über den Stau geärgert.",
+          "en": "Ich habe mich sehr über den Stau geärgert."
+        }
+      ]
+    },
+    {
+      "word": "sich ausruhen",
+      "conjugation": "sich ausruhen, ruht sich aus, ruhte sich aus, hat sich ausgeruht",
+      "meaning": "to rest, unwind",
+      "primaryCategory": "Gesundheit, Körper & Medizin",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Nach der langen Arbeit muss ich mich kurz ausruhen.",
+          "en": "After the long work, I need to rest for a moment."
+        }
+      ]
+    },
+    {
+      "word": "sich bedanken (bei/für)",
+      "conjugation": "sich bedanken, bedankt sich, bedankte sich, hat sich bedankt",
+      "meaning": "to thank (someone for something)",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich möchte mich bei Ihnen für die Hilfe bedanken.",
+          "en": "Ich möchte mich bei Ihnen für die Hilfe bedanken."
+        }
+      ]
+    },
+    {
+      "word": "sich beeilen",
+      "conjugation": "sich beeilen, beeilt sich, beeilte sich, hat sich beeilt",
+      "meaning": "to hurry up",
+      "primaryCategory": "Zeit, Datum & Dokumente",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Wir müssen uns beeilen, sonst verpassen wir den Zug.",
+          "en": "We have to hurry, otherwise we will miss the train."
+        }
+      ]
+    },
+    {
+      "word": "sich befinden",
+      "conjugation": "sich befinden, befindet sich, befand sich, hat sich befunden",
+      "meaning": "to be located",
+      "primaryCategory": "Reise, Verkehr & Mobilität",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Das Restaurant befindet sich im Stadtzentrum.",
+          "en": "Das Restaurant befindet sich im Stadtzentrum."
+        }
+      ]
+    },
+    {
+      "word": "sich beschweren (über)",
+      "conjugation": "sich beschweren, beschwert sich, beschwerte sich, hat sich beschwert",
+      "meaning": "to complain (about)",
+      "primaryCategory": "Abstrakte Begriffe & Handlungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Der Gast hat sich über das kalte Essen beschwert.",
+          "en": "Der Gast hat sich über das kalte Essen beschwert."
+        }
+      ]
+    },
+    {
+      "word": "sich beteiligen (an)",
+      "conjugation": "sich beteiligen, beteiligt sich, beteiligte sich, hat sich beteiligt",
+      "meaning": "to participate/take part (in)",
+      "primaryCategory": "Staat, Gesellschaft & Recht",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Viele Bürger haben sich an der Aktion beteiligt.",
+          "en": "Many citizens took part in the campaign."
+        }
+      ]
+    },
+    {
+      "word": "sich bewerben (um/bei)",
+      "conjugation": "sich bewerben, bewirbt sich, bewarb sich, hat sich beworben",
+      "meaning": "to apply (for a job/at a company)",
+      "primaryCategory": "Arbeit, Beruf & Büro",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich habe mich um diese Stelle beworben.",
+          "en": "I applied for this job."
+        }
+      ]
+    },
+    {
+      "word": "sich eignen (für)",
+      "conjugation": "sich eignen, eignet sich, eignete sich, hat sich geeignet",
+      "meaning": "to be suitable/suited (for)",
+      "primaryCategory": "Abstrakte Begriffe & Handlungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Dieses Buch eignet sich gut für Anfänger.",
+          "en": "This book is well-suited for beginners."
+        }
+      ]
+    },
+    {
+      "word": "sich entscheiden (für/gegen)",
+      "conjugation": "sich entscheiden, entscheidet sich, entschied sich, hat sich entschieden",
+      "meaning": "to decide (for/against)",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Wir haben uns für eine neue Wohnung entschieden.",
+          "en": "We decided on a new apartment."
+        }
+      ]
+    },
+    {
+      "word": "sich entschließen (zu)",
+      "conjugation": "sich entschließen, entschließt sich, entschloss sich, hat sich entschlossen",
+      "meaning": "to make up one's mind (to do something)",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Er hat sich entschlossen, ein Studium zu beginnen.",
+          "en": "He made up his mind to start a degree."
+        }
+      ]
+    },
+    {
+      "word": "sich entschuldigen (bei/für)",
+      "conjugation": "sich entschuldigen, entschuldigt sich, entschuldigte sich, hat sich entschuldigt",
+      "meaning": "to apologize (to someone for something)",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich möchte mich bei Ihnen für die Verspätung entschuldigen.",
+          "en": "I would like to apologize to you for the delay."
+        }
+      ]
+    },
+    {
+      "word": "sich entspannen",
+      "conjugation": "sich entspannen, entspannt sich, entspannte sich, hat sich entspannt",
+      "meaning": "to relax, unwind",
+      "primaryCategory": "Freizeit, Hobby & Sport",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Am Wochenende kann ich mich endlich entspannen.",
+          "en": "On the weekend I can finally relax."
+        }
+      ]
+    },
+    {
+      "word": "sich erholen (von)",
+      "conjugation": "sich erholen, erholt sich, erholte sich, hat sich erholt",
+      "meaning": "to recover/recuperate (from)",
+      "primaryCategory": "Gesundheit, Körper & Medizin",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Im Urlaub habe ich mich sehr gut erholt.",
+          "en": "I recovered very well on vacation."
+        }
+      ]
+    },
+    {
+      "word": "sich erkälten",
+      "conjugation": "sich erkälten, erkältet sich, erkältete sich, hat sich erkältet",
+      "meaning": "to catch a cold",
+      "primaryCategory": "Gesundheit, Körper & Medizin",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Zieh dir eine Jacke an, sonst erkältest du dich.",
+          "en": "Put on a jacket, otherwise you will catch a cold."
+        }
+      ]
+    },
+    {
+      "word": "sich erkundigen (nach)",
+      "conjugation": "sich erkundigen, erkundigt sich, erkundigte sich, hat sich erkundigt",
+      "meaning": "to inquire (about)",
+      "primaryCategory": "Kommunikation, Medien & Technik",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Ich habe mich nach den Zugverbindungen erkundigt.",
+          "en": "I inquired about the train connections."
+        }
+      ]
+    },
+    {
+      "word": "sich erinnern (an)",
+      "conjugation": "sich erinnern, erinnert sich, erinnerte sich, hat sich erinnert",
+      "meaning": "to remember, recall",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich kann mich gut an meine Kindheit erinnern.",
+          "en": "I can remember my childhood well."
+        }
+      ]
+    },
+    {
+      "word": "sich freuen (auf/über)",
+      "conjugation": "sich freuen, freut sich, freute sich, hat sich gefreut",
+      "meaning": "to look forward to / be happy about",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich freue mich schon auf meinen Urlaub.",
+          "en": "I'm looking forward to my vacation."
+        }
+      ]
+    },
+    {
+      "word": "sich gewöhnen (an)",
+      "conjugation": "sich gewöhnen, gewöhnt sich, gewöhnte sich, hat sich gewöhnt",
+      "meaning": "to get used to, accustomed to",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Ich habe mich schnell an das neue Klima gewöhnt.",
+          "en": "I got used to the new climate quickly."
+        }
+      ]
+    },
+    {
+      "word": "sich informieren (über)",
+      "conjugation": "sich informieren, informiert sich, informierte sich, hat sich informiert",
+      "meaning": "to inform oneself, find out (about)",
+      "primaryCategory": "Kommunikation, Medien & Technik",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Vor der Reise muss man sich gut informieren.",
+          "en": "Before traveling, one needs to stay well informed."
+        }
+      ]
+    },
+    {
+      "word": "sich interessieren (für)",
+      "conjugation": "sich interessieren, interessiert sich, interessierte sich, hat sich interessiert",
+      "meaning": "to be interested (in)",
+      "primaryCategory": "Freizeit, Hobby & Sport",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Mein Bruder interessiert sich sehr für Sport.",
+          "en": "My brother is very interested in sports."
+        }
+      ]
+    },
+    {
+      "word": "sich irren",
+      "conjugation": "sich irren, irrt sich, irrte sich, hat sich geirrt",
+      "meaning": "to be mistaken, be wrong",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Entschuldigung, da habe ich mich geirrt.",
+          "en": "Sorry, I was mistaken there."
+        }
+      ]
+    },
+    {
+      "word": "sich konzentrieren (auf)",
+      "conjugation": "sich konzentrieren, konzentriert sich, konzentrierte sich, hat sich konzentriert",
+      "meaning": "to concentrate (on)",
+      "primaryCategory": "Ausbildung, Schule & Wissenschaft",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich muss mich auf die Grammatikprüfung konzentrieren.",
+          "en": "I have to concentrate on the grammar exam."
+        }
+      ]
+    },
+    {
+      "word": "sich kümmern (um)",
+      "conjugation": "sich kümmern, kümmert sich, kümmerte sich, hat sich gekümmert",
+      "meaning": "to look after, take care of",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Wer kümmert sich heute um die Kinder?",
+          "en": "Who is taking care of the children today?"
+        }
+      ]
+    },
+    {
+      "word": "sich langweilen",
+      "conjugation": "sich langweilen, langweilt sich, langweilte sich, hat sich gelangweilt",
+      "meaning": "to feel bored",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "In den Schulferien langweilen sich die Kinder oft.",
+          "en": "During school holidays, children often feel bored."
+        }
+      ]
+    },
+    {
+      "word": "sich lohnen",
+      "conjugation": "sich lohnen, lohnt sich, lohnte sich, hat sich gelohnt",
+      "meaning": "to be worth it",
+      "primaryCategory": "Einkaufen, Geld & Finanzen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Der Ausflug lohnt sich auf jeden Fall.",
+          "en": "The trip is definitely worth it."
+        }
+      ]
+    },
+    {
+      "word": "sich scheiden lassen",
+      "conjugation": "sich scheiden lassen, lässt sich scheiden, ließ sich scheiden, hat sich scheiden lassen",
+      "meaning": "to get divorced",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Meine Nachbarn haben sich nach zehn Jahren scheiden lassen.",
+          "en": "My neighbors got divorced after ten years."
+        }
+      ]
+    },
+    {
+      "word": "sich treffen (mit)",
+      "conjugation": "sich treffen, trifft sich, traf sich, hat sich getroffen",
+      "meaning": "to meet up (with)",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich treffe mich morgen mit meinen Freunden.",
+          "en": "I'm meeting up with my friends tomorrow."
+        }
+      ]
+    },
+    {
+      "word": "sich umdrehen",
+      "conjugation": "sich umdrehen, dreht sich um, drehte sich um, hat sich umgedreht",
+      "meaning": "to turn around",
+      "primaryCategory": "Reise, Verkehr & Mobilität",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Dreh dich mal um, da hinten kommt der bus.",
+          "en": "Turn around, the bus is coming back there."
+        }
+      ]
+    },
+    {
+      "word": "sich unterhalten (mit/über)",
+      "conjugation": "sich unterhalten, unterhält sich, unterhielt sich, hat sich unterhalten",
+      "meaning": "to talk/converse (with someone about something)",
+      "primaryCategory": "Kommunikation, Medien & Technik",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Wir haben uns sehr gut über den Film unterhalten.",
+          "en": "We had a great talk about the movie."
+        }
+      ]
+    },
+    {
+      "word": "sich verabreden (mit)",
+      "conjugation": "sich verabreden, verabredet sich, verabredete sich, hat sich verabredet",
+      "meaning": "to make an appointment/date (with)",
+      "primaryCategory": "Zeit, Datum & Dokumente",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Ich habe mich für heute Abend mit meiner Kollegin verabredet.",
+          "en": "I made plans to meet my colleague tonight."
+        }
+      ]
+    },
+    {
+      "word": "sich verabschieden (von)",
+      "conjugation": "sich verabschieden, verabschiedet sich, verabschiedete sich, hat sich verabschiedet",
+      "meaning": "to say goodbye (to)",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Es ist spät, ich möchte mich jetzt verabschieden.",
+          "en": "It is late, I would like to say goodbye now."
+        }
+      ]
+    },
+    {
+      "word": "sich verändern",
+      "conjugation": "sich verändern, verändert sich, veränderte sich, hat sich verändert",
+      "meaning": "to change (oneself/itself)",
+      "primaryCategory": "Abstrakte Begriffe & Handlungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Die Stadt hat sich in den letzten Jahren stark verändert.",
+          "en": "Die Stadt hat sich in den letzten Jahren stark verändert."
+        }
+      ]
+    },
+    {
+      "word": "sich verhalten",
+      "conjugation": "sich verhalten, verhält sich, verhielt sich, hat sich verhalten",
+      "meaning": "to behave",
+      "primaryCategory": "Familie, Mensch & Beziehungen",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Er hat sich während der Besprechung sehr ruhig verhalten.",
+          "en": "He behaved very calmly during the meeting."
+        }
+      ]
+    },
+    {
+      "word": "sich verlaufen",
+      "conjugation": "sich verlaufen, verläuft sich, verlief sich, hat sich verlaufen",
+      "meaning": "to get lost (on foot)",
+      "primaryCategory": "Reise, Verkehr & Mobilität",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Wir haben uns im Wald verlaufen.",
+          "en": "We got lost in the forest."
+        }
+      ]
+    },
+    {
+      "word": "sich verlieben (in)",
+      "conjugation": "sich verlieben, verliebt sich, verliebte sich, hat sich verliebt",
+      "meaning": "to fall in love (with)",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Sie hat sich im Urlaub in ihn verliebt.",
+          "en": "She fell in love with him on vacation."
+        }
+      ]
+    },
+    {
+      "word": "sich verspäten",
+      "conjugation": "sich verspäten, verspätet sich, verspätete sich, hat sich verspätet",
+      "meaning": "to be late, delayed",
+      "primaryCategory": "Zeit, Datum & Dokumente",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Der Bus hat sich wegen des Schnees verspätet.",
+          "en": "The bus was delayed because of the snow."
+        }
+      ]
+    },
+    {
+      "word": "sich verstecken",
+      "conjugation": "sich verstecken, versteckt sich, versteckte sich, hat sich versteckt",
+      "meaning": "to hide (oneself)",
+      "primaryCategory": "Freizeit, Hobby & Sport",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Die Kinder verstecken sich im Garten.",
+          "en": "The children are hiding in the garden."
+        }
+      ]
+    },
+    {
+      "word": "sich vornehmen",
+      "conjugation": "sich vornehmen, nimmt sich vor, nahm sich vor, hat sich vorgenommen",
+      "meaning": "to resolve, plan to do something",
+      "primaryCategory": "Zeit, Datum & Dokumente",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Ich habe mir vorgenommen, mehr Sport zu machen.",
+          "en": "Ich habe mir vorgenommen, mehr Sport zu machen."
+        }
+      ]
+    },
+    {
+      "word": "sich vorstellen",
+      "conjugation": "sich vorstellen, stellt sich vor, stellte sich vor, hat sich vorgestellt",
+      "meaning": "to introduce oneself / to imagine (Dative)",
+      "primaryCategory": "Kommunikation, Medien & Technik",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Darf ich mich kurz vorstellen?",
+          "en": "May I briefly introduce myself?"
+        }
+      ]
+    },
+    {
+      "word": "sich waschen",
+      "conjugation": "sich waschen, wäscht sich, wusch sich, hat sich gewaschen",
+      "meaning": "to wash oneself",
+      "primaryCategory": "Wohnen, Haushalt & Umzug",
+      "priority": 1,
+      "examples": [
+        {
+          "de": "Ich muss mir vor dem Essen die Hände waschen.",
+          "en": "I need to wash my hands before eating."
+        }
+      ]
+    },
+    {
+      "word": "sich weiterbilden",
+      "conjugation": "sich weiterbilden, bildet sich weiter, bildete sich weiter, hat sich weitergebildet",
+      "meaning": "to further educate oneself",
+      "primaryCategory": "Ausbildung, Schule & Wissenschaft",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Im Beruf muss man sich regelmäßig weiterbilden.",
+          "en": "In your career, you have to further educate yourself regularly."
+        }
+      ]
+    },
+    {
+      "word": "sich wundern (über)",
+      "conjugation": "sich wundern, wundert sich, wunderte sich, hat sich gewundert",
+      "meaning": "to be surprised/wonder (about)",
+      "primaryCategory": "Emotionen, Geist & Wahrnehmung",
+      "priority": 2,
+      "examples": [
+        {
+          "de": "Ich wundere mich sehr über das schlechte Wetter.",
+          "en": "Ich wundere mich sehr über das schlechte Wetter."
+        }
+      ]
+    }
   ]
 }

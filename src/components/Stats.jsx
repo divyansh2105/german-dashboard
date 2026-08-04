@@ -105,6 +105,22 @@ export default function Stats({ stats, reviews, onResetStats }) {
               />
             </div>
           </div>
+
+          {/* Reflexive Verbs */}
+          <div className="stat-item">
+            <div className="stat-header">
+              <span className="stat-title">🔄 Reflexive Verbs</span>
+              <span className="stat-title">
+                {stats.categoryProgress?.reflexive?.reviewed || 0} / {stats.categoryProgress?.reflexive?.total || 0} words ({getPercentage(stats.categoryProgress?.reflexive?.reviewed, stats.categoryProgress?.reflexive?.total)}%)
+              </span>
+            </div>
+            <div className="progress-bar-container">
+              <div 
+                className="progress-bar reflexive" 
+                style={{width: `${getPercentage(stats.categoryProgress?.reflexive?.reviewed, stats.categoryProgress?.reflexive?.total)}%`, backgroundColor: '#ff00ff'}}
+              />
+            </div>
+          </div>
         </div>
       </div>
 

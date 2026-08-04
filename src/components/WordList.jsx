@@ -62,7 +62,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
     const letters = new Set();
     activeWords.forEach(item => {
       // Apply classification category filter check
-      if ((activeCategory === 'nouns' || activeCategory === 'verbs') && selectedClassFilter !== 'all') {
+      if ((activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && selectedClassFilter !== 'all') {
         const target = normalizeCategory(selectedClassFilter);
         const matchesClass = normalizeCategory(item.primaryCategory) === target || normalizeCategory(item.secondaryCategory) === target;
         if (!matchesClass) return;
@@ -110,8 +110,8 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
   // Filtered words
   const filteredWords = useMemo(() => {
     return activeWords.filter(item => {
-      // 1. Classification Category Filter (only for nouns and verbs)
-      if ((activeCategory === 'nouns' || activeCategory === 'verbs') && selectedClassFilter !== 'all') {
+      // 1. Classification Category Filter (only for nouns, verbs and reflexive)
+      if ((activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && selectedClassFilter !== 'all') {
         const target = normalizeCategory(selectedClassFilter);
         const matchesClass = normalizeCategory(item.primaryCategory) === target || normalizeCategory(item.secondaryCategory) === target;
         if (!matchesClass) return false;
@@ -131,7 +131,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
       }
 
       // 3. Alphabetical Letter Filter (ignored if classification filter is active)
-      if ((activeCategory === 'nouns' || activeCategory === 'verbs') && selectedClassFilter !== 'all') {
+      if ((activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && selectedClassFilter !== 'all') {
         return true;
       }
       
@@ -183,6 +183,12 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
             🔵 Verbs ({vocabData.verbs?.length || 0})
           </button>
           <button 
+            className={`nav-button ${activeCategory === 'reflexive' ? 'active' : ''}`}
+            onClick={() => { setActiveCategory('reflexive'); setSearchQuery(''); }}
+          >
+            🔄 Reflexive ({vocabData.reflexive?.length || 0})
+          </button>
+          <button 
             className={`nav-button ${activeCategory === 'adjectives' ? 'active' : ''}`}
             onClick={() => { setActiveCategory('adjectives'); setSearchQuery(''); }}
           >
@@ -197,7 +203,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
         </div>
 
         {/* Classification Filter Dropdown */}
-        {(activeCategory === 'nouns' || activeCategory === 'verbs') && (
+        {(activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && (
           <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
             <span style={{fontSize: '14px', color: 'var(--text-secondary)', fontWeight: '600'}}>Category:</span>
             <select
@@ -327,7 +333,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
 
                 {/* Primary/Secondary Class Badges & Priority Badge */}
                 <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: 'auto', paddingTop: '10px'}}>
-                  {(activeCategory === 'nouns' || activeCategory === 'verbs') && item.primaryCategory && (
+                  {(activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && item.primaryCategory && (
                     <span 
                       style={{
                         fontSize: '10px', 
@@ -342,7 +348,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
                       🏷️ {item.primaryCategory}
                     </span>
                   )}
-                  {(activeCategory === 'nouns' || activeCategory === 'verbs') && item.secondaryCategory && (
+                  {(activeCategory === 'nouns' || activeCategory === 'verbs' || activeCategory === 'reflexive') && item.secondaryCategory && (
                     <span 
                       style={{
                         fontSize: '10px', 
