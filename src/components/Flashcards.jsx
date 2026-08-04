@@ -220,6 +220,37 @@ export default function Flashcards({ vocabData, onReview }) {
     }
   };
 
+  // Calculate potential intervals beforehand to show on the feedback buttons
+  const prospectiveIntervals = useMemo(() => {
+    if (!currentCard) return { hard: '', good: '', easy: '' };
+    const key = currentCard.word.toLowerCase();
+    const currentSched = schedules[key] || { intervalDays: 0, nextReviewTime: 0 };
+    
+    // Hard: reset interval / practice in same session
+    const hardInterval = "<10m";
+    
+    // Good
+    let goodDays = 0;
+    if (currentSched.intervalDays === 0) {
+      goodDays = 1;
+    } else if (currentSched.intervalDays === 1) {
+      goodDays = 3;
+    } else {
+      goodDays = Math.round(currentSched.intervalDays * 1.5);
+    }
+    const goodInterval = `${goodDays}d`;
+    
+    // Easy
+    const easyDays = currentSched.intervalDays === 0 ? 4 : currentSched.intervalDays * 2;
+    const easyInterval = `${easyDays}d`;
+    
+    return {
+      hard: hardInterval,
+      good: goodInterval,
+      easy: easyInterval
+    };
+  }, [currentCard, schedules]);
+
   // 1. Caught Up State
   if (activeWords.length === 0 && !studyAhead) {
     let nextDueTime = null;
@@ -442,13 +473,13 @@ export default function Flashcards({ vocabData, onReview }) {
       {isFlipped && (
         <div className="feedback-bar animate-fade-in">
           <button className="feedback-btn hard" onClick={() => handleFeedback('hard')}>
-            🔴 Hard [1]
+            🔴 Hard ({prospectiveIntervals.hard}) [1]
           </button>
           <button className="feedback-btn good" onClick={() => handleFeedback('good')}>
-            🔵 Good [2]
+            🔵 Good ({prospectiveIntervals.good}) [2]
           </button>
           <button className="feedback-btn easy" onClick={() => handleFeedback('easy')}>
-            🟢 Easy [3]
+            🟢 Easy ({prospectiveIntervals.easy}) [3]
           </button>
         </div>
       )}
