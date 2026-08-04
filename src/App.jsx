@@ -276,7 +276,10 @@ function App() {
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
-        const german = allVoices.filter(v => v.lang.startsWith('de') || v.lang.includes('DE'));
+        const german = allVoices.filter(v => {
+          const lang = v.lang.toLowerCase();
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+        });
         if (german.length > 0) {
           setVoices(german);
 
