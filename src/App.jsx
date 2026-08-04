@@ -652,7 +652,7 @@ function App() {
           </div>
 
           {/* Voice selection & Speech Settings container */}
-          {voices.length > 0 && (
+          {('speechSynthesis' in window) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
               <div style={{
                 display: 'flex',
@@ -679,11 +679,15 @@ function App() {
                     maxWidth: '120px'
                   }}
                 >
-                  {voices.map(v => (
-                    <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
-                      {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
-                    </option>
-                  ))}
+                  {voices.length === 0 ? (
+                    <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
+                  ) : (
+                    voices.map(v => (
+                      <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                        {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
