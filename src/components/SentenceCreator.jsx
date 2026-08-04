@@ -7,12 +7,21 @@ export default function SentenceCreator({ vocabData, onReview }) {
   const [userSentence, setUserSentence] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
   const [validation, setValidation] = useState({ nounOk: false, verbOk: false, connectorOk: false });
+  const [expandedCard, setExpandedCard] = useState(null); // 'noun' | 'verb' | 'connector' | null
 
   // Helper to get random item from array
   const getRandomItem = (arr) => {
     if (!arr || arr.length === 0) return null;
     const idx = Math.floor(Math.random() * arr.length);
     return arr[idx];
+  };
+
+  // Helper to speak text
+  const speakText = (e, text) => {
+    e.stopPropagation();
+    if (window.speakGerman) {
+      window.speakGerman(text.replace(/,.*$/, ''));
+    }
   };
 
   // Roll a new challenge
@@ -23,6 +32,7 @@ export default function SentenceCreator({ vocabData, onReview }) {
     setUserSentence('');
     setShowFeedback(false);
     setValidation({ nounOk: false, verbOk: false, connectorOk: false });
+    setExpandedCard(null);
   };
 
   // Roll on mount
@@ -117,27 +127,138 @@ export default function SentenceCreator({ vocabData, onReview }) {
       <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', width: '100%'}}>
         
         {/* Noun Card */}
-        <div className="glass-card noun" style={{padding: '20px', display: 'flex', flexDirection: 'column'}}>
+        <div 
+          className="glass-card noun word-card" 
+          onClick={() => setExpandedCard(expandedCard === 'noun' ? null : 'noun')}
+          style={{padding: '20px', display: 'flex', flexDirection: 'column', cursor: 'pointer'}}
+        >
           <span className="category-tag nouns" style={{alignSelf: 'flex-start', marginBottom: '12px'}}>Noun</span>
-          <div style={{fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '8px'}}>{noun.word}</div>
-          <div style={{fontSize: '14px', color: 'var(--text-secondary)'}}>{noun.meaning}</div>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
+            <div style={{fontSize: '20px', fontWeight: '700', color: '#fff'}} onClick={(e) => e.stopPropagation()}>{noun.word}</div>
+            <button 
+              type="button"
+              className="sound-btn" 
+              onClick={(e) => speakText(e, noun.word)} 
+              title="Listen Pronunciation" 
+              style={{fontSize: '16px', width: '28px', height: '28px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+            >
+              🔊
+            </button>
+          </div>
+          <div style={{fontSize: '14px', color: 'var(--text-secondary)'}} onClick={(e) => e.stopPropagation()}>{noun.meaning}</div>
+          
+          {expandedCard === 'noun' && noun.examples && noun.examples.length > 0 && (
+            <div className="word-example-section animate-fade-in" onClick={(e) => e.stopPropagation()} style={{marginTop: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '10px'}}>
+              {noun.examples.map((ex, exIdx) => (
+                <div key={exIdx} className="example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', margin: '8px 0'}}>
+                  <div style={{flexGrow: 1, textAlign: 'left'}}>
+                    <p className="example-de" style={{margin: 0, fontSize: '13px'}}>🇩🇪 {ex.de}</p>
+                    <p className="example-en" style={{margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)'}}>🇬🇧 {ex.en}</p>
+                  </div>
+                  <button 
+                    type="button"
+                    className="sound-btn" 
+                    onClick={(e) => speakText(e, ex.de)} 
+                    title="Listen to sentence"
+                    style={{fontSize: '14px', width: '26px', height: '26px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+                  >
+                    🔊
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Verb Card */}
-        <div className="glass-card verb" style={{padding: '20px', display: 'flex', flexDirection: 'column'}}>
+        <div 
+          className="glass-card verb word-card" 
+          onClick={() => setExpandedCard(expandedCard === 'verb' ? null : 'verb')}
+          style={{padding: '20px', display: 'flex', flexDirection: 'column', cursor: 'pointer'}}
+        >
           <span className="category-tag verbs" style={{alignSelf: 'flex-start', marginBottom: '12px'}}>Verb</span>
-          <div style={{fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '8px'}}>{verb.word}</div>
-          <div style={{fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px'}}>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
+            <div style={{fontSize: '20px', fontWeight: '700', color: '#fff'}} onClick={(e) => e.stopPropagation()}>{verb.word}</div>
+            <button 
+              type="button"
+              className="sound-btn" 
+              onClick={(e) => speakText(e, verb.word)} 
+              title="Listen Pronunciation" 
+              style={{fontSize: '16px', width: '28px', height: '28px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+            >
+              🔊
+            </button>
+          </div>
+          <div style={{fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: '8px'}} onClick={(e) => e.stopPropagation()}>
             {verb.conjugation}
           </div>
-          <div style={{fontSize: '14px', color: 'var(--text-secondary)', marginTop: 'auto'}}>{verb.meaning}</div>
+          <div style={{fontSize: '14px', color: 'var(--text-secondary)', marginTop: 'auto'}} onClick={(e) => e.stopPropagation()}>{verb.meaning}</div>
+          
+          {expandedCard === 'verb' && verb.examples && verb.examples.length > 0 && (
+            <div className="word-example-section animate-fade-in" onClick={(e) => e.stopPropagation()} style={{marginTop: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '10px'}}>
+              {verb.examples.map((ex, exIdx) => (
+                <div key={exIdx} className="example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', margin: '8px 0'}}>
+                  <div style={{flexGrow: 1, textAlign: 'left'}}>
+                    <p className="example-de" style={{margin: 0, fontSize: '13px'}}>🇩🇪 {ex.de}</p>
+                    <p className="example-en" style={{margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)'}}>🇬🇧 {ex.en}</p>
+                  </div>
+                  <button 
+                    type="button"
+                    className="sound-btn" 
+                    onClick={(e) => speakText(e, ex.de)} 
+                    title="Listen to sentence"
+                    style={{fontSize: '14px', width: '26px', height: '26px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+                  >
+                    🔊
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Connector Card */}
-        <div className="glass-card conn" style={{padding: '20px', display: 'flex', flexDirection: 'column'}}>
+        <div 
+          className="glass-card conn word-card" 
+          onClick={() => setExpandedCard(expandedCard === 'connector' ? null : 'connector')}
+          style={{padding: '20px', display: 'flex', flexDirection: 'column', cursor: 'pointer'}}
+        >
           <span className="category-tag connectors" style={{alignSelf: 'flex-start', marginBottom: '12px'}}>Connector</span>
-          <div style={{fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '8px'}}>{connector.word}</div>
-          <div style={{fontSize: '14px', color: 'var(--text-secondary)'}}>{connector.meaning}</div>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
+            <div style={{fontSize: '20px', fontWeight: '700', color: '#fff'}} onClick={(e) => e.stopPropagation()}>{connector.word}</div>
+            <button 
+              type="button"
+              className="sound-btn" 
+              onClick={(e) => speakText(e, connector.word)} 
+              title="Listen Pronunciation" 
+              style={{fontSize: '16px', width: '28px', height: '28px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+            >
+              🔊
+            </button>
+          </div>
+          <div style={{fontSize: '14px', color: 'var(--text-secondary)'}} onClick={(e) => e.stopPropagation()}>{connector.meaning}</div>
+          
+          {expandedCard === 'connector' && connector.examples && connector.examples.length > 0 && (
+            <div className="word-example-section animate-fade-in" onClick={(e) => e.stopPropagation()} style={{marginTop: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '10px'}}>
+              {connector.examples.map((ex, exIdx) => (
+                <div key={exIdx} className="example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', margin: '8px 0'}}>
+                  <div style={{flexGrow: 1, textAlign: 'left'}}>
+                    <p className="example-de" style={{margin: 0, fontSize: '13px'}}>🇩🇪 {ex.de}</p>
+                    <p className="example-en" style={{margin: '2px 0 0', fontSize: '12px', color: 'var(--text-muted)'}}>🇬🇧 {ex.en}</p>
+                  </div>
+                  <button 
+                    type="button"
+                    className="sound-btn" 
+                    onClick={(e) => speakText(e, ex.de)} 
+                    title="Listen to sentence"
+                    style={{fontSize: '14px', width: '26px', height: '26px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center'}}
+                  >
+                    🔊
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>
