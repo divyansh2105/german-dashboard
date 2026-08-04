@@ -715,8 +715,21 @@ function App() {
               </div>
               
               {/* Dev diagnostics to show how many voices Chrome detects on the device */}
-              <div style={{ fontSize: '9px', color: 'var(--text-muted)', position: 'absolute', bottom: '-12px', left: '10px', whiteSpace: 'nowrap' }}>
-                System: {window.speechSynthesis ? window.speechSynthesis.getVoices().length : 0} voices ({voices.length} German)
+              <div style={{ 
+                fontSize: '8px', 
+                color: 'var(--text-muted)', 
+                position: 'absolute', 
+                bottom: '-28px', 
+                left: '10px', 
+                whiteSpace: 'normal',
+                maxWidth: '280px',
+                background: 'rgba(9, 10, 15, 0.95)',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                zIndex: 999
+              }}>
+                Voices: {window.speechSynthesis ? window.speechSynthesis.getVoices().map(v => `${v.name.replace('Microsoft', '').replace('Google', 'G').trim()} [${v.lang}]`).join(', ') : 'None'}
               </div>
 
               {/* Settings Toggle button */}
