@@ -17,6 +17,8 @@ function App() {
   
   // Ref to prevent background pulls/syncs from triggering a duplicate cloud upload
   const skipNextUploadRef = useRef(false);
+  // Ref to track component mount state and prevent stale local uploads on mount
+  const isMountedRef = useRef(false);
 
   // Fixed single-user Login credentials
   const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('b1_logged_in') === 'true');
@@ -127,6 +129,12 @@ function App() {
   // Save list to local storage and sync to cloud if code is set
   useEffect(() => {
     localStorage.setItem('b1_my_list', JSON.stringify(myList));
+    
+    // Ignore the very first run on component mount to prevent stale local cache from overwriting fresh cloud data
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
     
     // Skip uploading if this update was triggered by a cloud pull
     if (skipNextUploadRef.current) {
