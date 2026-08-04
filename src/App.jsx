@@ -713,6 +713,11 @@ function App() {
                   )}
                 </select>
               </div>
+              
+              {/* Dev diagnostics to show how many voices Chrome detects on the device */}
+              <div style={{ fontSize: '9px', color: 'var(--text-muted)', position: 'absolute', bottom: '-12px', left: '10px', whiteSpace: 'nowrap' }}>
+                System: {window.speechSynthesis ? window.speechSynthesis.getVoices().length : 0} voices ({voices.length} German)
+              </div>
 
               {/* Settings Toggle button */}
               <button
