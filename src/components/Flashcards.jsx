@@ -221,13 +221,13 @@ export default function Flashcards({ vocabData, onReview }) {
               🔊
             </button>
             
-            <div className="card-scroll-content">
+            <div className="card-scroll-content" onClick={(e) => e.stopPropagation()}>
               <div className="card-content-wrapper">
                 <div className="card-instruction">German Word</div>
-                <div className="card-main-word">{currentCard.word}</div>
+                <div className="card-main-word" onClick={(e) => e.stopPropagation()}>{currentCard.word}</div>
                 
                 {currentCard.conjugation && (
-                  <div className="card-main-conjugation">
+                  <div className="card-main-conjugation" onClick={(e) => e.stopPropagation()}>
                     {currentCard.conjugation}
                   </div>
                 )}
@@ -243,17 +243,28 @@ export default function Flashcards({ vocabData, onReview }) {
               {currentCard.category}
             </span>
             
-            <div className="card-scroll-content">
+            <div className="card-scroll-content" onClick={(e) => e.stopPropagation()}>
               <div className="card-content-wrapper">
                 <div className="card-instruction">English Translation</div>
-                <div className="card-main-meaning">{currentCard.meaning}</div>
+                <div className="card-main-meaning" onClick={(e) => e.stopPropagation()}>{currentCard.meaning}</div>
                 
                 {currentCard.examples && currentCard.examples.length > 0 && (
-                  <div className="card-examples-list">
+                  <div className="card-examples-list" onClick={(e) => e.stopPropagation()}>
                     {currentCard.examples.map((ex, exIdx) => (
-                      <div key={exIdx} className="card-example-item">
-                        <p className="example-de">🇩🇪 {ex.de}</p>
-                        <p className="example-en">🇬🇧 {ex.en}</p>
+                      <div key={exIdx} className="card-example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', width: '100%', margin: '8px 0'}}>
+                        <div style={{flexGrow: 1, textAlign: 'left'}}>
+                          <p className="example-de" style={{margin: 0}}>🇩🇪 {ex.de}</p>
+                          <p className="example-en" style={{margin: '2px 0 0', color: 'var(--text-secondary)', fontSize: '13px'}}>🇬🇧 {ex.en}</p>
+                        </div>
+                        <button 
+                          type="button"
+                          className="sound-btn" 
+                          onClick={(e) => { e.stopPropagation(); if (window.speakGerman) window.speakGerman(ex.de); }} 
+                          title="Listen to sentence"
+                          style={{fontSize: '14px', width: '28px', height: '28px', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 0}}
+                        >
+                          🔊
+                        </button>
                       </div>
                     ))}
                   </div>
