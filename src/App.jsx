@@ -36,9 +36,76 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [syncCode, setSyncCode] = useState(() => localStorage.getItem('b1_sync_code') || '');
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'success' | 'error'
+  const [syncError, setSyncError] = useState('');
+
+  const syncWithCloud = async (codeVal, forceList) => {
+    if (!codeVal || codeVal.trim().length < 3) return;
+    setSyncStatus('syncing');
+    try {
+      const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const res = await fetch(`/api/sync?code=${cleanCode}`);
+      if (!res.ok) throw new Error(await res.text());
+      const cloudList = await res.json();
+      
+      // Merge local and cloud lists without duplicates
+      const listToUse = forceList || myList;
+      const mergedMap = new Map();
+      cloudList.forEach(item => {
+        if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+      });
+      listToUse.forEach(item => {
+        if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+      });
+      
+      const mergedList = Array.from(mergedMap.values());
+      setMyList(mergedList);
+      
+      // Upload merged list back to cloud
+      const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mergedList)
+      });
+      if (!postRes.ok) throw new Error(await postRes.text());
+      
+      setSyncStatus('success');
+      setSyncError('');
+    } catch (err) {
+      console.error("Cloud Sync Error:", err);
+      setSyncStatus('error');
+      setSyncError(err.message || 'Sync failed');
+    }
+  };
+
+  // Initial cloud sync on load
+  useEffect(() => {
+    if (syncCode) {
+      syncWithCloud(syncCode);
+    }
+  }, []);
+
+  // Save list to local storage and sync to cloud if code is set
   useEffect(() => {
     localStorage.setItem('b1_my_list', JSON.stringify(myList));
-  }, [myList]);
+    
+    if (syncCode && syncStatus !== 'syncing') {
+      const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const uploadList = async () => {
+        try {
+          await fetch(`/api/sync?code=${cleanCode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(myList)
+          });
+        } catch (err) {
+          console.error("Failed to auto-upload to cloud:", err);
+        }
+      };
+      uploadList();
+    }
+  }, [myList, syncCode]);
 
   const handleToggleMyList = (wordItem) => {
     const exists = myList.some(item => item.word.toLowerCase() === wordItem.word.toLowerCase());
@@ -54,6 +121,26 @@ function App() {
         isCustom: wordItem.isCustom || false
       }]);
     }
+  };
+
+  const handleImportMyList = (importedList) => {
+    setMyList(prevList => {
+      const mergedMap = new Map();
+      prevList.forEach(item => mergedMap.set(item.word.toLowerCase(), item));
+      importedList.forEach(item => {
+        if (item && item.word) {
+          mergedMap.set(item.word.toLowerCase(), {
+            word: item.word,
+            meaning: item.meaning || '',
+            category: item.category || 'nouns',
+            conjugation: item.conjugation || '',
+            examples: item.examples || [],
+            isCustom: item.isCustom || false
+          });
+        }
+      });
+      return Array.from(mergedMap.values());
+    });
   };
 
   // Double-click selection popover states
@@ -591,7 +678,21 @@ function App() {
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'dictation' && <DictationPractice vocabData={vocabData} onReview={handleReviewWord} />}
-        {activeTab === 'mylist' && <MyList myList={myList} onToggleMyList={handleToggleMyList} />}
+        {activeTab === 'mylist' && (
+          <MyList 
+            myList={myList} 
+            onToggleMyList={handleToggleMyList} 
+            onImportMyList={handleImportMyList}
+            syncCode={syncCode}
+            setSyncCode={(code) => {
+              setSyncCode(code);
+              localStorage.setItem('b1_sync_code', code);
+            }}
+            syncStatus={syncStatus}
+            syncError={syncError}
+            onSyncNow={syncWithCloud}
+          />
+        )}
         {activeTab === 'stats' && <Stats stats={computedStats} reviews={reviews} onResetStats={handleResetStats} />}
       </main>
 

@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 
-export default function MyList({ myList, onToggleMyList }) {
+export default function MyList({ 
+  myList, 
+  onToggleMyList, 
+  onImportMyList,
+  syncCode,
+  setSyncCode,
+  syncStatus,
+  syncError,
+  onSyncNow
+}) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newWord, setNewWord] = useState('');
   const [newMeaning, setNewMeaning] = useState('');
@@ -9,6 +18,66 @@ export default function MyList({ myList, onToggleMyList }) {
   const [newExampleDe, setNewExampleDe] = useState('');
   const [newExampleEn, setNewExampleEn] = useState('');
   const [expandedWord, setExpandedWord] = useState(null);
+
+  // Temporary sync code state for the input field
+  const [tempCode, setTempCode] = useState(syncCode || '');
+
+  React.useEffect(() => {
+    setTempCode(syncCode || '');
+  }, [syncCode]);
+
+  const handleSaveCode = () => {
+    if (tempCode.trim().length < 3) {
+      alert("Sync code must be at least 3 characters long.");
+      return;
+    }
+    setSyncCode(tempCode.trim());
+    onSyncNow(tempCode.trim(), myList);
+  };
+
+  const handleClearCode = () => {
+    if (window.confirm("Disconnect cloud sync? Your list will remain saved on this device local storage.")) {
+      setSyncCode('');
+      setTempCode('');
+    }
+  };
+
+  const exportBackup = () => {
+    if (myList.length === 0) {
+      alert("Your list is empty! Add or star some words first.");
+      return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(myList, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `b1_german_mylist_backup.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const importBackup = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        if (Array.isArray(parsed)) {
+          if (onImportMyList) {
+            onImportMyList(parsed);
+            alert(`Successfully imported and merged ${parsed.length} items into My List!`);
+          }
+        } else {
+          alert("Invalid backup file format. Must be a JSON array of words.");
+        }
+      } catch (err) {
+        alert("Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null;
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -69,17 +138,108 @@ export default function MyList({ myList, onToggleMyList }) {
     <div className="explorer-layout animate-fade-in" style={{maxWidth: '850px'}}>
       
       {/* Header controls */}
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '20px'}}>
+      <div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px', marginBottom: '20px'}}>
         <div style={{fontSize: '12px', color: 'var(--text-secondary)'}}>
           My List ({myList.length} bookmarked & custom words)
         </div>
-        <button 
-          className="nav-button active"
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{padding: '8px 16px', borderRadius: '12px', background: 'linear-gradient(135deg, var(--color-noun), var(--color-verb))'}}
-        >
-          {showAddForm ? 'Close Form' : '➕ Add Custom Word'}
-        </button>
+        
+        <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+          {/* Backup Sync Actions */}
+          <button
+            type="button"
+            className="nav-button"
+            style={{padding: '8px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', fontSize: '12px'}}
+            onClick={exportBackup}
+            title="Export My List as JSON backup file to copy to other devices"
+          >
+            📤 Export
+          </button>
+          
+          <label
+            className="nav-button"
+            style={{padding: '8px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', fontSize: '12px', cursor: 'pointer', margin: 0}}
+            title="Import JSON backup file from another device to merge lists"
+          >
+            📥 Import
+            <input 
+              type="file" 
+              accept=".json" 
+              onChange={importBackup} 
+              style={{display: 'none'}} 
+            />
+          </label>
+
+          <button 
+            className="nav-button active"
+            onClick={() => setShowAddForm(!showAddForm)}
+            style={{padding: '8px 16px', borderRadius: '12px', background: 'linear-gradient(135deg, var(--color-noun), var(--color-verb))'}}
+          >
+            {showAddForm ? 'Close Form' : '➕ Add Custom Word'}
+          </button>
+        </div>
+      </div>
+
+      {/* Cloud Sync Setup Drawer */}
+      <div className="glass-card" style={{padding: '16px', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.15)', marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '12px'}}>
+        <div style={{display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px'}}>
+          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+            <span style={{fontSize: '18px'}}>☁️</span>
+            <div>
+              <h4 style={{margin: 0, fontSize: '13px', color: 'var(--text-primary)', fontWeight: '700'}}>Cloud Sync Settings (Vercel KV)</h4>
+              <p style={{margin: 0, fontSize: '11px', color: 'var(--text-muted)'}}>Enter a secret shared code on your devices to automatically sync and merge your list.</p>
+            </div>
+          </div>
+          
+          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+            {syncStatus === 'syncing' && <span style={{fontSize: '11px', color: 'var(--color-verb)'}}>🔄 Syncing...</span>}
+            {syncStatus === 'success' && <span style={{fontSize: '11px', color: 'var(--color-noun)'}}>🟢 Synced to Cloud</span>}
+            {syncStatus === 'error' && <span style={{fontSize: '11px', color: '#ef4444'}} title={syncError}>⚠️ Sync Failed</span>}
+            {syncStatus === 'idle' && !syncCode && <span style={{fontSize: '11px', color: 'var(--text-muted)'}}>⚪ Local-only mode</span>}
+            {syncStatus === 'idle' && syncCode && <span style={{fontSize: '11px', color: 'var(--text-secondary)'}}>🟡 Setup ready</span>}
+          </div>
+        </div>
+
+        <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center'}}>
+          <input 
+            type="text" 
+            className="search-input" 
+            style={{padding: '8px 12px', maxWidth: '240px', fontSize: '12px', height: '36px', minWidth: '150px'}}
+            placeholder="Enter a secret sync code..."
+            value={tempCode}
+            onChange={(e) => setTempCode(e.target.value)}
+          />
+          <button
+            type="button"
+            className="nav-button active"
+            style={{padding: '6px 14px', borderRadius: '8px', fontSize: '12px', background: 'var(--color-conn)'}}
+            onClick={handleSaveCode}
+          >
+            Save Code
+          </button>
+          
+          {syncCode && (
+            <>
+              <button
+                type="button"
+                className="nav-button"
+                style={{padding: '6px 14px', borderRadius: '8px', fontSize: '12px', background: 'rgba(255, 255, 255, 0.05)'}}
+                onClick={() => onSyncNow(syncCode)}
+                disabled={syncStatus === 'syncing'}
+              >
+                🔄 Force Sync Now
+              </button>
+              <button
+                type="button"
+                className="sound-btn"
+                style={{fontSize: '11px', color: '#ef4444', width: 'auto', height: 'auto', padding: '6px', borderRadius: '6px'}}
+                onClick={handleClearCode}
+                title="Disconnect cloud sync"
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Add Custom Word form drawer */}
