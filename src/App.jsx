@@ -51,33 +51,37 @@ function App() {
       if (!res.ok) throw new Error(await res.text());
       const cloudList = await res.json();
       
-      // Merge local and cloud lists without duplicates
-      const listToUse = forceList || myList;
-      const mergedMap = new Map();
+      let finalConfiguredList = [];
       
-      if (Array.isArray(cloudList)) {
-        cloudList.forEach(item => {
-          if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+      if (forceList) {
+        // First-time connection merge: combine both lists
+        const mergedMap = new Map();
+        if (Array.isArray(cloudList)) {
+          cloudList.forEach(item => {
+            if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+          });
+        }
+        if (Array.isArray(forceList)) {
+          forceList.forEach(item => {
+            if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+          });
+        }
+        finalConfiguredList = Array.from(mergedMap.values());
+        
+        // Upload merged list back to cloud immediately
+        const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalConfiguredList),
+          cache: 'no-store'
         });
+        if (!postRes.ok) throw new Error(await postRes.text());
+      } else {
+        // Regular background pull: database is the absolute source of truth
+        finalConfiguredList = Array.isArray(cloudList) ? cloudList : [];
       }
       
-      if (Array.isArray(listToUse)) {
-        listToUse.forEach(item => {
-          if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
-        });
-      }
-      
-      const mergedList = Array.from(mergedMap.values());
-      setMyList(mergedList);
-      
-      // Upload merged list back to cloud
-      const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mergedList),
-        cache: 'no-store'
-      });
-      if (!postRes.ok) throw new Error(await postRes.text());
+      setMyList(finalConfiguredList);
       
       setSyncStatus('success');
       setSyncError('');
