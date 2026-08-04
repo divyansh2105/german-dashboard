@@ -54,12 +54,18 @@ function App() {
       // Merge local and cloud lists without duplicates
       const listToUse = forceList || myList;
       const mergedMap = new Map();
-      cloudList.forEach(item => {
-        if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
-      });
-      listToUse.forEach(item => {
-        if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
-      });
+      
+      if (Array.isArray(cloudList)) {
+        cloudList.forEach(item => {
+          if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+        });
+      }
+      
+      if (Array.isArray(listToUse)) {
+        listToUse.forEach(item => {
+          if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+        });
+      }
       
       const mergedList = Array.from(mergedMap.values());
       setMyList(mergedList);

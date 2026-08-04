@@ -41,8 +41,23 @@ export default async function handler(request, response) {
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       
-      // Upstash REST API returns value inside the "result" property
-      const list = data.result ? JSON.parse(data.result) : [];
+      console.log("Raw Upstash GET result:", data.result);
+
+      let list = [];
+      if (data.result) {
+        try {
+          list = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+          if (typeof list === 'string') {
+            list = JSON.parse(list); // Handle double-stringified cases
+          }
+        } catch (e) {
+          console.error("JSON parse error of Upstash result:", e);
+        }
+      }
+
+      if (!Array.isArray(list)) {
+        list = [];
+      }
       return response.status(200).json(list);
     }
 
