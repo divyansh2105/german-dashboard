@@ -44,7 +44,7 @@ const normalizeCategory = (cat) => {
             .trim();
 };
 
-export default function WordList({ vocabData }) {
+export default function WordList({ vocabData, myList = [], onToggleMyList }) {
   const [activeCategory, setActiveCategory] = useState('nouns');
   const [selectedLetter, setSelectedLetter] = useState('A');
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
@@ -216,6 +216,7 @@ export default function WordList({ vocabData }) {
         <div className="word-grid">
           {filteredWords.map((item, idx) => {
             const isExpanded = expandedWord === item.word;
+            const isStarred = myList.some(starredItem => starredItem.word.toLowerCase() === item.word.toLowerCase());
             return (
               <div 
                 key={idx}
@@ -223,11 +224,24 @@ export default function WordList({ vocabData }) {
                 onClick={() => toggleExpand(item.word)}
                 style={{display: 'flex', flexDirection: 'column'}}
               >
-                <div className="word-card-header">
+                <div className="word-card-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                   <span className="word-title">{item.word}</span>
-                  <button className="sound-btn" onClick={(e) => speakWord(e, item.word)} title="Listen Pronunciation">
-                    🔊
-                  </button>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '4px'}}>
+                    <button className="sound-btn" onClick={(e) => speakWord(e, item.word)} title="Listen Pronunciation" style={{fontSize: '18px', width: '32px', height: '32px'}}>
+                      🔊
+                    </button>
+                    {onToggleMyList && (
+                      <button 
+                        type="button" 
+                        className="sound-btn" 
+                        onClick={(e) => { e.stopPropagation(); onToggleMyList({ ...item, category: activeCategory }); }} 
+                        title={isStarred ? "Remove from My List" : "Add to My List"}
+                        style={{fontSize: '18px', width: '32px', height: '32px', color: isStarred ? '#eab308' : 'var(--text-muted)'}}
+                      >
+                        {isStarred ? '★' : '☆'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 {item.conjugation && (
