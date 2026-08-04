@@ -362,8 +362,6 @@ function App() {
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'de-DE';
-        utterance.rate = speechRate;
-        utterance.pitch = speechPitch;
 
         if (selectedVoiceName) {
           const voice = allVoices.find(v => v.name === selectedVoiceName);
@@ -371,6 +369,11 @@ function App() {
             utterance.voice = voice;
           }
         }
+
+        // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
+        utterance.rate = speechRate;
+        utterance.pitch = speechPitch;
+
         window.speechSynthesis.speak(utterance);
       }
     };
