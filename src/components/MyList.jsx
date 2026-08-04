@@ -368,7 +368,7 @@ export default function MyList({
                 style={{display: 'flex', flexDirection: 'column'}}
               >
                 <div className="word-card-header" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                  <span className="word-title">{item.word}</span>
+                  <span className="word-title" onClick={(e) => e.stopPropagation()}>{item.word}</span>
                   <div style={{display: 'flex', alignItems: 'center', gap: '4px'}}>
                     <button 
                       className="sound-btn" 
@@ -391,10 +391,10 @@ export default function MyList({
                 </div>
                 
                 {item.conjugation && (
-                  <div className="word-conjugation">{item.conjugation}</div>
+                  <div className="word-conjugation" onClick={(e) => e.stopPropagation()}>{item.conjugation}</div>
                 )}
                 
-                <div className="word-meaning">{item.meaning}</div>
+                <div className="word-meaning" onClick={(e) => e.stopPropagation()}>{item.meaning}</div>
 
                 {/* Starred badges */}
                 <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: 'auto', paddingTop: '10px'}}>
@@ -431,7 +431,7 @@ export default function MyList({
                 </div>
                 
                 {isExpanded && item.examples && item.examples.length > 0 && (
-                  <div className="word-example-section animate-fade-in" style={{marginTop: '12px'}}>
+                  <div className="word-example-section animate-fade-in" onClick={(e) => e.stopPropagation()} style={{marginTop: '12px'}}>
                     {item.examples.map((ex, exIdx) => (
                       <div key={exIdx} className="example-item" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', margin: '8px 0'}}>
                         <div style={{flexGrow: 1, textAlign: 'left'}}>
