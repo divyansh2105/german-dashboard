@@ -45,7 +45,9 @@ function App() {
     setSyncStatus('syncing');
     try {
       const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-      const res = await fetch(`/api/sync?code=${cleanCode}`);
+      const res = await fetch(`/api/sync?code=${cleanCode}&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       if (!res.ok) throw new Error(await res.text());
       const cloudList = await res.json();
       
@@ -66,7 +68,8 @@ function App() {
       const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mergedList)
+        body: JSON.stringify(mergedList),
+        cache: 'no-store'
       });
       if (!postRes.ok) throw new Error(await postRes.text());
       
@@ -97,7 +100,8 @@ function App() {
           await fetch(`/api/sync?code=${cleanCode}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(myList)
+            body: JSON.stringify(myList),
+            cache: 'no-store'
           });
         } catch (err) {
           console.error("Failed to auto-upload to cloud:", err);
