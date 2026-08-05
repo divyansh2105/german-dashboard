@@ -389,7 +389,10 @@ function App() {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'de-DE';
 
-        if (selectedVoiceName) {
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
+
+        if (selectedVoiceName && (!isMobile || !hasModifiers)) {
           const voice = allVoices.find(v => v.name === selectedVoiceName);
           if (voice) {
             utterance.voice = voice;
