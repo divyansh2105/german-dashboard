@@ -7,6 +7,7 @@ import SentenceCreator from './components/SentenceCreator';
 import DictationPractice from './components/DictationPractice';
 import MyList from './components/MyList';
 import Stats from './components/Stats';
+import SpeakingPractice from './components/SpeakingPractice';
 import './index.css';
 
 function App() {
@@ -874,6 +875,12 @@ function App() {
             🎧 Listening
           </button>
           <button
+            className={`nav-button ${activeTab === 'speaking' ? 'active' : ''}`}
+            onClick={() => setActiveTab('speaking')}
+          >
+            🗣️ Speaking
+          </button>
+          <button
             className={`nav-button ${activeTab === 'mylist' ? 'active' : ''}`}
             onClick={() => setActiveTab('mylist')}
           >
@@ -895,6 +902,7 @@ function App() {
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'dictation' && <DictationPractice vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'speaking' && <SpeakingPractice />}
         {activeTab === 'mylist' && (
           <MyList 
             myList={myList} 
