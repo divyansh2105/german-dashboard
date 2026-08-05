@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 // Helper to shuffle array
 const shuffleArray = (array) => {
@@ -27,23 +27,92 @@ export default function DictationPractice({ vocabData, onReview }) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
+  // Speech Recognition (Voice to Text) State & Ref
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.lang = 'de-DE'; // German language mapping
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      
+      rec.onstart = () => {
+        setIsListening(true);
+      };
+      
+      rec.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const cleanedText = transcript.replace(/[.!?]/g, '').trim();
+        setUserInput(cleanedText);
+      };
+      
+      rec.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+      
+      rec.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognitionRef.current = rec;
+    }
+    
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Abort speech listening when feedback reveals
+  useEffect(() => {
+    if (showFeedback && recognitionRef.current && isListening) {
+      recognitionRef.current.abort();
+    }
+  }, [showFeedback, isListening]);
+
+  const toggleSpeechRecognition = () => {
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in this browser. Please try Google Chrome or Safari.");
+      return;
+    }
+    
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      setUserInput('');
+      recognitionRef.current.start();
+    }
+  };
+
   // Generate dictation queue based on selected mode
   useEffect(() => {
     let items = [];
     if (mode === 'word') {
-      // Gather all words across nouns, verbs, adjectives, connectors
       const nouns = (vocabData.nouns || []).map(item => ({
-        targetText: item.word.replace(/,.*$/, '').trim(), // e.g. "das Abgas"
+        targetText: item.word.replace(/,.*$/, '').trim(),
         translation: item.meaning,
         word: item.word,
         category: 'nouns'
       }));
 
       const verbs = (vocabData.verbs || []).map(item => ({
-        targetText: item.word.replace(/\(.*\)/, '').replace(/sich\s+/i, '').trim(), // clean base verb
+        targetText: item.word.replace(/\(.*\)/, '').replace(/sich\s+/i, '').trim(),
         translation: item.meaning,
         word: item.word,
         category: 'verbs'
+      }));
+
+      const reflexive = (vocabData.reflexive || []).map(item => ({
+        targetText: item.word.replace(/\(.*\)/, '').trim(),
+        translation: item.meaning,
+        word: item.word,
+        category: 'reflexive'
       }));
 
       const adjectives = (vocabData.adjectives || []).map(item => ({
@@ -60,10 +129,15 @@ export default function DictationPractice({ vocabData, onReview }) {
         category: 'connectors'
       }));
 
-      items = [...nouns, ...verbs, ...adjectives, ...connectors];
+      items = [...nouns, ...verbs, ...reflexive, ...adjectives, ...connectors];
     } else {
-      // Gather all example sentences
-      const allCategories = [...(vocabData.nouns || []), ...(vocabData.verbs || []), ...(vocabData.adjectives || []), ...(vocabData.connectors || [])];
+      const allCategories = [
+        ...(vocabData.nouns || []), 
+        ...(vocabData.verbs || []), 
+        ...(vocabData.reflexive || []),
+        ...(vocabData.adjectives || []), 
+        ...(vocabData.connectors || [])
+      ];
       allCategories.forEach(item => {
         if (item.examples && item.examples.length > 0) {
           item.examples.forEach(ex => {
@@ -79,7 +153,7 @@ export default function DictationPractice({ vocabData, onReview }) {
     }
 
     if (items.length > 0) {
-      setQueue(shuffleArray(items).slice(0, 50)); // Limit active queue to 50 random items
+      setQueue(shuffleArray(items).slice(0, 50));
       setCurrentIndex(0);
       setUserInput('');
       setShowFeedback(false);
@@ -231,29 +305,86 @@ export default function DictationPractice({ vocabData, onReview }) {
 
         {/* Input box form */}
         <form onSubmit={handleCheck} style={{width: '100%', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center'}}>
-          <input
-            type="text"
-            className="search-input"
-            style={{
-              width: '100%',
-              fontSize: '18px',
-              padding: '16px',
-              borderRadius: '12px',
-              textAlign: 'center',
-              border: showFeedback 
-                ? (isCorrect ? '2px solid var(--color-noun)' : '2px solid #ef4444') 
-                : '1px solid var(--border-color)'
-            }}
-            placeholder="Listen and type the spelling in German..."
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            disabled={showFeedback}
-            autoFocus
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-          />
+          <div style={{position: 'relative', width: '100%', display: 'flex', alignItems: 'center'}}>
+            <input
+              type="text"
+              className="search-input"
+              style={{
+                width: '100%',
+                fontSize: '18px',
+                padding: '16px 85px 16px 16px',
+                borderRadius: '12px',
+                textAlign: 'center',
+                border: showFeedback 
+                  ? (isCorrect ? '2px solid var(--color-noun)' : '2px solid #ef4444') 
+                  : '1px solid var(--border-color)',
+                outline: 'none'
+              }}
+              placeholder={isListening ? "Listening... Speak now..." : "Listen and type or speak in German..."}
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              disabled={showFeedback}
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck="false"
+            />
+            <div style={{
+              position: 'absolute',
+              right: '12px',
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'center'
+            }}>
+              {/* Reset/Clear Input Button */}
+              {userInput.length > 0 && !showFeedback && (
+                <button
+                  type="button"
+                  onClick={() => setUserInput('')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="Reset input field"
+                >
+                  ❌
+                </button>
+              )}
+              {/* Speech-to-Text Button */}
+              {!showFeedback && (
+                <button
+                  type="button"
+                  onClick={toggleSpeechRecognition}
+                  style={{
+                    background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                    border: isListening ? '1.5px solid #ef4444' : '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    color: isListening ? '#ef4444' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    fontSize: '16px',
+                    width: '32px',
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isListening ? '0 0 10px rgba(239, 68, 68, 0.5)' : 'none'
+                  }}
+                  title={isListening ? "Stop listening" : "Use voice input (German)"}
+                >
+                  {isListening ? '🛑' : '🎙️'}
+                </button>
+              )}
+            </div>
+          </div>
 
           {!showFeedback ? (
             <div style={{display: 'flex', gap: '12px', width: '100%', maxWidth: '340px'}}>
