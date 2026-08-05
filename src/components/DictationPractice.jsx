@@ -37,6 +37,7 @@ export default function DictationPractice({ vocabData, onReview }) {
     if (SpeechRecognition) {
       const rec = new SpeechRecognition();
       rec.lang = 'de-DE'; // German language mapping
+      rec.continuous = true;
       rec.interimResults = false;
       rec.maxAlternatives = 1;
       
@@ -45,8 +46,13 @@ export default function DictationPractice({ vocabData, onReview }) {
       };
       
       rec.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        const cleanedText = transcript.replace(/[.!?]/g, '').trim();
+        let fullTranscript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i][0]) {
+            fullTranscript += event.results[i][0].transcript + ' ';
+          }
+        }
+        const cleanedText = fullTranscript.replace(/[.!?]/g, '').replace(/\s+/g, ' ').trim();
         setUserInput(cleanedText);
       };
       
