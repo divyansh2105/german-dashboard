@@ -1,9 +1,47 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 
 export default function SpeakingPractice() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('b1_gemini_api_key') || '');
   const [showKeyInput, setShowKeyInput] = useState(!apiKey);
   const [tempKey, setTempKey] = useState('');
+
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('b1_gemini_selected_model') || 'gemini-1.5-flash');
+  const [availableModels, setAvailableModels] = useState(() => {
+    const saved = localStorage.getItem('b1_gemini_available_models');
+    return saved ? JSON.parse(saved) : ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'];
+  });
+
+  const fetchModels = async (key) => {
+    if (!key) return;
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+      const data = await res.json();
+      if (data.models && data.models.length > 0) {
+        const names = data.models
+          .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+          .map(m => m.name.replace('models/', ''));
+        if (names.length > 0) {
+          setAvailableModels(names);
+          localStorage.setItem('b1_gemini_available_models', JSON.stringify(names));
+          
+          if (!names.includes(selectedModel)) {
+            const flash = names.find(n => n.includes('flash'));
+            const finalModel = flash || names[0];
+            setSelectedModel(finalModel);
+            localStorage.setItem('b1_gemini_selected_model', finalModel);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error listing Gemini models:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (apiKey) {
+      fetchModels(apiKey);
+    }
+  }, [apiKey]);
   
   const [messages, setMessages] = useState(() => {
     const saved = localStorage.getItem('b1_speaking_chat_history');
@@ -145,7 +183,7 @@ export default function SpeakingPractice() {
       const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: {
@@ -240,11 +278,37 @@ export default function SpeakingPractice() {
   return (
     <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '800px', width: '100%' }}>
       {/* Speaking header options */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '10px', gap: '10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '10px', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           🗣️ Gemini Konversationspartner (B1 Deutsch)
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Model Selector Dropdown */}
+          <select
+            value={selectedModel}
+            onChange={(e) => {
+              setSelectedModel(e.target.value);
+              localStorage.setItem('b1_gemini_selected_model', e.target.value);
+            }}
+            style={{
+              fontSize: '11px',
+              padding: '2px 8px',
+              height: '28px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              color: '#fff',
+              borderRadius: '8px',
+              cursor: 'pointer'
+            }}
+            title="Wähle das Gemini-Modell"
+          >
+            {availableModels.map(model => (
+              <option key={model} value={model} style={{ background: '#090a0f', color: '#fff' }}>
+                {model}
+              </option>
+            ))}
+          </select>
+
           <button
             type="button"
             onClick={handleClearHistory}
@@ -252,16 +316,16 @@ export default function SpeakingPractice() {
             title="Chatverlauf zurücksetzen"
             style={{ fontSize: '12px', padding: '4px 10px', height: '28px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: '8px' }}
           >
-            🗑️ Reset Chat
+            🗑️ Reset
           </button>
           <button
             type="button"
             onClick={handleRemoveKey}
             className="sound-btn"
             title="API-Schlüssel verwalten"
-            style={{ fontSize: '12px', padding: '4px 10px', height: '28px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', borderRadius: '8px' }}
+            style={{ fontSize: '12px', padding: '4px 10px', height: '28px', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-secondary)', borderRadius: '8px' }}
           >
-            ⚙️ API-Key
+            ⚙️ Key
           </button>
         </div>
       </div>
