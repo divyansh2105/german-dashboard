@@ -31,7 +31,6 @@ export default function DictationPractice({ vocabData, onReview }) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
-  const isManuallyStoppedRef = useRef(true);
   const sessionBaseTextRef = useRef('');
 
   // Initialize Speech Recognition
@@ -41,7 +40,7 @@ export default function DictationPractice({ vocabData, onReview }) {
       const rec = new SpeechRecognition();
       rec.lang = 'de-DE'; // German language mapping
       rec.continuous = true;
-      rec.interimResults = false;
+      rec.interimResults = true; // Live typing feedback
       rec.maxAlternatives = 1;
       
       rec.onstart = () => {
@@ -53,12 +52,12 @@ export default function DictationPractice({ vocabData, onReview }) {
         let sessionTranscript = '';
         for (let i = 0; i < event.results.length; ++i) {
           if (event.results[i][0]) {
-            sessionTranscript += event.results[i][0].transcript + ' ';
+            sessionTranscript += event.results[i][0].transcript;
           }
         }
         const cleanedSession = sessionTranscript.replace(/[.!?]/g, '').trim();
         const base = sessionBaseTextRef.current;
-        setUserInput(base ? (base + cleanedSession) : cleanedSession);
+        setUserInput(base ? (base + ' ' + cleanedSession) : cleanedSession);
       };
       
       rec.onerror = (event) => {
@@ -71,21 +70,6 @@ export default function DictationPractice({ vocabData, onReview }) {
       rec.onend = () => {
         setIsListening(false);
         isListeningRef.current = false;
-        
-        // Auto-restart if the session stopped due to browser silence/pauses
-        if (!isManuallyStoppedRef.current) {
-          // Save progress so far as the new session base
-          setUserInput(currentInput => {
-            sessionBaseTextRef.current = currentInput ? (currentInput.trim() + ' ') : '';
-            return currentInput;
-          });
-          
-          try {
-            rec.start();
-          } catch (err) {
-            console.error('Failed to auto-restart speech recognition:', err);
-          }
-        }
       };
       
       recognitionRef.current = rec;
@@ -101,7 +85,6 @@ export default function DictationPractice({ vocabData, onReview }) {
   // Abort speech listening when feedback reveals
   useEffect(() => {
     if (showFeedback && recognitionRef.current && isListening) {
-      isManuallyStoppedRef.current = true;
       recognitionRef.current.abort();
     }
   }, [showFeedback, isListening]);
@@ -113,12 +96,10 @@ export default function DictationPractice({ vocabData, onReview }) {
     }
     
     if (isListening) {
-      isManuallyStoppedRef.current = true;
       recognitionRef.current.stop();
     } else {
-      isManuallyStoppedRef.current = false;
-      sessionBaseTextRef.current = '';
-      setUserInput('');
+      // Keep existing words as a base so we can progressive-append next phrases
+      sessionBaseTextRef.current = userInput ? userInput.trim() : '';
       recognitionRef.current.start();
     }
   };

@@ -38,11 +38,15 @@
   font-family: var(--font-sans);
 }
 
+html, body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: var(--bg-dark);
   color: var(--text-primary);
   min-height: 100vh;
-  overflow-x: hidden;
   position: relative;
   -webkit-font-smoothing: antialiased;
 }
