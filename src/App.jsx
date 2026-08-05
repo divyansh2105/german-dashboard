@@ -323,12 +323,10 @@ function App() {
           const hasSavedVoice = german.some(v => v.name === savedVoice);
 
           if (!savedVoice || !hasSavedVoice) {
-            const preferred = german.find(v =>
-              v.name.toLowerCase().includes('google') ||
-              v.name.toLowerCase().includes('siri') ||
-              v.name.toLowerCase().includes('neural') ||
-              v.name.toLowerCase().includes('anna')
-            ) || german[0];
+            const preferred = german.find(v => {
+              const nameLower = v.name.toLowerCase();
+              return (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
+            }) || german.find(v => !v.name.toLowerCase().includes('samsung')) || german[0];
             setSelectedVoiceName(preferred.name);
             localStorage.setItem('b1_selected_voice', preferred.name);
           }
@@ -372,64 +370,49 @@ function App() {
 
   // Expose global speech helper
   useEffect(() => {
-    let activeTimeout = null;
-
     window.speakGerman = (text) => {
       if ('speechSynthesis' in window) {
-        if (activeTimeout) {
-          clearTimeout(activeTimeout);
-        }
         window.speechSynthesis.cancel(); // Stop current speech instantly
 
-        // Use a 100ms delay to let the mobile/Android TTS engines finish the cancel operation
-        // and properly apply rate/pitch modifiers to the next utterance.
-        activeTimeout = setTimeout(() => {
-          const allVoices = window.speechSynthesis.getVoices();
-          const german = allVoices.filter(v => {
+        const allVoices = window.speechSynthesis.getVoices();
+        const german = allVoices.filter(v => {
+          const lang = v.lang.toLowerCase();
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+        });
+        if (german.length > 0 && voices.length === 0) {
+          setVoices(german);
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'de-DE';
+
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
+
+        if (selectedVoiceName) {
+          const voice = allVoices.find(v => v.name === selectedVoiceName);
+          if (voice) {
+            if (!isIOS || !hasModifiers) {
+              utterance.voice = voice;
+            }
+          }
+        } else if (isAndroid) {
+          // Android Google TTS requires explicit voice binding for rate adjustments to take effect
+          const defaultGermanVoice = allVoices.find(v => {
             const lang = v.lang.toLowerCase();
-            return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+            return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_');
           });
-          if (german.length > 0 && voices.length === 0) {
-            setVoices(german);
+          if (defaultGermanVoice) {
+            utterance.voice = defaultGermanVoice;
           }
+        }
 
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'de-DE';
+        // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
+        utterance.rate = speechRate;
+        utterance.pitch = speechPitch;
 
-          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-          const isAndroid = /Android/i.test(navigator.userAgent);
-          const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
-
-          if (selectedVoiceName) {
-            const voice = allVoices.find(v => v.name === selectedVoiceName);
-            if (voice) {
-              if (!isIOS || !hasModifiers) {
-                utterance.voice = voice;
-              }
-            }
-          } else if (isAndroid) {
-            // Android Google TTS requires explicit voice binding for rate adjustments to take effect
-            const defaultGermanVoice = allVoices.find(v => {
-              const lang = v.lang.toLowerCase();
-              return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_');
-            });
-            if (defaultGermanVoice) {
-              utterance.voice = defaultGermanVoice;
-            }
-          }
-
-          // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
-          utterance.rate = speechRate;
-          utterance.pitch = speechPitch;
-
-          window.speechSynthesis.speak(utterance);
-        }, 100);
-      }
-    };
-
-    return () => {
-      if (activeTimeout) {
-        clearTimeout(activeTimeout);
+        window.speechSynthesis.speak(utterance);
       }
     };
   }, [selectedVoiceName, speechRate, speechPitch]);
