@@ -372,38 +372,52 @@ function App() {
 
   // Expose global speech helper
   useEffect(() => {
+    let activeTimeout = null;
+
     window.speakGerman = (text) => {
       if ('speechSynthesis' in window) {
+        if (activeTimeout) {
+          clearTimeout(activeTimeout);
+        }
         window.speechSynthesis.cancel(); // Stop current speech instantly
 
-        // Dynamic voice loading fallback: update React state if mobile TTS initialized late
-        const allVoices = window.speechSynthesis.getVoices();
-        const german = allVoices.filter(v => {
-          const lang = v.lang.toLowerCase();
-          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
-        });
-        if (german.length > 0 && voices.length === 0) {
-          setVoices(german);
-        }
-
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'de-DE';
-
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
-
-        if (selectedVoiceName && (!isMobile || !hasModifiers)) {
-          const voice = allVoices.find(v => v.name === selectedVoiceName);
-          if (voice) {
-            utterance.voice = voice;
+        // Use a 100ms delay to let the mobile/Android TTS engines finish the cancel operation
+        // and properly apply rate/pitch modifiers to the next utterance.
+        activeTimeout = setTimeout(() => {
+          const allVoices = window.speechSynthesis.getVoices();
+          const german = allVoices.filter(v => {
+            const lang = v.lang.toLowerCase();
+            return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+          });
+          if (german.length > 0 && voices.length === 0) {
+            setVoices(german);
           }
-        }
 
-        // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
-        utterance.rate = speechRate;
-        utterance.pitch = speechPitch;
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'de-DE';
 
-        window.speechSynthesis.speak(utterance);
+          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+          const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
+
+          if (selectedVoiceName && (!isMobile || !hasModifiers)) {
+            const voice = allVoices.find(v => v.name === selectedVoiceName);
+            if (voice) {
+              utterance.voice = voice;
+            }
+          }
+
+          // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
+          utterance.rate = speechRate;
+          utterance.pitch = speechPitch;
+
+          window.speechSynthesis.speak(utterance);
+        }, 100);
+      }
+    };
+
+    return () => {
+      if (activeTimeout) {
+        clearTimeout(activeTimeout);
       }
     };
   }, [selectedVoiceName, speechRate, speechPitch]);
