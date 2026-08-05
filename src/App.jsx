@@ -408,9 +408,12 @@ function App() {
           }
         }
 
-        // Set rate and pitch AFTER setting the voice to prevent Chrome from resetting them to voice defaults
-        utterance.rate = speechRate;
-        utterance.pitch = speechPitch;
+        // Set rate and pitch only on desktop platforms, letting mobile platforms use system default preferences
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (!isMobile) {
+          utterance.rate = speechRate;
+          utterance.pitch = speechPitch;
+        }
 
         window.speechSynthesis.speak(utterance);
       }
@@ -801,48 +804,65 @@ function App() {
                     🔊 Speech Parameters
                   </h4>
 
-                  {/* Speed/Rate Slider */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      <span>Speed (Rate):</span>
-                      <span style={{ fontWeight: '700', color: 'var(--color-noun)' }}>{speechRate}x</span>
+                  {/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (
+                    <div style={{
+                      fontSize: '11px',
+                      color: 'var(--text-secondary)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      lineHeight: '1.4',
+                      border: '1px dashed rgba(255, 255, 255, 0.06)',
+                      marginTop: '8px'
+                    }}>
+                      📱 <strong>Mobile Device:</strong> Speech speed and pitch parameters are managed directly by your phone's system settings. Please customize them under your device's <em>Settings &gt; Accessibility &gt; Text-to-speech</em> menu.
                     </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="1.5"
-                      step="0.1"
-                      value={speechRate}
-                      onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                      style={{ accentColor: 'var(--color-noun)', cursor: 'pointer', width: '100%' }}
-                    />
-                  </div>
+                  ) : (
+                    <>
+                      {/* Speed/Rate Slider */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          <span>Speed (Rate):</span>
+                          <span style={{ fontWeight: '700', color: 'var(--color-noun)' }}>{speechRate}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="1.5"
+                          step="0.1"
+                          value={speechRate}
+                          onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                          style={{ accentColor: 'var(--color-noun)', cursor: 'pointer', width: '100%' }}
+                        />
+                      </div>
 
-                  {/* Pitch Slider */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      <span>Pitch:</span>
-                      <span style={{ fontWeight: '700', color: 'var(--color-verb)' }}>{speechPitch}x</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="1.5"
-                      step="0.1"
-                      value={speechPitch}
-                      onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
-                      style={{ accentColor: 'var(--color-verb)', cursor: 'pointer', width: '100%' }}
-                    />
-                  </div>
+                      {/* Pitch Slider */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                          <span>Pitch:</span>
+                          <span style={{ fontWeight: '700', color: 'var(--color-verb)' }}>{speechPitch}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="1.5"
+                          step="0.1"
+                          value={speechPitch}
+                          onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
+                          style={{ accentColor: 'var(--color-verb)', cursor: 'pointer', width: '100%' }}
+                        />
+                      </div>
 
-                  <button
-                    type="button"
-                    className="nav-button"
-                    style={{ fontSize: '11px', padding: '6px 12px', borderRadius: '8px', alignSelf: 'flex-end', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
-                    onClick={() => { setSpeechRate(1.0); setSpeechPitch(1.0); }}
-                  >
-                    Reset Defaults
-                  </button>
+                      <button
+                        type="button"
+                        className="nav-button"
+                        style={{ fontSize: '11px', padding: '6px 12px', borderRadius: '8px', alignSelf: 'flex-end', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
+                        onClick={() => { setSpeechRate(1.0); setSpeechPitch(1.0); }}
+                      >
+                        Reset Defaults
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
