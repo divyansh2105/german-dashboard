@@ -27,9 +27,12 @@ export default function DictationPractice({ vocabData, onReview }) {
   const [showFeedback, setShowFeedback] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
 
-  // Speech Recognition (Voice to Text) State & Ref
+  // Speech Recognition (Voice to Text) State & Refs
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const isListeningRef = useRef(false);
+  const isManuallyStoppedRef = useRef(true);
+  const sessionBaseTextRef = useRef('');
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -43,26 +46,46 @@ export default function DictationPractice({ vocabData, onReview }) {
       
       rec.onstart = () => {
         setIsListening(true);
+        isListeningRef.current = true;
       };
       
       rec.onresult = (event) => {
-        let fullTranscript = '';
+        let sessionTranscript = '';
         for (let i = 0; i < event.results.length; ++i) {
           if (event.results[i][0]) {
-            fullTranscript += event.results[i][0].transcript + ' ';
+            sessionTranscript += event.results[i][0].transcript + ' ';
           }
         }
-        const cleanedText = fullTranscript.replace(/[.!?]/g, '').replace(/\s+/g, ' ').trim();
-        setUserInput(cleanedText);
+        const cleanedSession = sessionTranscript.replace(/[.!?]/g, '').trim();
+        const base = sessionBaseTextRef.current;
+        setUserInput(base ? (base + cleanedSession) : cleanedSession);
       };
       
       rec.onerror = (event) => {
         console.error('Speech recognition error:', event.error);
-        setIsListening(false);
+        if (event.error === 'aborted') {
+          return;
+        }
       };
       
       rec.onend = () => {
         setIsListening(false);
+        isListeningRef.current = false;
+        
+        // Auto-restart if the session stopped due to browser silence/pauses
+        if (!isManuallyStoppedRef.current) {
+          // Save progress so far as the new session base
+          setUserInput(currentInput => {
+            sessionBaseTextRef.current = currentInput ? (currentInput.trim() + ' ') : '';
+            return currentInput;
+          });
+          
+          try {
+            rec.start();
+          } catch (err) {
+            console.error('Failed to auto-restart speech recognition:', err);
+          }
+        }
       };
       
       recognitionRef.current = rec;
@@ -78,6 +101,7 @@ export default function DictationPractice({ vocabData, onReview }) {
   // Abort speech listening when feedback reveals
   useEffect(() => {
     if (showFeedback && recognitionRef.current && isListening) {
+      isManuallyStoppedRef.current = true;
       recognitionRef.current.abort();
     }
   }, [showFeedback, isListening]);
@@ -89,8 +113,11 @@ export default function DictationPractice({ vocabData, onReview }) {
     }
     
     if (isListening) {
+      isManuallyStoppedRef.current = true;
       recognitionRef.current.stop();
     } else {
+      isManuallyStoppedRef.current = false;
+      sessionBaseTextRef.current = '';
       setUserInput('');
       recognitionRef.current.start();
     }
