@@ -840,6 +840,20 @@ function App() {
                     />
                   </div>
 
+                  {/Android/i.test(navigator.userAgent) && (
+                    <div style={{ 
+                      fontSize: '9.5px', 
+                      color: 'var(--text-secondary)', 
+                      background: 'rgba(255, 255, 255, 0.03)', 
+                      padding: '8px', 
+                      borderRadius: '6px', 
+                      lineHeight: '1.4',
+                      border: '1px dashed rgba(255, 255, 255, 0.06)'
+                    }}>
+                      💡 <strong>Samsung/Android User?</strong> If speech speed changes have no effect, please change your phone's default text-to-speech engine to <strong>Speech Services by Google</strong> under your device's <em>Settings &gt; Accessibility &gt; Text-to-speech</em>.
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     className="nav-button"
