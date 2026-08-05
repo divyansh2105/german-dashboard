@@ -15,7 +15,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
   const [reviews, setReviews] = useState([]);
-  
+
   // Ref to prevent background pulls/syncs from triggering a duplicate cloud upload
   const skipNextUploadRef = useRef(false);
   // Ref to track component mount state and prevent stale local uploads on mount
@@ -76,9 +76,9 @@ function App() {
       });
       if (!res.ok) throw new Error(await res.text());
       const cloudList = await res.json();
-      
+
       let finalConfiguredList = [];
-      
+
       if (forceList) {
         // First-time connection merge: combine both lists
         const mergedMap = new Map();
@@ -93,7 +93,7 @@ function App() {
           });
         }
         finalConfiguredList = Array.from(mergedMap.values());
-        
+
         // Upload merged list back to cloud immediately
         const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
           method: 'POST',
@@ -106,11 +106,11 @@ function App() {
         // Regular background pull: database is the absolute source of truth
         finalConfiguredList = Array.isArray(cloudList) ? cloudList : [];
       }
-      
+
       // Set ref to skip next upload trigger since this change came from a cloud pull
       skipNextUploadRef.current = true;
       setMyList(finalConfiguredList);
-      
+
       setSyncStatus('success');
       setSyncError('');
     } catch (err) {
@@ -130,19 +130,19 @@ function App() {
   // Save list to local storage and sync to cloud if code is set
   useEffect(() => {
     localStorage.setItem('b1_my_list', JSON.stringify(myList));
-    
+
     // Ignore the very first run on component mount to prevent stale local cache from overwriting fresh cloud data
     if (!isMountedRef.current) {
       isMountedRef.current = true;
       return;
     }
-    
+
     // Skip uploading if this update was triggered by a cloud pull
     if (skipNextUploadRef.current) {
       skipNextUploadRef.current = false;
       return;
     }
-    
+
     if (syncCode) {
       const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       const uploadList = async () => {
@@ -225,7 +225,7 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      
+
       const selection = window.getSelection().toString().trim();
       // Allow only valid short word/phrases (1-3 words, no numbers, length > 1)
       if (selection && selection.length > 1 && !/\d/.test(selection) && selection.split(/\s+/).length <= 3) {
@@ -323,10 +323,10 @@ function App() {
           const hasSavedVoice = german.some(v => v.name === savedVoice);
 
           if (!savedVoice || !hasSavedVoice) {
-            const preferred = german.find(v => 
-              v.name.toLowerCase().includes('google') || 
-              v.name.toLowerCase().includes('siri') || 
-              v.name.toLowerCase().includes('neural') || 
+            const preferred = german.find(v =>
+              v.name.toLowerCase().includes('google') ||
+              v.name.toLowerCase().includes('siri') ||
+              v.name.toLowerCase().includes('neural') ||
               v.name.toLowerCase().includes('anna')
             ) || german[0];
             setSelectedVoiceName(preferred.name);
@@ -336,11 +336,11 @@ function App() {
       }
     };
     loadVoices();
-    
+
     let intervalId;
     if ('speechSynthesis' in window) {
       window.speechSynthesis.onvoiceschanged = loadVoices;
-      
+
       let attempts = 0;
       intervalId = setInterval(() => {
         loadVoices();
@@ -350,7 +350,7 @@ function App() {
         }
       }, 250);
     }
-    
+
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
@@ -396,13 +396,25 @@ function App() {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'de-DE';
 
-          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+          const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const isAndroid = /Android/i.test(navigator.userAgent);
           const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
 
-          if (selectedVoiceName && (!isMobile || !hasModifiers)) {
+          if (selectedVoiceName) {
             const voice = allVoices.find(v => v.name === selectedVoiceName);
             if (voice) {
-              utterance.voice = voice;
+              if (!isIOS || !hasModifiers) {
+                utterance.voice = voice;
+              }
+            }
+          } else if (isAndroid) {
+            // Android Google TTS requires explicit voice binding for rate adjustments to take effect
+            const defaultGermanVoice = allVoices.find(v => {
+              const lang = v.lang.toLowerCase();
+              return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_');
+            });
+            if (defaultGermanVoice) {
+              utterance.voice = defaultGermanVoice;
             }
           }
 
@@ -451,7 +463,7 @@ function App() {
   // Handle reviewing a word (updates state + persists in localStorage)
   const handleReviewWord = (word, category, rating) => {
     if (category === 'dictation-sentence') return; // Exclude sentence dictations from stats logs
-    
+
     const newReview = {
       word,
       category,
@@ -606,9 +618,9 @@ function App() {
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Username:</label>
-              <input 
-                type="text" 
-                className="search-input" 
+              <input
+                type="text"
+                className="search-input"
                 style={{ padding: '12px' }}
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
@@ -618,9 +630,9 @@ function App() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600' }}>Password:</label>
-              <input 
-                type="password" 
-                className="search-input" 
+              <input
+                type="password"
+                className="search-input"
                 style={{ padding: '12px' }}
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
@@ -628,11 +640,11 @@ function App() {
                 required
               />
             </div>
-            
+
             {loginError && <p style={{ color: '#ef4444', fontSize: '12px', margin: 0 }}>⚠️ {loginError}</p>}
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               className="nav-button active"
               style={{
                 padding: '12px',
@@ -664,12 +676,12 @@ function App() {
           <button
             type="button"
             className="sound-btn"
-            style={{ 
-              width: '28px', 
-              height: '28px', 
-              fontSize: '12px', 
-              background: 'rgba(239, 68, 68, 0.1)', 
-              color: '#ef4444', 
+            style={{
+              width: '28px',
+              height: '28px',
+              fontSize: '12px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444',
               border: '1px solid rgba(239, 68, 68, 0.2)',
               borderRadius: '8px',
               padding: 0,
@@ -840,20 +852,6 @@ function App() {
                     />
                   </div>
 
-                  {/Android/i.test(navigator.userAgent) && (
-                    <div style={{ 
-                      fontSize: '9.5px', 
-                      color: 'var(--text-secondary)', 
-                      background: 'rgba(255, 255, 255, 0.03)', 
-                      padding: '8px', 
-                      borderRadius: '6px', 
-                      lineHeight: '1.4',
-                      border: '1px dashed rgba(255, 255, 255, 0.06)'
-                    }}>
-                      💡 <strong>Samsung/Android User?</strong> If speech speed changes have no effect, please change your phone's default text-to-speech engine to <strong>Speech Services by Google</strong> under your device's <em>Settings &gt; Accessibility &gt; Text-to-speech</em>.
-                    </div>
-                  )}
-
                   <button
                     type="button"
                     className="nav-button"
@@ -935,9 +933,9 @@ function App() {
         {activeTab === 'dictation' && <DictationPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'speaking' && <SpeakingPractice />}
         {activeTab === 'mylist' && (
-          <MyList 
-            myList={myList} 
-            onToggleMyList={handleToggleMyList} 
+          <MyList
+            myList={myList}
+            onToggleMyList={handleToggleMyList}
             onImportMyList={handleImportMyList}
             syncCode={syncCode}
             setSyncCode={(code) => {
@@ -954,7 +952,7 @@ function App() {
 
       {/* Double click quick-add popover */}
       {doubleClickedText && (
-        <div 
+        <div
           id="double-click-popover"
           className="glass-card"
           style={{
@@ -972,22 +970,22 @@ function App() {
           }}
         >
           {matchedWordInfo ? (
-            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-              <div style={{fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 B1 Dictionary Match Found
               </div>
-              <div style={{fontSize: '15px', fontWeight: '700', color: '#fff'}}>
+              <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>
                 {matchedWordInfo.word}
               </div>
-              <div style={{fontSize: '12px', color: 'var(--text-secondary)'}}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                 {matchedWordInfo.meaning}
               </div>
-              
-              <div style={{display: 'flex', gap: '8px', marginTop: '4px'}}>
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                 <button
                   type="button"
                   className="feedback-btn good"
-                  style={{flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto'}}
+                  style={{ flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto' }}
                   onClick={() => {
                     handleToggleMyList(matchedWordInfo);
                     setDoubleClickedText('');
@@ -1000,7 +998,7 @@ function App() {
                 <button
                   type="button"
                   className="nav-button"
-                  style={{padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)'}}
+                  style={{ padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
                   onClick={() => setDoubleClickedText('')}
                 >
                   Close
@@ -1008,19 +1006,19 @@ function App() {
               </div>
             </div>
           ) : (
-            <form onSubmit={handleQuickSave} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-              <div style={{fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px'}}>
+            <form onSubmit={handleQuickSave} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Add Selected Custom Word
               </div>
-              <div style={{fontSize: '14px', fontWeight: '700', color: '#fff'}}>
+              <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
                 🇩🇪 {doubleClickedText}
               </div>
-              
-              <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <input
                   type="text"
                   className="search-input"
-                  style={{padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%'}}
+                  style={{ padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%' }}
                   placeholder="English meaning..."
                   value={quickMeaning}
                   onChange={(e) => setQuickMeaning(e.target.value)}
@@ -1030,10 +1028,10 @@ function App() {
                 />
               </div>
 
-              <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <select
                   className="search-input"
-                  style={{padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%', height: '34px', color: '#fff', background: '#090a0f'}}
+                  style={{ padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%', height: '34px', color: '#fff', background: '#090a0f' }}
                   value={quickCategory}
                   onChange={(e) => setQuickCategory(e.target.value)}
                 >
@@ -1045,11 +1043,11 @@ function App() {
                 </select>
               </div>
 
-              <div style={{display: 'flex', gap: '8px', marginTop: '4px'}}>
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                 <button
                   type="submit"
                   className="feedback-btn good"
-                  style={{flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto'}}
+                  style={{ flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto' }}
                   disabled={!quickMeaning.trim()}
                 >
                   ➕ Add Word
@@ -1057,7 +1055,7 @@ function App() {
                 <button
                   type="button"
                   className="nav-button"
-                  style={{padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)'}}
+                  style={{ padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
                   onClick={() => setDoubleClickedText('')}
                 >
                   Close
