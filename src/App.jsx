@@ -58,6 +58,11 @@ function App() {
     return saved ? parseFloat(saved) : 1.0;
   });
   const [showSpeechSettings, setShowSpeechSettings] = useState(false);
+  const [isAnonymous, setIsAnonymous] = useState(() => localStorage.getItem('b1_anonymous_mode') === 'true');
+
+  useEffect(() => {
+    localStorage.setItem('b1_anonymous_mode', isAnonymous ? 'true' : 'false');
+  }, [isAnonymous]);
   const [myList, setMyList] = useState(() => {
     const saved = localStorage.getItem('b1_my_list');
     return saved ? JSON.parse(saved) : [];
@@ -169,6 +174,10 @@ function App() {
   }, [myList, syncCode]);
 
   const handleToggleMyList = (wordItem) => {
+    if (isAnonymous) {
+      alert("Bookmarking (My List) features are disabled in Anonymous Mode.");
+      return;
+    }
     const exists = myList.some(item => item.word.toLowerCase() === wordItem.word.toLowerCase());
     if (exists) {
       setMyList(myList.filter(item => item.word.toLowerCase() !== wordItem.word.toLowerCase()));
@@ -221,6 +230,8 @@ function App() {
   // Global listener for double clicks to select words
   useEffect(() => {
     const handleDblClick = (e) => {
+      if (isAnonymous) return;
+
       // Ignore double-clicks inside input, select, textarea elements
       const targetTag = e.target.tagName;
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
@@ -236,7 +247,7 @@ function App() {
     };
     window.addEventListener('dblclick', handleDblClick);
     return () => window.removeEventListener('dblclick', handleDblClick);
-  }, []);
+  }, [isAnonymous]);
 
   // Global click outside listener to close the popup
   useEffect(() => {
@@ -723,7 +734,29 @@ function App() {
 
           {/* Voice selection & Speech Settings container */}
           {('speechSynthesis' in window) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="sound-btn"
+                onClick={() => setIsAnonymous(!isAnonymous)}
+                style={{
+                  background: isAnonymous ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isAnonymous ? '1px solid #ef4444' : '1px solid var(--border-color)',
+                  color: isAnonymous ? '#ef4444' : 'var(--text-secondary)',
+                  fontSize: '12.5px',
+                  padding: '4px 10px',
+                  height: '36px',
+                  borderRadius: '12px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Toggle Anonymous Mode (Disables Gemini and My List features)"
+              >
+                {isAnonymous ? '🕶️ Anonymous: ON' : '👤 Standard'}
+              </button>
+
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -935,28 +968,77 @@ function App() {
       </header>
 
       <main style={{ flexGrow: 1 }}>
-        {activeTab === 'explorer' && <WordList vocabData={vocabData} myList={myList} onToggleMyList={handleToggleMyList} />}
+        {activeTab === 'explorer' && <WordList vocabData={vocabData} myList={myList} onToggleMyList={handleToggleMyList} isAnonymous={isAnonymous} />}
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'cloze' && <ClozePractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'dictation' && <DictationPractice vocabData={vocabData} onReview={handleReviewWord} />}
-        {activeTab === 'speaking' && <SpeakingPractice />}
-        {activeTab === 'grammar' && <GrammarPractice />}
+        {activeTab === 'speaking' && (
+          isAnonymous ? (
+            <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '550px', padding: '20px', margin: '40px auto' }}>
+              <div className="glass-card" style={{ padding: '40px 24px', textAlign: 'center', width: '100%' }}>
+                <span style={{ fontSize: '48px' }}>🕶️</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginTop: '16px', color: '#fff' }}>Speaking Mode is Locked</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
+                  Interactive voice and dialog practice powered by Gemini AI is disabled in Anonymous Mode.
+                </p>
+                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                  Turn Off Anonymous Mode 👤
+                </button>
+              </div>
+            </div>
+          ) : (
+            <SpeakingPractice />
+          )
+        )}
+        {activeTab === 'grammar' && (
+          isAnonymous ? (
+            <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '550px', padding: '20px', margin: '40px auto' }}>
+              <div className="glass-card" style={{ padding: '40px 24px', textAlign: 'center', width: '100%' }}>
+                <span style={{ fontSize: '48px' }}>🕶️</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginTop: '16px', color: '#fff' }}>Grammar Mode is Locked</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
+                  Preposition fill-in-the-blank practice powered by Gemini AI is disabled in Anonymous Mode.
+                </p>
+                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                  Turn Off Anonymous Mode 👤
+                </button>
+              </div>
+            </div>
+          ) : (
+            <GrammarPractice />
+          )
+        )}
         {activeTab === 'mylist' && (
-          <MyList
-            myList={myList}
-            onToggleMyList={handleToggleMyList}
-            onImportMyList={handleImportMyList}
-            syncCode={syncCode}
-            setSyncCode={(code) => {
-              setSyncCode(code);
-              localStorage.setItem('b1_sync_code', code);
-            }}
-            syncStatus={syncStatus}
-            syncError={syncError}
-            onSyncNow={syncWithCloud}
-          />
+          isAnonymous ? (
+            <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '550px', padding: '20px', margin: '40px auto' }}>
+              <div className="glass-card" style={{ padding: '40px 24px', textAlign: 'center', width: '100%' }}>
+                <span style={{ fontSize: '48px' }}>🕶️</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginTop: '16px', color: '#fff' }}>My List is Locked</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
+                  Bookmarking, word list management, and cloud sync features are disabled in Anonymous Mode.
+                </p>
+                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                  Turn Off Anonymous Mode 👤
+                </button>
+              </div>
+            </div>
+          ) : (
+            <MyList
+              myList={myList}
+              onToggleMyList={handleToggleMyList}
+              onImportMyList={handleImportMyList}
+              syncCode={syncCode}
+              setSyncCode={(code) => {
+                setSyncCode(code);
+                localStorage.setItem('b1_sync_code', code);
+              }}
+              syncStatus={syncStatus}
+              syncError={syncError}
+              onSyncNow={syncWithCloud}
+            />
+          )
         )}
         {activeTab === 'stats' && <Stats stats={computedStats} reviews={reviews} onResetStats={handleResetStats} />}
       </main>

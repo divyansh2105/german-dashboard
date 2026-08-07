@@ -44,7 +44,7 @@ const normalizeCategory = (cat) => {
             .trim();
 };
 
-export default function WordList({ vocabData, myList = [], onToggleMyList }) {
+export default function WordList({ vocabData, myList = [], onToggleMyList, isAnonymous }) {
   const [activeCategory, setActiveCategory] = useState('nouns');
   const [selectedLetter, setSelectedLetter] = useState('all');
   const [selectedClassFilter, setSelectedClassFilter] = useState('all');
@@ -311,7 +311,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList }) {
                     <button className="sound-btn" onClick={(e) => speakWord(e, item.word)} title="Listen Pronunciation" style={{fontSize: '18px', width: '32px', height: '32px'}}>
                       🔊
                     </button>
-                    {onToggleMyList && (
+                    {onToggleMyList && !isAnonymous && (
                       <button 
                         type="button" 
                         className="sound-btn" 
