@@ -131,10 +131,20 @@ export default function GrammarPractice() {
     setCurrentQuestion(null);
 
     const activePrepsList = selectedPreps.join(', ');
-    const promptText = `Generate a single B1 level German sentence. The sentence MUST contain exactly one of these prepositions: [${activePrepsList}]. Replace this preposition in the sentence with three underscores '___' for a blank challenge. Return the result strictly in JSON format.`;
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const promptText = `Generate a single B1-level German sentence.
+The sentence MUST contain exactly one of these prepositions: [${activePrepsList}].
+Replace this preposition in the sentence with three underscores '___' for a blank challenge.
 
-    const systemInstruction = `You are a German grammar teacher generating preposition fill-in-the-blank questions for a B1 student.
-You must output exactly a JSON object matching this schema:
+Requirements:
+1. Provide a diverse, general, daily-life sentence representing a mix of temporal, local, modal, or causal prepositions (e.g., "nach dem Essen", "in die Schule", "mit dem Zug", "vor einer Woche").
+2. DO NOT focus heavily on reflexive verbs (like "sich freuen auf"). Prioritize general action, description, or movement sentences using standard verbs.
+3. Make sure the vocabulary, subject matter, and verbs are highly varied from try to try.
+
+Seed: ${randomSeed}`;
+
+    const systemInstruction = `You are a German language teacher generating preposition fill-in-the-blank questions for B1 students.
+You must return a raw JSON object matching this schema exactly:
 {
   "sentence": "German sentence with a single '___' blank representing the missing preposition.",
   "correctPreposition": "The exact preposition that fits in the blank.",
