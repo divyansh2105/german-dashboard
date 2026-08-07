@@ -23,7 +23,9 @@ function App() {
   const isMountedRef = useRef(false);
 
   // Fixed single-user Login credentials
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('b1_logged_in') === 'true');
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('b1_logged_in') === 'true' || localStorage.getItem('b1_anonymous_mode') === 'true';
+  });
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -63,6 +65,13 @@ function App() {
   useEffect(() => {
     localStorage.setItem('b1_anonymous_mode', isAnonymous ? 'true' : 'false');
   }, [isAnonymous]);
+
+  const handleDisableAnonymous = () => {
+    setIsAnonymous(false);
+    if (localStorage.getItem('b1_logged_in') !== 'true') {
+      setIsLoggedIn(false);
+    }
+  };
   const [myList, setMyList] = useState(() => {
     const saved = localStorage.getItem('b1_my_list');
     return saved ? JSON.parse(saved) : [];
@@ -610,7 +619,7 @@ function App() {
           textAlign: 'center'
         }}>
           <div className="logo-badge" style={{ display: 'inline-block', marginBottom: '16px' }}>DE B1</div>
-          <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '8px', color: '#fff' }}>Antigravity Deutsch</h2>
+          <h2 style={{ fontSize: '22px', fontWeight: '800', marginBottom: '8px', color: '#fff' }}>Deutsch</h2>
           <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px' }}>Please log in to access your German B1 Dashboard</p>
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
@@ -657,6 +666,39 @@ function App() {
               Login ➔
             </button>
           </form>
+
+          <div style={{ margin: '20px 0 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <span style={{ height: '1px', flexGrow: 1, background: 'rgba(255,255,255,0.08)' }}></span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase' }}>or</span>
+            <span style={{ height: '1px', flexGrow: 1, background: 'rgba(255,255,255,0.08)' }}></span>
+          </div>
+
+          <button
+            type="button"
+            className="sound-btn"
+            onClick={() => {
+              setIsAnonymous(true);
+              setIsLoggedIn(true);
+            }}
+            style={{
+              width: '100%',
+              padding: '12px',
+              borderRadius: '12px',
+              justifyContent: 'center',
+              fontSize: '13px',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            🕶️ Continue in Anonymous Mode
+          </button>
         </div>
       </div>
     );
@@ -691,7 +733,9 @@ function App() {
             onClick={() => {
               if (window.confirm("Are you sure you want to log out?")) {
                 setIsLoggedIn(false);
+                setIsAnonymous(false);
                 localStorage.removeItem('b1_logged_in');
+                localStorage.removeItem('b1_anonymous_mode');
               }
             }}
             title="Logout"
@@ -738,7 +782,13 @@ function App() {
               <button
                 type="button"
                 className="sound-btn"
-                onClick={() => setIsAnonymous(!isAnonymous)}
+                onClick={() => {
+                  const targetState = !isAnonymous;
+                  setIsAnonymous(targetState);
+                  if (!targetState && localStorage.getItem('b1_logged_in') !== 'true') {
+                    setIsLoggedIn(false);
+                  }
+                }}
                 style={{
                   background: isAnonymous ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                   border: isAnonymous ? '1px solid #ef4444' : '1px solid var(--border-color)',
@@ -983,7 +1033,7 @@ function App() {
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
                   Interactive voice and dialog practice powered by Gemini AI is disabled in Anonymous Mode.
                 </p>
-                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                <button onClick={handleDisableAnonymous} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
                   Turn Off Anonymous Mode 👤
                 </button>
               </div>
@@ -1001,7 +1051,7 @@ function App() {
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
                   Preposition fill-in-the-blank practice powered by Gemini AI is disabled in Anonymous Mode.
                 </p>
-                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                <button onClick={handleDisableAnonymous} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
                   Turn Off Anonymous Mode 👤
                 </button>
               </div>
@@ -1019,7 +1069,7 @@ function App() {
                 <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
                   Bookmarking, word list management, and cloud sync features are disabled in Anonymous Mode.
                 </p>
-                <button onClick={() => setIsAnonymous(false)} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                <button onClick={handleDisableAnonymous} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
                   Turn Off Anonymous Mode 👤
                 </button>
               </div>
