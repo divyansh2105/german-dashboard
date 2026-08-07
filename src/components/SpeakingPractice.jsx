@@ -54,6 +54,15 @@ export default function SpeakingPractice() {
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
 
+  // Hold-to-Talk state trackers
+  const [isHolding, setIsHolding] = useState(false);
+  const isHoldingRef = useRef(false);
+  const userInputRef = useRef('');
+
+  useEffect(() => {
+    userInputRef.current = userInput;
+  }, [userInput]);
+
   // Persist messages and auto-scroll
   useEffect(() => {
     if (activeMode === 'conversation') {
@@ -97,6 +106,16 @@ export default function SpeakingPractice() {
       rec.onend = () => {
         setIsListening(false);
         isListeningRef.current = false;
+
+        // Auto-restart if user is still holding the button
+        if (isHoldingRef.current) {
+          try {
+            sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+            rec.start();
+          } catch (err) {
+            console.error("Auto-restart failed:", err);
+          }
+        }
       };
 
       recognitionRef.current = rec;
@@ -109,17 +128,40 @@ export default function SpeakingPractice() {
     };
   }, []);
 
-  const toggleSpeech = () => {
+  const handleHoldStart = (e) => {
+    if (e) e.preventDefault();
     if (!recognitionRef.current) {
       alert("Speech recognition is not supported in this browser. Please try Google Chrome or Safari.");
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      sessionBaseTextRef.current = userInput ? userInput.trim() : '';
+    // Abort active audio generation if speaking
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsHolding(true);
+    isHoldingRef.current = true;
+    sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+
+    try {
       recognitionRef.current.start();
+    } catch (err) {
+      console.error("Speech start error:", err);
+    }
+  };
+
+  const handleHoldEnd = (e) => {
+    if (e) e.preventDefault();
+    if (!recognitionRef.current) return;
+
+    setIsHolding(false);
+    isHoldingRef.current = false;
+
+    try {
+      recognitionRef.current.stop();
+    } catch (err) {
+      console.error("Speech stop error:", err);
     }
   };
 
@@ -564,7 +606,11 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
 
                   <button
                     type="button"
-                    onClick={toggleSpeech}
+                    onMouseDown={handleHoldStart}
+                    onMouseUp={handleHoldEnd}
+                    onMouseLeave={handleHoldEnd}
+                    onTouchStart={handleHoldStart}
+                    onTouchEnd={handleHoldEnd}
                     disabled={isLoading}
                     style={{
                       background: isListening ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
@@ -572,16 +618,18 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                       borderRadius: '6px',
                       color: isListening ? '#ef4444' : 'var(--text-secondary)',
                       cursor: 'pointer',
-                      width: '28px',
-                      height: '28px',
+                      width: '32px',
+                      height: '32px',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      transition: 'all 0.2s'
+                      transition: 'all 0.2s',
+                      userSelect: 'none',
+                      touchAction: 'none'
                     }}
-                    title={isListening ? "Zuhören stoppen" : "Auf Deutsch sprechen"}
+                    title="Hold to speak German, release to pause"
                   >
-                    {isListening ? '🛑' : '🎙️'}
+                    🎙️
                   </button>
                 </div>
               </div>
@@ -595,6 +643,9 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                 ➔
               </button>
             </form>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', fontStyle: 'italic' }}>
+              💡 Halt das Mikrofon-Symbol 🎙️ gedrückt, um zu sprechen. Lass los, um zu pausieren.
+            </div>
           </div>
         )}
 
@@ -643,85 +694,96 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
 
             {/* Input area */}
             {!evaluationResult && !isLoading && (
-              <form onSubmit={handleEvaluateParagraph} style={{ display: 'flex', flexDirection: 'column', gap: '16px', flexGrow: 1 }}>
-                <div style={{ position: 'relative', width: '100%' }}>
-                  <textarea
-                    className="search-input"
-                    style={{
-                      width: '100%',
-                      minHeight: '160px',
-                      fontSize: '15px',
-                      padding: '16px 50px 16px 16px',
-                      borderRadius: '12px',
-                      border: '1px solid var(--border-color)',
-                      outline: 'none',
-                      resize: 'vertical',
-                      lineHeight: '1.6',
-                      fontFamily: 'inherit'
-                    }}
-                    placeholder="Sprich oder schreibe hier einen Absatz mit 3 bis 4 Sätzen auf Deutsch..."
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    required
-                  />
-                  
-                  <div style={{ position: 'absolute', right: '14px', bottom: '14px', display: 'flex', gap: '8px' }}>
-                    {/* Clear input button */}
-                    {userInput.length > 0 && (
+              <>
+                <form onSubmit={handleEvaluateParagraph} style={{ display: 'flex', flexDirection: 'column', gap: '16px', flexGrow: 1 }}>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <textarea
+                      className="search-input"
+                      style={{
+                        width: '100%',
+                        minHeight: '160px',
+                        fontSize: '15px',
+                        padding: '16px 50px 16px 16px',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-color)',
+                        outline: 'none',
+                        resize: 'vertical',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit'
+                      }}
+                      placeholder="Sprich oder schreibe hier einen Absatz mit 3 bis 4 Sätzen auf Deutsch..."
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      required
+                    />
+                    
+                    <div style={{ position: 'absolute', right: '14px', bottom: '14px', display: 'flex', gap: '8px' }}>
+                      {/* Clear input button */}
+                      {userInput.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setUserInput('')}
+                          style={{
+                            background: 'rgba(255,255,255,0.05)',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            borderRadius: '50%',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                          title="Text löschen"
+                        >
+                          ❌
+                        </button>
+                      )}
+
+                      {/* Microphone Dictator */}
                       <button
                         type="button"
-                        onClick={() => setUserInput('')}
+                        onMouseDown={handleHoldStart}
+                        onMouseUp={handleHoldEnd}
+                        onMouseLeave={handleHoldEnd}
+                        onTouchStart={handleHoldStart}
+                        onTouchEnd={handleHoldEnd}
                         style={{
-                          background: 'rgba(255,255,255,0.05)',
-                          border: 'none',
-                          color: 'var(--text-secondary)',
-                          cursor: 'pointer',
+                          background: isListening ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
+                          border: isListening ? '1.5px solid #ef4444' : '1px solid var(--border-color)',
                           borderRadius: '50%',
-                          width: '28px',
-                          height: '28px',
+                          color: isListening ? '#ef4444' : 'var(--text-secondary)',
+                          cursor: 'pointer',
+                          width: '32px',
+                          height: '32px',
                           display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          transition: 'all 0.2s',
+                          userSelect: 'none',
+                          touchAction: 'none'
                         }}
-                        title="Text löschen"
+                        title="Hold to speak German, release to pause"
                       >
-                        ❌
+                        🎙️
                       </button>
-                    )}
-
-                    {/* Microphone Dictator */}
-                    <button
-                      type="button"
-                      onClick={toggleSpeech}
-                      style={{
-                        background: isListening ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
-                        border: isListening ? '1.5px solid #ef4444' : '1px solid var(--border-color)',
-                        borderRadius: '50%',
-                        color: isListening ? '#ef4444' : 'var(--text-secondary)',
-                        cursor: 'pointer',
-                        width: '28px',
-                        height: '28px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        transition: 'all 0.2s'
-                      }}
-                      title={isListening ? "Zuhören stoppen" : "Einen Absatz auf Deutsch diktieren"}
-                    >
-                      {isListening ? '🛑' : '🎙️'}
-                    </button>
+                    </div>
                   </div>
-                </div>
 
-                <button
-                  type="submit"
-                  className="feedback-btn good"
-                  disabled={!userInput.trim()}
-                  style={{ alignSelf: 'center', padding: '12px 30px', borderRadius: '10px', fontSize: '14px', width: 'auto', maxWidth: 'none' }}
-                >
-                  Absatz bewerten ➔
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    className="feedback-btn good"
+                    disabled={!userInput.trim()}
+                    style={{ alignSelf: 'center', padding: '12px 30px', borderRadius: '10px', fontSize: '14px', width: 'auto', maxWidth: 'none' }}
+                  >
+                    Absatz bewerten ➔
+                  </button>
+                </form>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', fontStyle: 'italic' }}>
+                  💡 Halt das Mikrofon-Symbol 🎙️ gedrückt, um zu sprechen. Lass los, um zu pausieren.
+                </div>
+              </>
             )}
 
             {/* Results display */}

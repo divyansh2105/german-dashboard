@@ -29,9 +29,16 @@ export default function DictationPractice({ vocabData, onReview }) {
 
   // Speech Recognition (Voice to Text) State & Refs
   const [isListening, setIsListening] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const isHoldingRef = useRef(false);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
+  const userInputRef = useRef('');
+
+  useEffect(() => {
+    userInputRef.current = userInput;
+  }, [userInput]);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -70,6 +77,16 @@ export default function DictationPractice({ vocabData, onReview }) {
       rec.onend = () => {
         setIsListening(false);
         isListeningRef.current = false;
+
+        // Auto-restart if user is still holding the button
+        if (isHoldingRef.current) {
+          try {
+            sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+            rec.start();
+          } catch (err) {
+            console.error("Auto-restart failed:", err);
+          }
+        }
       };
       
       recognitionRef.current = rec;
@@ -89,18 +106,39 @@ export default function DictationPractice({ vocabData, onReview }) {
     }
   }, [showFeedback, isListening]);
 
-  const toggleSpeechRecognition = () => {
+  const handleHoldStart = (e) => {
+    if (e) e.preventDefault();
     if (!recognitionRef.current) {
       alert("Speech recognition is not supported in this browser. Please try Google Chrome or Safari.");
       return;
     }
-    
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      // Keep existing words as a base so we can progressive-append next phrases
-      sessionBaseTextRef.current = userInput ? userInput.trim() : '';
+
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsHolding(true);
+    isHoldingRef.current = true;
+    sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+
+    try {
       recognitionRef.current.start();
+    } catch (err) {
+      console.error("Speech start error:", err);
+    }
+  };
+
+  const handleHoldEnd = (e) => {
+    if (e) e.preventDefault();
+    if (!recognitionRef.current) return;
+
+    setIsHolding(false);
+    isHoldingRef.current = false;
+
+    try {
+      recognitionRef.current.stop();
+    } catch (err) {
+      console.error("Speech stop error:", err);
     }
   };
 
@@ -376,7 +414,11 @@ export default function DictationPractice({ vocabData, onReview }) {
               {!showFeedback && (
                 <button
                   type="button"
-                  onClick={toggleSpeechRecognition}
+                  onMouseDown={handleHoldStart}
+                  onMouseUp={handleHoldEnd}
+                  onMouseLeave={handleHoldEnd}
+                  onTouchStart={handleHoldStart}
+                  onTouchEnd={handleHoldEnd}
                   style={{
                     background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.05)',
                     border: isListening ? '1.5px solid #ef4444' : '1px solid var(--border-color)',
@@ -390,26 +432,31 @@ export default function DictationPractice({ vocabData, onReview }) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     transition: 'all 0.2s ease',
-                    boxShadow: isListening ? '0 0 10px rgba(239, 68, 68, 0.5)' : 'none'
+                    boxShadow: isListening ? '0 0 10px rgba(239, 68, 68, 0.5)' : 'none',
+                    userSelect: 'none',
+                    touchAction: 'none'
                   }}
-                  title={isListening ? "Stop listening" : "Use voice input (German)"}
+                  title="Hold to speak, release to pause"
                 >
-                  {isListening ? '🛑' : '🎙️'}
+                  🎙️
                 </button>
               )}
             </div>
           </div>
 
           {!showFeedback ? (
-            <div style={{display: 'flex', gap: '12px', width: '100%', maxWidth: '340px'}}>
+            <div style={{display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '340px', alignItems: 'center'}}>
               <button
                 type="submit"
                 className="feedback-btn good"
-                style={{flexGrow: 1, borderRadius: '12px', padding: '14px', maxWidth: 'none'}}
+                style={{width: '100%', borderRadius: '12px', padding: '14px', maxWidth: 'none'}}
                 disabled={!userInput.trim()}
               >
                 Verify spelling
               </button>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', textAlign: 'center', fontStyle: 'italic' }}>
+                💡 Halt das Mikrofon-Symbol 🎙️ gedrückt, um zu sprechen. Lass los, um zu pausieren.
+              </div>
             </div>
           ) : (
             <div className="animate-fade-in" style={{width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', marginTop: '10px'}}>

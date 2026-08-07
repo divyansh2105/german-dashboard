@@ -33,6 +33,108 @@ export default function GrammarPractice() {
   const [isCorrect, setIsCorrect] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const [isListening, setIsListening] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const isHoldingRef = useRef(false);
+  const recognitionRef = useRef(null);
+  const sessionBaseTextRef = useRef('');
+  const userInputRef = useRef('');
+
+  useEffect(() => {
+    userInputRef.current = userInput;
+  }, [userInput]);
+
+  // Speech Recognition setup (Voice-to-Text)
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.lang = 'de-DE';
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+
+      rec.onstart = () => {
+        setIsListening(true);
+      };
+
+      rec.onresult = (event) => {
+        let sessionTranscript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          if (event.results[i][0]) {
+            sessionTranscript += event.results[i][0].transcript;
+          }
+        }
+        const cleanedSession = sessionTranscript.replace(/[.!?]/g, '').trim().toLowerCase();
+        const base = sessionBaseTextRef.current;
+        setUserInput(base ? (base + ' ' + cleanedSession) : cleanedSession);
+      };
+
+      rec.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'aborted') return;
+      };
+
+      rec.onend = () => {
+        setIsListening(false);
+
+        // Auto-restart if user is still holding the button
+        if (isHoldingRef.current) {
+          try {
+            sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+            rec.start();
+          } catch (err) {
+            console.error("Auto-restart failed:", err);
+          }
+        }
+      };
+
+      recognitionRef.current = rec;
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleHoldStart = (e) => {
+    if (e) e.preventDefault();
+    if (!recognitionRef.current) {
+      alert("Speech recognition is not supported in this browser. Please try Google Chrome or Safari.");
+      return;
+    }
+
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsHolding(true);
+    isHoldingRef.current = true;
+    sessionBaseTextRef.current = userInputRef.current ? userInputRef.current.trim() : '';
+
+    try {
+      recognitionRef.current.start();
+    } catch (err) {
+      console.error("Speech start error:", err);
+    }
+  };
+
+  const handleHoldEnd = (e) => {
+    if (e) e.preventDefault();
+    if (!recognitionRef.current) return;
+
+    setIsHolding(false);
+    isHoldingRef.current = false;
+
+    try {
+      recognitionRef.current.stop();
+    } catch (err) {
+      console.error("Speech stop error:", err);
+    }
+  };
+
   // Fetch available models if API key is present
   const fetchModels = async (key) => {
     if (!key) return;
@@ -453,29 +555,74 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               </div>
 
               {/* Form Input */}
-              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
-                <div style={{ display: 'flex', width: '100%', gap: '10px' }}>
-                  <input
-                    type="text"
-                    className="search-input"
-                    placeholder="Präposition eintippen..."
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    disabled={hasChecked}
-                    style={{ 
-                      textAlign: 'center', 
-                      fontSize: '16px', 
-                      padding: '12px', 
-                      borderRadius: '10px',
-                      border: hasChecked
-                        ? (isCorrect ? '2px solid var(--color-noun)' : '2px solid #ef4444')
-                        : '1px solid var(--border-color)',
-                      outline: 'none',
-                      flexGrow: 1
-                    }}
-                    autoFocus
-                    autoComplete="off"
-                  />
+              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', width: '100%', gap: '10px', alignItems: 'center' }}>
+                  <div style={{ position: 'relative', flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="search-input"
+                      placeholder={isListening ? "Zuhören... Sprich jetzt..." : "Präposition eintippen..."}
+                      value={userInput}
+                      onChange={(e) => setUserInput(e.target.value)}
+                      disabled={hasChecked}
+                      style={{ 
+                        textAlign: 'center', 
+                        fontSize: '16px', 
+                        padding: '12px 75px 12px 16px', 
+                        borderRadius: '10px',
+                        border: hasChecked
+                          ? (isCorrect ? '2px solid var(--color-noun)' : '2px solid #ef4444')
+                          : '1px solid var(--border-color)',
+                        outline: 'none',
+                        width: '100%',
+                        height: '46px'
+                      }}
+                      autoFocus
+                      autoComplete="off"
+                    />
+
+                    <div style={{ position: 'absolute', right: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {userInput.length > 0 && !hasChecked && (
+                        <button
+                          type="button"
+                          onClick={() => setUserInput('')}
+                          style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '14px', padding: '4px' }}
+                          title="Eingabefeld resetten"
+                        >
+                          ❌
+                        </button>
+                      )}
+
+                      {!hasChecked && (
+                        <button
+                          type="button"
+                          onMouseDown={handleHoldStart}
+                          onMouseUp={handleHoldEnd}
+                          onMouseLeave={handleHoldEnd}
+                          onTouchStart={handleHoldStart}
+                          onTouchEnd={handleHoldEnd}
+                          style={{
+                            background: isListening ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)',
+                            border: isListening ? '1.5px solid #ef4444' : '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            color: isListening ? '#ef4444' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s',
+                            userSelect: 'none',
+                            touchAction: 'none'
+                          }}
+                          title="Hold to speak, release to pause"
+                        >
+                          🎙️
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   
                   {/* Speaker helper for full sentence */}
                   {hasChecked && (
@@ -545,6 +692,11 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                   </button>
                 )}
               </form>
+              {!hasChecked && (
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', fontStyle: 'italic' }}>
+                  💡 Halt das Mikrofon-Symbol 🎙️ gedrückt, um zu sprechen. Lass los, um zu pausieren.
+                </div>
+              )}
             </div>
           )}
 
