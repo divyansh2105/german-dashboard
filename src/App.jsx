@@ -705,7 +705,7 @@ function App() {
   }
 
   return (
-    <div className="app-container" style={{ zoom: fontScale }}>
+    <div className="app-container" style={!/iPhone|iPad|iPod/i.test(navigator.userAgent) ? { zoom: fontScale } : {}}>
       <header className="app-header">
         <div className="logo-section" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
