@@ -328,7 +328,10 @@ function App() {
           return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
         });
         if (german.length > 0) {
-          setVoices(german);
+          setVoices(prev => {
+            const isSame = prev.length === german.length && prev.every((v, i) => v.name === german[i].name);
+            return isSame ? prev : german;
+          });
 
           const savedVoice = localStorage.getItem('b1_selected_voice');
           const hasSavedVoice = german.some(v => v.name === savedVoice);
@@ -338,7 +341,7 @@ function App() {
               const nameLower = v.name.toLowerCase();
               return (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
             }) || german.find(v => !v.name.toLowerCase().includes('samsung')) || german[0];
-            setSelectedVoiceName(preferred.name);
+            setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
             localStorage.setItem('b1_selected_voice', preferred.name);
           }
         }
@@ -694,8 +697,12 @@ function App() {
     );
   }
 
+  const isMobileOrTablet = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+    (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
+
   return (
-    <div className="app-container" style={!/iPhone|iPad|iPod/i.test(navigator.userAgent) ? { zoom: fontScale } : {}}>
+    <div className="app-container" style={!isMobileOrTablet ? { zoom: fontScale } : {}}>
       <header className="app-header">
         <div className="logo-section" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
