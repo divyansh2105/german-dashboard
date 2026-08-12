@@ -12,6 +12,23 @@ import GrammarPractice from './components/GrammarPractice';
 import './index.css';
 
 function App() {
+  const isIOS = useMemo(() => {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+      (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
+  }, []);
+
+  useEffect(() => {
+    if (isIOS) {
+      try {
+        Object.defineProperty(window, 'SpeechRecognition', { value: null, writable: true, configurable: true });
+        Object.defineProperty(window, 'webkitSpeechRecognition', { value: null, writable: true, configurable: true });
+      } catch (e) {
+        console.error("Stubbing SpeechRecognition error:", e);
+      }
+    }
+  }, [isIOS]);
+
   const [vocabData, setVocabData] = useState({ nouns: [], verbs: [], adjectives: [], connectors: [], reflexive: [] });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
@@ -320,6 +337,7 @@ function App() {
   }, [fontScale]);
 
   useEffect(() => {
+    if (isIOS) return;
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
@@ -384,6 +402,10 @@ function App() {
 
   // Expose global speech helper
   useEffect(() => {
+    if (isIOS) {
+      window.speakGerman = () => {};
+      return;
+    }
     window.speakGerman = (text) => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel(); // Stop current speech instantly
