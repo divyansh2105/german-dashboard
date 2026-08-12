@@ -772,183 +772,184 @@ function App() {
               A+
             </button>
           </div>
+          </div>
 
-          {/* Voice selection & Speech Settings container */}
-          {('speechSynthesis' in window) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="sound-btn"
-                onClick={() => {
-                  const targetState = !isAnonymous;
-                  setIsAnonymous(targetState);
-                  if (!targetState && localStorage.getItem('b1_logged_in') !== 'true') {
-                    setIsLoggedIn(false);
-                  }
-                }}
-                style={{
-                  background: isAnonymous ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                  border: isAnonymous ? '1px solid #ef4444' : '1px solid var(--border-color)',
-                  color: isAnonymous ? '#ef4444' : 'var(--text-secondary)',
-                  fontSize: '12.5px',
-                  padding: '4px 10px',
-                  height: '36px',
-                  borderRadius: '12px',
-                  fontWeight: '700',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-                title="Toggle Anonymous Mode (Disables Gemini and My List features)"
-              >
-                {isAnonymous ? '🕶️ Anonymous: ON' : '👤 Standard'}
-              </button>
-
-              <div style={{
+          {/* Settings Toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="sound-btn"
+              onClick={() => {
+                const targetState = !isAnonymous;
+                setIsAnonymous(targetState);
+                if (!targetState && localStorage.getItem('b1_logged_in') !== 'true') {
+                  setIsLoggedIn(false);
+                }
+              }}
+              style={{
+                background: isAnonymous ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                border: isAnonymous ? '1px solid #ef4444' : '1px solid var(--border-color)',
+                color: isAnonymous ? '#ef4444' : 'var(--text-secondary)',
+                fontSize: '12.5px',
+                padding: '4px 10px',
+                height: '36px',
+                borderRadius: '12px',
+                fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                background: 'rgba(255, 255, 255, 0.03)',
-                padding: '4px 10px',
-                borderRadius: '12px',
-                border: '1px solid var(--border-color)',
-                height: '36px'
-              }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Voice:</span>
-                <select
-                  value={selectedVoiceName}
-                  onChange={(e) => setSelectedVoiceName(e.target.value)}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-secondary)',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    outline: 'none',
-                    cursor: 'pointer',
-                    maxWidth: '120px'
-                  }}
-                >
-                  {voices.length === 0 ? (
-                    <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
-                  ) : (
-                    voices.map(v => (
-                      <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
-                        {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
+                gap: '6px'
+              }}
+              title="Toggle Anonymous Mode (Disables Gemini and My List features)"
+            >
+              {isAnonymous ? '🕶️ Anonymous: ON' : '👤 Standard'}
+            </button>
 
-
-              {/* Settings Toggle button */}
-              <button
-                type="button"
-                className="sound-btn"
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  fontSize: '18px',
-                  background: showSpeechSettings ? 'rgba(255,255,255,0.1)' : 'transparent',
-                  padding: 0,
-                  justifyContent: 'center',
-                  alignItems: 'center'
-                }}
-                onClick={() => setShowSpeechSettings(!showSpeechSettings)}
-                title="Speech Settings (Speed & Pitch)"
-              >
-                ⚙️
-              </button>
-
-              {/* Speech settings popover dropdown */}
-              {showSpeechSettings && (
-                <div
-                  className="glass-card"
-                  style={{
-                    position: 'absolute',
-                    top: '44px',
-                    right: '0',
-                    zIndex: 1000,
-                    width: '260px',
-                    padding: '16px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                    border: '1px solid var(--border-color)',
-                    backdropFilter: 'blur(20px)',
-                    textAlign: 'left'
-                  }}
-                >
-                  <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px dashed var(--border-color)', paddingBottom: '6px', fontWeight: '700' }}>
-                    🔊 Speech Parameters
-                  </h4>
-
-                  {/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (
-                    <div style={{
-                      fontSize: '11px',
+            {('speechSynthesis' in window) && !isIOS && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)',
+                  height: '36px'
+                }}>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Voice:</span>
+                  <select
+                    value={selectedVoiceName}
+                    onChange={(e) => setSelectedVoiceName(e.target.value)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
                       color: 'var(--text-secondary)',
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      padding: '10px',
-                      borderRadius: '8px',
-                      lineHeight: '1.4',
-                      border: '1px dashed rgba(255, 255, 255, 0.06)',
-                      marginTop: '8px'
-                    }}>
-                      📱 <strong>Mobile Device:</strong> Speech speed and pitch parameters are managed directly by your phone's system settings. Please customize them under your device's <em>Settings &gt; Accessibility &gt; Text-to-speech</em> menu.
-                    </div>
-                  ) : (
-                    <>
-                      {/* Speed/Rate Slider */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          <span>Speed (Rate):</span>
-                          <span style={{ fontWeight: '700', color: 'var(--color-noun)' }}>{speechRate}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="1.5"
-                          step="0.1"
-                          value={speechRate}
-                          onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                          style={{ accentColor: 'var(--color-noun)', cursor: 'pointer', width: '100%' }}
-                        />
-                      </div>
-
-                      {/* Pitch Slider */}
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          <span>Pitch:</span>
-                          <span style={{ fontWeight: '700', color: 'var(--color-verb)' }}>{speechPitch}x</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="1.5"
-                          step="0.1"
-                          value={speechPitch}
-                          onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
-                          style={{ accentColor: 'var(--color-verb)', cursor: 'pointer', width: '100%' }}
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        className="nav-button"
-                        style={{ fontSize: '11px', padding: '6px 12px', borderRadius: '8px', alignSelf: 'flex-end', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
-                        onClick={() => { setSpeechRate(1.0); setSpeechPitch(1.0); }}
-                      >
-                        Reset Defaults
-                      </button>
-                    </>
-                  )}
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      maxWidth: '120px'
+                    }}
+                  >
+                    {voices.length === 0 ? (
+                      <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
+                    ) : (
+                      voices.map(v => (
+                        <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                          {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
+                        </option>
+                      ))
+                    )}
+                  </select>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                {/* Settings Toggle button */}
+                <button
+                  type="button"
+                  className="sound-btn"
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    fontSize: '18px',
+                    background: showSpeechSettings ? 'rgba(255,255,255,0.1)' : 'transparent',
+                    padding: 0,
+                    justifyContent: 'center',
+                    alignItems: 'center'
+                  }}
+                  onClick={() => setShowSpeechSettings(!showSpeechSettings)}
+                  title="Speech Settings (Speed & Pitch)"
+                >
+                  ⚙️
+                </button>
+
+                {/* Speech settings popover dropdown */}
+                {showSpeechSettings && (
+                  <div
+                    className="glass-card"
+                    style={{
+                      position: 'absolute',
+                      top: '44px',
+                      right: '0',
+                      zIndex: 1000,
+                      width: '260px',
+                      padding: '16px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '14px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                      border: '1px solid var(--border-color)',
+                      backdropFilter: 'blur(20px)',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <h4 style={{ margin: 0, fontSize: '13px', color: 'var(--text-primary)', borderBottom: '1px dashed var(--border-color)', paddingBottom: '6px', fontWeight: '700' }}>
+                      🔊 Speech Parameters
+                    </h4>
+
+                    {/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? (
+                      <div style={{
+                        fontSize: '11px',
+                        color: 'var(--text-secondary)',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        padding: '10px',
+                        borderRadius: '8px',
+                        lineHeight: '1.4',
+                        border: '1px dashed rgba(255, 255, 255, 0.06)',
+                        marginTop: '8px'
+                      }}>
+                        📱 <strong>Mobile Device:</strong> Speech speed and pitch parameters are managed directly by your phone's system settings. Please customize them under your device's <em>Settings &gt; Accessibility &gt; Text-to-speech</em> menu.
+                      </div>
+                    ) : (
+                      <>
+                        {/* Speed/Rate Slider */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            <span>Speed (Rate):</span>
+                            <span style={{ fontWeight: '700', color: 'var(--color-noun)' }}>{speechRate}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="1.5"
+                            step="0.1"
+                            value={speechRate}
+                            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                            style={{ accentColor: 'var(--color-noun)', cursor: 'pointer', width: '100%' }}
+                          />
+                        </div>
+
+                        {/* Pitch Slider */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                            <span>Pitch:</span>
+                            <span style={{ fontWeight: '700', color: 'var(--color-verb)' }}>{speechPitch}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="1.5"
+                            step="0.1"
+                            value={speechPitch}
+                            onChange={(e) => setSpeechPitch(parseFloat(e.target.value))}
+                            style={{ accentColor: 'var(--color-verb)', cursor: 'pointer', width: '100%' }}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          className="nav-button"
+                          style={{ fontSize: '11px', padding: '6px 12px', borderRadius: '8px', alignSelf: 'flex-end', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
+                          onClick={() => { setSpeechRate(1.0); setSpeechPitch(1.0); }}
+                        >
+                          Reset Defaults
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
         <nav className="app-nav">
           <button
