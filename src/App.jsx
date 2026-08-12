@@ -320,16 +320,6 @@ function App() {
   }, [fontScale]);
 
   useEffect(() => {
-    // Dummy speak call to force SpeechSynthesis engine activation on mobile Safari/iOS
-    if ('speechSynthesis' in window) {
-      try {
-        const dummy = new SpeechSynthesisUtterance('');
-        window.speechSynthesis.speak(dummy);
-      } catch (e) {
-        console.error("Speech init error:", e);
-      }
-    }
-
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
