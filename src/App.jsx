@@ -12,49 +12,11 @@ import GrammarPractice from './components/GrammarPractice';
 import './index.css';
 
 function App() {
-  const [fatalError, setFatalError] = useState(null);
-
-  useEffect(() => {
-    const handleError = (msg, url, line, col, error) => {
-      setFatalError({
-        message: msg,
-        source: url,
-        line: line,
-        column: col,
-        stack: error ? error.stack : 'No stack trace'
-      });
-      return false;
-    };
-    const handleRejection = (event) => {
-      setFatalError({
-        message: event.reason ? (event.reason.message || String(event.reason)) : 'Unhandled rejection',
-        stack: event.reason ? event.reason.stack : 'No stack trace'
-      });
-    };
-    window.addEventListener('error', handleError);
-    window.addEventListener('unhandledrejection', handleRejection);
-    return () => {
-      window.removeEventListener('error', handleError);
-      window.removeEventListener('unhandledrejection', handleRejection);
-    };
-  }, []);
-
   const isIOS = useMemo(() => {
     return /iPhone|iPad|iPod/i.test(navigator.userAgent) || 
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
       (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
   }, []);
-
-  useEffect(() => {
-    if (isIOS) {
-      try {
-        Object.defineProperty(window, 'SpeechRecognition', { value: null, writable: true, configurable: true });
-        Object.defineProperty(window, 'webkitSpeechRecognition', { value: null, writable: true, configurable: true });
-      } catch (e) {
-        console.error("Stubbing SpeechRecognition error:", e);
-      }
-    }
-  }, [isIOS]);
 
   const [vocabData, setVocabData] = useState({ nouns: [], verbs: [], adjectives: [], connectors: [], reflexive: [] });
   const [loading, setLoading] = useState(true);
@@ -364,7 +326,6 @@ function App() {
   }, [fontScale]);
 
   useEffect(() => {
-    if (isIOS) return;
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
@@ -429,10 +390,6 @@ function App() {
 
   // Expose global speech helper
   useEffect(() => {
-    if (isIOS) {
-      window.speakGerman = () => {};
-      return;
-    }
     window.speakGerman = (text) => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel(); // Stop current speech instantly
@@ -623,31 +580,7 @@ function App() {
     };
   }, [reviews, vocabData]);
 
-  if (fatalError) {
-    return (
-      <div style={{ padding: '20px', background: '#111', color: '#ff5555', fontFamily: 'monospace', minHeight: '100vh', overflowY: 'auto' }}>
-        <h2 style={{ color: '#ff3333', fontSize: '20px', fontWeight: '800' }}>⚠️ App Crash Detected</h2>
-        <p style={{ marginTop: '10px' }}><strong>Error:</strong> {fatalError.message}</p>
-        {fatalError.line && (
-          <p><strong>Location:</strong> {fatalError.source}:{fatalError.line}:{fatalError.column}</p>
-        )}
-        {fatalError.stack && (
-          <pre style={{ background: '#222', padding: '15px', borderRadius: '8px', color: '#aaa', overflowX: 'auto', fontSize: '11px', marginTop: '10px', whiteSpace: 'pre-wrap' }}>
-            {fatalError.stack}
-          </pre>
-        )}
-        <button 
-          onClick={() => {
-            localStorage.clear();
-            window.location.reload();
-          }} 
-          style={{ padding: '12px 20px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', marginTop: '20px', fontWeight: 'bold' }}
-        >
-          Clear Storage & Reset App
-        </button>
-      </div>
-    );
-  }
+
 
   if (loading) {
     return (
@@ -879,7 +812,7 @@ function App() {
               {isAnonymous ? '🕶️ Anonymous: ON' : '👤 Standard'}
             </button>
 
-            {('speechSynthesis' in window) && !isIOS && (
+            {('speechSynthesis' in window) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
                 <div style={{
                   display: 'flex',
