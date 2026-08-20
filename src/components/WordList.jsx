@@ -51,6 +51,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList, isAno
   const [selectedPriorityFilter, setSelectedPriorityFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedWord, setExpandedWord] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(50);
 
   // Get active word list
   const activeWords = useMemo(() => {
@@ -94,6 +95,11 @@ export default function WordList({ vocabData, myList = [], onToggleMyList, isAno
     setSelectedPriorityFilter('all');
     setSelectedLetter('all'); // Reset selected letter back to 'all' on category tab change
   }, [activeCategory]);
+
+  // Reset visibleCount when any filters or categories change
+  React.useEffect(() => {
+    setVisibleCount(50);
+  }, [activeCategory, selectedClassFilter, selectedPriorityFilter, searchQuery, selectedLetter]);
 
   // Handle snapping selectedLetter to the first available index when filters modify list
   React.useEffect(() => {
@@ -143,6 +149,10 @@ export default function WordList({ vocabData, myList = [], onToggleMyList, isAno
       return selectedLetter ? firstLetter === selectedLetter : true;
     });
   }, [activeWords, selectedLetter, searchQuery, selectedClassFilter, selectedPriorityFilter, activeCategory]);
+
+  const displayedWords = useMemo(() => {
+    return filteredWords.slice(0, visibleCount);
+  }, [filteredWords, visibleCount]);
 
   const toggleExpand = (word) => {
     if (expandedWord === word) {
@@ -295,7 +305,7 @@ export default function WordList({ vocabData, myList = [], onToggleMyList, isAno
         </div>
       ) : (
         <div className="word-grid">
-          {filteredWords.map((item, idx) => {
+          {displayedWords.map((item, idx) => {
             const isExpanded = expandedWord === item.word;
             const isStarred = myList.some(starredItem => starredItem.word.toLowerCase() === item.word.toLowerCase());
             return (
@@ -409,6 +419,32 @@ export default function WordList({ vocabData, myList = [], onToggleMyList, isAno
               </div>
             );
           })}
+        </div>
+      )}
+
+      {filteredWords.length > visibleCount && (
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '24px 0 12px' }}>
+          <button
+            onClick={() => setVisibleCount(prev => prev + 50)}
+            className="nav-button active"
+            style={{
+              padding: '12px 24px',
+              borderRadius: '12px',
+              fontSize: '14px',
+              fontWeight: '700',
+              background: 'linear-gradient(135deg, var(--color-conn), var(--color-verb))',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-premium)',
+              width: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            📂 Load More Words ({filteredWords.length - visibleCount} remaining)
+          </button>
         </div>
       )}
     </div>
