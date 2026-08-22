@@ -332,24 +332,31 @@ function App() {
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
-        const german = allVoices.filter(v => {
+        const matchedVoices = allVoices.filter(v => {
           const lang = v.lang.toLowerCase();
-          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu') ||
+                 lang.startsWith('en') || lang.includes('en-') || lang.includes('en_') || lang.includes('eng');
         });
-        if (german.length > 0) {
+        if (matchedVoices.length > 0) {
           setVoices(prev => {
-            const isSame = prev.length === german.length && prev.every((v, i) => v.name === german[i].name);
-            return isSame ? prev : german;
+            const isSame = prev.length === matchedVoices.length && prev.every((v, i) => v.name === matchedVoices[i].name);
+            return isSame ? prev : matchedVoices;
           });
 
           const savedVoice = localStorage.getItem('b1_selected_voice');
-          const hasSavedVoice = german.some(v => v.name === savedVoice);
+          const hasSavedVoice = matchedVoices.some(v => v.name === savedVoice);
 
           if (!savedVoice || !hasSavedVoice) {
-            const preferred = german.find(v => {
+            const preferred = matchedVoices.find(v => {
               const nameLower = v.name.toLowerCase();
-              return (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
-            }) || german.find(v => !v.name.toLowerCase().includes('samsung')) || german[0];
+              const langLower = v.lang.toLowerCase();
+              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
+              return isGerman && (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
+            }) || matchedVoices.find(v => {
+              const langLower = v.lang.toLowerCase();
+              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
+              return isGerman && !v.name.toLowerCase().includes('samsung');
+            }) || matchedVoices[0];
             setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
             localStorage.setItem('b1_selected_voice', preferred.name);
           }
@@ -398,12 +405,13 @@ function App() {
         window.speechSynthesis.cancel(); // Stop current speech instantly
 
         const allVoices = window.speechSynthesis.getVoices();
-        const german = allVoices.filter(v => {
+        const matchedVoices = allVoices.filter(v => {
           const lang = v.lang.toLowerCase();
-          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu');
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu') ||
+                 lang.startsWith('en') || lang.includes('en-') || lang.includes('en_') || lang.includes('eng');
         });
-        if (german.length > 0 && voices.length === 0) {
-          setVoices(german);
+        if (matchedVoices.length > 0 && voices.length === 0) {
+          setVoices(matchedVoices);
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
@@ -418,6 +426,7 @@ function App() {
           if (voice) {
             if (!isIOS || !hasModifiers) {
               utterance.voice = voice;
+              utterance.lang = voice.lang; // Match the selected voice's language
             }
           }
         } else if (isAndroid) {
@@ -441,7 +450,7 @@ function App() {
         window.speechSynthesis.speak(utterance);
       }
     };
-  }, [selectedVoiceName, speechRate, speechPitch]);
+  }, [selectedVoiceName, speechRate, speechPitch, voices]);
 
   // Fetch vocabulary JSON dataset
   useEffect(() => {
@@ -847,6 +856,7 @@ function App() {
                     ) : (
                       voices.map(v => (
                         <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                          {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
                           {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
                         </option>
                       ))
