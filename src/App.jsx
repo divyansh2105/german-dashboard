@@ -253,12 +253,15 @@ function App() {
         return;
       }
 
-      const selection = window.getSelection().toString().trim();
-      // Allow only valid short word/phrases (1-3 words, no numbers, length > 1)
-      if (selection && selection.length > 1 && !/\d/.test(selection) && selection.split(/\s+/).length <= 3) {
-        setDoubleClickedText(selection);
-        setDoubleClickPosition({ x: e.clientX, y: e.clientY });
-      }
+      // Defer reading selection to let Safari/WebKit update selection state asynchronously
+      setTimeout(() => {
+        const selection = window.getSelection().toString().trim();
+        // Allow only valid short word/phrases (1-3 words, no numbers, length > 1)
+        if (selection && selection.length > 1 && !/\d/.test(selection) && selection.split(/\s+/).length <= 3) {
+          setDoubleClickedText(selection);
+          setDoubleClickPosition({ x: e.clientX, y: e.clientY });
+        }
+      }, 0);
     };
     window.addEventListener('dblclick', handleDblClick);
     return () => window.removeEventListener('dblclick', handleDblClick);

@@ -270,26 +270,54 @@ export default function SentenceCreator({ vocabData, onReview }) {
             Write your coherent German sentence below:
           </h3>
           
-          <textarea
-            className="search-input"
-            style={{
-              width: '100%',
-              minHeight: '100px',
-              resize: 'vertical',
-              fontSize: '16px',
-              lineHeight: '1.5',
-              padding: '16px',
-              borderRadius: '12px',
-              background: 'rgba(255,255,255,0.01)',
-              border: showFeedback
-                ? (allWordsIncluded ? '2px solid var(--color-noun)' : '2px solid #ef4444')
-                : '1px solid var(--border-color)'
-            }}
-            placeholder={`E.g., "Ich fahre mit der U-Bahn, obwohl ich ein Auto habe."`}
-            value={userSentence}
-            onChange={(e) => setUserSentence(e.target.value)}
-            disabled={showFeedback}
-          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', position: 'relative' }}>
+            <textarea
+              className="search-input"
+              style={{
+                width: '100%',
+                minHeight: '100px',
+                resize: 'vertical',
+                fontSize: '16px',
+                lineHeight: '1.5',
+                padding: '16px 48px 16px 16px', // Extra right padding to avoid text overlapping the speaker button
+                borderRadius: '12px',
+                background: 'rgba(255,255,255,0.01)',
+                border: showFeedback
+                  ? (allWordsIncluded ? '2px solid var(--color-noun)' : '2px solid #ef4444')
+                  : '1px solid var(--border-color)'
+              }}
+              placeholder={`E.g., "Ich fahre mit der U-Bahn, obwohl ich ein Auto habe."`}
+              value={userSentence}
+              onChange={(e) => setUserSentence(e.target.value)}
+              disabled={showFeedback}
+            />
+            {userSentence.trim() && (
+              <button
+                type="button"
+                className="sound-btn"
+                onClick={(e) => speakText(e, userSentence)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  bottom: '12px',
+                  width: '36px',
+                  height: '36px',
+                  fontSize: '18px',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  zIndex: 2,
+                  cursor: 'pointer'
+                }}
+                title="Listen to your sentence"
+              >
+                🔊
+              </button>
+            )}
+          </div>
 
           {!showFeedback ? (
             <button
