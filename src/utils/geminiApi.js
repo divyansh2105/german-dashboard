@@ -1,0 +1,173 @@
+export const DEFAULT_GEMINI_MODELS = [
+  'gemini-1.5-flash',
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash'
+];
+
+/**
+ * Builds an ordered list of models to try, starting with preferredModel.
+ */
+export function getCandidateModels(preferredModel, availableModels = []) {
+  const pool = Array.from(new Set([
+    preferredModel,
+    ...(availableModels || []),
+    ...DEFAULT_GEMINI_MODELS
+  ])).filter(Boolean);
+
+  // Keep preferredModel first
+  const remaining = pool.filter(m => m !== preferredModel);
+
+  // Sort remaining models: prefer modern flash/flash-8b models, then pro models
+  remaining.sort((a, b) => {
+    const aFlash = a.includes('flash');
+    const bFlash = b.includes('flash');
+    if (aFlash && !bFlash) return -1;
+    if (!aFlash && bFlash) return 1;
+    return 0;
+  });
+
+  return [preferredModel, ...remaining];
+}
+
+/**
+ * Checks if an error is retryable on a different model (high demand, quota, 429, 503, 500, etc.)
+ */
+export function isModelFallbackError(status, errorData) {
+  if (status === 429 || status === 503 || status === 500 || status === 502 || status === 504 || status === 404) {
+    return true;
+  }
+  if (!errorData) return false;
+  
+  const msg = (errorData.message || '').toLowerCase();
+  const errStatus = (errorData.status || '').toUpperCase();
+  const code = errorData.code;
+
+  if (code === 429 || code === 503 || code === 500 || code === 502 || code === 504 || code === 404) {
+    return true;
+  }
+
+  if (errStatus === 'RESOURCE_EXHAUSTED' || errStatus === 'UNAVAILABLE' || errStatus === 'INTERNAL' || errStatus === 'NOT_FOUND') {
+    return true;
+  }
+
+  const indicators = [
+    'high demand',
+    'overloaded',
+    'spikes in demand',
+    'try again later',
+    'resource exhausted',
+    'quota',
+    'rate limit',
+    'capacity',
+    'temporar',
+    'not found',
+    'is not supported'
+  ];
+
+  return indicators.some(indicator => msg.includes(indicator));
+}
+
+/**
+ * Executes a Gemini generateContent request with automatic backup model fallback.
+ */
+export async function generateContentWithFallback({
+  apiKey,
+  preferredModel,
+  availableModels = [],
+  payload,
+  onFallback
+}) {
+  if (!apiKey) {
+    throw new Error('Kein API-Schlüssel hinterlegt. Bitte gib deinen Gemini API-Schlüssel ein.');
+  }
+
+  const candidates = getCandidateModels(preferredModel, availableModels);
+  let lastError = null;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const model = candidates[i];
+    const isPrimary = i === 0;
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        const shouldFallback = isModelFallbackError(response.status, data.error);
+        if (shouldFallback && i < candidates.length - 1) {
+          console.warn(`[Gemini Fallback] Model '${model}' failed (${data.error.message}). Trying backup model '${candidates[i + 1]}'...`);
+          if (onFallback) {
+            onFallback({
+              failedModel: model,
+              nextModel: candidates[i + 1],
+              reason: data.error.message
+            });
+          }
+          lastError = new Error(data.error.message || 'API Error');
+          continue;
+        }
+        throw new Error(data.error.message || 'API Error');
+      }
+
+      // Check for valid response candidates
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text && i < candidates.length - 1) {
+        console.warn(`[Gemini Fallback] Model '${model}' returned empty candidate. Trying '${candidates[i + 1]}'...`);
+        continue;
+      }
+
+      return {
+        data,
+        text: text || '',
+        usedModel: model,
+        wasFallback: !isPrimary
+      };
+    } catch (err) {
+      lastError = err;
+      const isNetworkOrFallback = isModelFallbackError(0, { message: err.message });
+      if (isNetworkOrFallback && i < candidates.length - 1) {
+        console.warn(`[Gemini Fallback] Model '${model}' threw: ${err.message}. Trying backup model '${candidates[i + 1]}'...`);
+        if (onFallback) {
+          onFallback({
+            failedModel: model,
+            nextModel: candidates[i + 1],
+            reason: err.message
+          });
+        }
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError || new Error('All candidate Gemini models were busy or unavailable. Please try again shortly.');
+}
+
+/**
+ * Fetches available models from Gemini API.
+ */
+export async function fetchAvailableModels(apiKey) {
+  if (!apiKey) return [];
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data.models && data.models.length > 0) {
+      const names = data.models
+        .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
+        .map(m => m.name.replace('models/', ''));
+      return names;
+    }
+  } catch (err) {
+    console.error('Error listing Gemini models:', err);
+  }
+  return [];
+}

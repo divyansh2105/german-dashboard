@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { generateContentWithFallback, fetchAvailableModels } from '../utils/geminiApi';
 
 const PREPOSITION_GROUPS = {
   Akkusativ: ['bis', 'durch', 'für', 'gegen', 'ohne', 'um'],
@@ -33,29 +34,17 @@ export default function GrammarPractice() {
   const [isCorrect, setIsCorrect] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Fetch available models if API key is present
-  const fetchModels = async (key) => {
-    if (!key) return;
-    try {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-      const data = await res.json();
-      if (data.models && data.models.length > 0) {
-        const names = data.models
-          .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
-          .map(m => m.name.replace('models/', ''));
-        if (names.length > 0) {
-          setAvailableModels(names);
-          localStorage.setItem('b1_gemini_available_models', JSON.stringify(names));
-        }
-      }
-    } catch (err) {
-      console.error("Error listing models:", err);
-    }
-  };
+  const [fallbackNotice, setFallbackNotice] = useState('');
 
+  // Fetch available models if API key is present
   useEffect(() => {
     if (apiKey) {
-      fetchModels(apiKey);
+      fetchAvailableModels(apiKey).then(models => {
+        if (models && models.length > 0) {
+          setAvailableModels(models);
+          localStorage.setItem('b1_gemini_available_models', JSON.stringify(models));
+        }
+      });
     }
   }, [apiKey]);
 
@@ -154,31 +143,27 @@ You must return a raw JSON object matching this schema exactly:
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: promptText }] }],
-            systemInstruction: { parts: [{ text: systemInstruction }] },
-            generationConfig: {
-              responseMimeType: "application/json"
-            }
-          })
+      const { text: rawJson, usedModel, wasFallback } = await generateContentWithFallback({
+        apiKey,
+        preferredModel: selectedModel,
+        availableModels,
+        payload: {
+          contents: [{ role: 'user', parts: [{ text: promptText }] }],
+          systemInstruction: { parts: [{ text: systemInstruction }] },
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        },
+        onFallback: ({ failedModel, nextModel }) => {
+          setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
-      );
+      });
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message || 'Gemini API Error');
-      }
-
-      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawJson) {
-        throw new Error('No content returned from Gemini.');
+      if (wasFallback) {
+        setFallbackNotice(`⚡ Satz über Backup-Modell (${usedModel}) generiert, da ${selectedModel} ausgelastet war.`);
+        setTimeout(() => setFallbackNotice(''), 7000);
+      } else {
+        setFallbackNotice('');
       }
 
       const parsedQuestion = JSON.parse(rawJson);
@@ -260,6 +245,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           📝 Grammar Preposition Challenge
         </div>
+
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <select
             value={selectedModel}
@@ -296,6 +282,25 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           </button>
         </div>
       </div>
+
+      {fallbackNotice && (
+        <div style={{
+          width: '100%',
+          padding: '8px 12px',
+          background: 'rgba(234, 179, 8, 0.15)',
+          border: '1px solid rgba(234, 179, 8, 0.35)',
+          borderRadius: '10px',
+          color: '#facc15',
+          fontSize: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '10px'
+        }}>
+          <span>🔄</span>
+          <span>{fallbackNotice}</span>
+        </div>
+      )}
 
       {/* Main interface layout splits into selector on left/top and exercise on right/bottom */}
       <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', width: '100%', flexWrap: 'wrap' }}>

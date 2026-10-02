@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { generateContentWithFallback, fetchAvailableModels } from '../utils/geminiApi';
 
 const TOPIC_HELPERS = [
   {
@@ -48,6 +49,7 @@ export default function SpeakingPractice() {
   // Paragraph Evaluation Mode states
   const [evaluationResult, setEvaluationResult] = useState(null);
   const [activeTopicHelp, setActiveTopicHelp] = useState(null);
+  const [fallbackNotice, setFallbackNotice] = useState('');
   
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -61,6 +63,18 @@ export default function SpeakingPractice() {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, activeMode]);
+
+  // Fetch available models from Gemini API when API key changes
+  useEffect(() => {
+    if (apiKey) {
+      fetchAvailableModels(apiKey).then(models => {
+        if (models && models.length > 0) {
+          setAvailableModels(models);
+          localStorage.setItem('b1_gemini_available_models', JSON.stringify(models));
+        }
+      });
+    }
+  }, [apiKey]);
 
   // Speech Recognition setup (Voice-to-Text)
   useEffect(() => {
@@ -174,36 +188,35 @@ export default function SpeakingPractice() {
 
       const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: contentsPayload,
-            systemInstruction: {
-              parts: [{ text: systemInstructionText }]
-            }
-          })
+      const { text: geminiText, usedModel, wasFallback } = await generateContentWithFallback({
+        apiKey,
+        preferredModel: selectedModel,
+        availableModels,
+        payload: {
+          contents: contentsPayload,
+          systemInstruction: {
+            parts: [{ text: systemInstructionText }]
+          }
+        },
+        onFallback: ({ failedModel, nextModel }) => {
+          setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
-      );
+      });
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message || 'API error occurred');
+      if (wasFallback) {
+        setFallbackNotice(`⚡ Antwort über Backup-Modell (${usedModel}) generiert, da ${selectedModel} ausgelastet war.`);
+        setTimeout(() => setFallbackNotice(''), 7000);
+      } else {
+        setFallbackNotice('');
       }
 
-      const geminiText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'Entschuldigung, ich konnte keine Antwort generieren.';
-      
       setMessages(prev => [...prev, { role: 'model', text: geminiText }]);
       speakGermanText(geminiText);
     } catch (err) {
       console.error(err);
       setMessages(prev => [...prev, { 
         role: 'model', 
-        text: `⚠️ Fehler bei der Verbindung mit Gemini: ${err.message}. Bitte überprüfe deinen API-Schlüssel.` 
+        text: `⚠️ Fehler bei der Verbindung mit Gemini: ${err.message}. Bitte überprüfe deinen API-Schlüssel oder versuche es später noch einmal.` 
       }]);
     } finally {
       setIsLoading(false);
@@ -241,33 +254,29 @@ You must output exactly a JSON object matching this schema:
 Output raw JSON only. Do not wrap in markdown code blocks.`;
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${selectedModel}:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
+      const { text: rawJson, usedModel, wasFallback } = await generateContentWithFallback({
+        apiKey,
+        preferredModel: selectedModel,
+        availableModels,
+        payload: {
+          contents: [{ role: 'user', parts: [{ text: `Evaluate this paragraph: "${paragraphText}"` }] }],
+          systemInstruction: {
+            parts: [{ text: systemInstruction }]
           },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: `Evaluate this paragraph: "${paragraphText}"` }] }],
-            systemInstruction: {
-              parts: [{ text: systemInstruction }]
-            },
-            generationConfig: {
-              responseMimeType: "application/json"
-            }
-          })
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        },
+        onFallback: ({ failedModel, nextModel }) => {
+          setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
-      );
+      });
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message || 'API error occurred');
-      }
-
-      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawJson) {
-        throw new Error('No evaluation output returned.');
+      if (wasFallback) {
+        setFallbackNotice(`⚡ Bewertung über Backup-Modell (${usedModel}) generiert, da ${selectedModel} ausgelastet war.`);
+        setTimeout(() => setFallbackNotice(''), 7000);
+      } else {
+        setFallbackNotice('');
       }
 
       const parsedResult = JSON.parse(rawJson);
@@ -349,6 +358,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
           🗣️ Gemini Konversationspartner (B1 Deutsch)
         </div>
+
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {/* Model Selector Dropdown */}
           <select
@@ -399,6 +409,26 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
           </button>
         </div>
       </div>
+
+      {/* Fallback notification indicator */}
+      {fallbackNotice && (
+        <div style={{
+          width: '100%',
+          padding: '8px 12px',
+          background: 'rgba(234, 179, 8, 0.15)',
+          border: '1px solid rgba(234, 179, 8, 0.35)',
+          borderRadius: '10px',
+          color: '#facc15',
+          fontSize: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '10px'
+        }}>
+          <span>🔄</span>
+          <span>{fallbackNotice}</span>
+        </div>
+      )}
 
       {/* Main chat window container */}
       <div className="glass-card" style={{ width: '100%', minHeight: '520px', display: 'flex', flexDirection: 'column', padding: '20px', position: 'relative' }}>
