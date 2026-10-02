@@ -18,6 +18,12 @@ function App() {
       (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
   }, []);
 
+  const isMobileOrTablet = useMemo(() => {
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+      (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
+  }, []);
+
   const [vocabData, setVocabData] = useState({ nouns: [], verbs: [], adjectives: [], connectors: [], reflexive: [] });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
@@ -242,7 +248,181 @@ function App() {
     }
   }, [doubleClickedText]);
 
-  // Global listener for double clicks to select words
+  const longPressTimerRef = useRef(null);
+  const touchStartPosRef = useRef({ x: 0, y: 0 });
+  const isLongPressTriggeredRef = useRef(false);
+  const lastSelectionTimeRef = useRef(0);
+
+  // Helper to extract word under touch point (for mobile long-press)
+  const getWordAtPoint = (x, y) => {
+    let range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(x, y);
+    } else if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(x, y);
+      if (pos && pos.offsetNode) {
+        range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+      }
+    }
+    if (!range || !range.startContainer) return null;
+
+    let node = range.startContainer;
+    let offset = range.startOffset;
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.childNodes && node.childNodes[offset]) {
+        node = node.childNodes[offset];
+        offset = 0;
+      }
+    }
+
+    if (node.nodeType !== Node.TEXT_NODE) return null;
+    const text = node.textContent;
+    if (!text) return null;
+
+    const isWordChar = (c) => /[a-zA-ZäöüÄÖÜß\-]/.test(c);
+    let start = offset;
+    let end = offset;
+
+    if (start > 0 && !isWordChar(text[start]) && isWordChar(text[start - 1])) {
+      start--;
+      end--;
+    }
+
+    while (start > 0 && isWordChar(text[start - 1])) {
+      start--;
+    }
+    while (end < text.length && isWordChar(text[end])) {
+      end++;
+    }
+
+    const word = text.slice(start, end).trim();
+    if (!word || word.length < 2) return null;
+
+    return { word, node, start, end };
+  };
+
+  // Mobile Touch Listener (long press & double-tap selection on iOS / Android)
+  useEffect(() => {
+    if (isAnonymous) return;
+
+    const handleTouchStart = (e) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+
+      const targetTag = e.target.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
+        return;
+      }
+      if (e.target.closest('button') || e.target.closest('.sound-btn') || e.target.closest('#double-click-popover')) {
+        return;
+      }
+
+      touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+      isLongPressTriggeredRef.current = false;
+
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+
+      longPressTimerRef.current = setTimeout(() => {
+        const found = getWordAtPoint(touchStartPosRef.current.x, touchStartPosRef.current.y);
+        if (found && found.word) {
+          isLongPressTriggeredRef.current = true;
+          lastSelectionTimeRef.current = Date.now();
+
+          // Visually select the word
+          try {
+            const sel = window.getSelection();
+            const r = document.createRange();
+            r.setStart(found.node, found.start);
+            r.setEnd(found.node, found.end);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          } catch (err) {}
+
+          if (navigator.vibrate) {
+            try { navigator.vibrate(40); } catch (vErr) {}
+          }
+
+          setDoubleClickedText(found.word);
+          setDoubleClickPosition({
+            x: touchStartPosRef.current.x,
+            y: touchStartPosRef.current.y
+          });
+        }
+      }, 450);
+    };
+
+    const handleTouchMove = (e) => {
+      if (!longPressTimerRef.current) return;
+      const touch = e.touches[0];
+      if (!touch) return;
+      const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+      const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+      if (dx > 10 || dy > 10) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    };
+
+    const handleTouchEnd = (e) => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+
+      if (isLongPressTriggeredRef.current) {
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+        isLongPressTriggeredRef.current = false;
+        return;
+      }
+
+      const targetTag = e.target.tagName;
+      if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
+        return;
+      }
+      if (e.target.closest('#double-click-popover')) {
+        return;
+      }
+
+      // Check if iOS selected text via native tap/selection
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const text = selection.toString().trim();
+        if (text && text.length > 1 && !/\d/.test(text) && text.split(/\s+/).length <= 3) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          lastSelectionTimeRef.current = Date.now();
+          setDoubleClickedText(text);
+          setDoubleClickPosition({
+            x: rect.left + rect.width / 2,
+            y: rect.bottom
+          });
+        }
+      }, 100);
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, [isAnonymous]);
+
+  // Global listener for double clicks to select words (desktop)
   useEffect(() => {
     const handleDblClick = (e) => {
       if (isAnonymous) return;
@@ -252,14 +432,29 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
+      if (e.target.closest('#double-click-popover')) {
+        return;
+      }
 
       // Defer reading selection to let Safari/WebKit update selection state asynchronously
       setTimeout(() => {
-        const selection = window.getSelection().toString().trim();
+        const selection = window.getSelection();
+        const text = selection ? selection.toString().trim() : '';
         // Allow only valid short word/phrases (1-3 words, no numbers, length > 1)
-        if (selection && selection.length > 1 && !/\d/.test(selection) && selection.split(/\s+/).length <= 3) {
-          setDoubleClickedText(selection);
-          setDoubleClickPosition({ x: e.clientX, y: e.clientY });
+        if (text && text.length > 1 && !/\d/.test(text) && text.split(/\s+/).length <= 3) {
+          lastSelectionTimeRef.current = Date.now();
+          setDoubleClickedText(text);
+          let x = e.clientX;
+          let y = e.clientY;
+          if (selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (rect.width > 0) {
+              x = rect.left + rect.width / 2;
+              y = rect.bottom;
+            }
+          }
+          setDoubleClickPosition({ x, y });
         }
       }, 0);
     };
@@ -270,36 +465,65 @@ function App() {
   // Global click outside listener to close the popup
   useEffect(() => {
     const handleClickOutside = (e) => {
+      // Ignore clicks immediately following a selection event (prevent touch race conditions)
+      if (Date.now() - lastSelectionTimeRef.current < 450) {
+        return;
+      }
       const popover = document.getElementById('double-click-popover');
       if (popover && !popover.contains(e.target)) {
         setDoubleClickedText('');
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
-    return () => window.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('touchend', handleClickOutside);
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('touchend', handleClickOutside);
+    };
   }, []);
 
-  // Look up if double clicked word matches any official B1 vocabulary item
+  // Look up if double clicked / selected word matches any official B1 vocabulary item
   const matchedWordInfo = useMemo(() => {
     if (!doubleClickedText) return null;
     const cleanQuery = doubleClickedText.toLowerCase().replace(/[^a-zäöüß]/g, '').trim();
     if (!cleanQuery) return null;
 
     const categories = ['nouns', 'verbs', 'adjectives', 'connectors', 'reflexive'];
+
+    // Pass 1: Direct exact match
     for (let cat of categories) {
       const match = (vocabData[cat] || []).find(item => {
-        // Strip out leading articles/reflexive markers for matches
         const cleanWord = item.word.toLowerCase()
           .replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
           .replace(/\(.*\)/g, '')
           .replace(/,.*$/, '')
           .trim();
-        return cleanWord === cleanQuery || item.word.toLowerCase() === cleanQuery || cleanWord.includes(cleanQuery);
+        return cleanWord === cleanQuery || item.word.toLowerCase() === cleanQuery;
       });
       if (match) {
         return { ...match, category: cat };
       }
     }
+
+    // Pass 2: Check conjugations or multi-word item parts
+    for (let cat of categories) {
+      const match = (vocabData[cat] || []).find(item => {
+        if (item.conjugation) {
+          const conjParts = item.conjugation.toLowerCase().replace(/[^a-zäöüß\s]/g, ' ').split(/\s+/);
+          if (conjParts.includes(cleanQuery)) return true;
+        }
+        const cleanWord = item.word.toLowerCase()
+          .replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/,.*$/, '')
+          .trim();
+        return cleanWord.split(/\s+/).includes(cleanQuery);
+      });
+      if (match) {
+        return { ...match, category: cat };
+      }
+    }
+
     return null;
   }, [doubleClickedText, vocabData]);
 
@@ -717,9 +941,6 @@ function App() {
     );
   }
 
-  const isMobileOrTablet = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
-    (/Apple/i.test(navigator.vendor) && navigator.maxTouchPoints > 0);
 
   return (
     <div className="app-container" style={!isMobileOrTablet ? { zoom: fontScale } : {}}>
@@ -1112,120 +1333,214 @@ function App() {
         {activeTab === 'stats' && <Stats stats={computedStats} reviews={reviews} onResetStats={handleResetStats} />}
       </main>
 
-      {/* Double click quick-add popover */}
+      {/* Double click / Long press quick-add popover */}
       {doubleClickedText && (
-        <div
-          id="double-click-popover"
-          className="glass-card"
-          style={{
-            position: 'absolute',
-            top: `${doubleClickPosition.y + window.scrollY + 10}px`,
-            left: `${Math.min(window.innerWidth - 300, Math.max(10, doubleClickPosition.x + window.scrollX - 130))}px`,
-            zIndex: 9999,
-            width: '280px',
-            padding: '16px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
-            border: '2px solid var(--border-color)',
-            backdropFilter: 'blur(25px)',
-            textAlign: 'left',
-            color: 'var(--text-primary)'
-          }}
-        >
-          {matchedWordInfo ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                B1 Dictionary Match Found
-              </div>
-              <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>
-                {matchedWordInfo.word}
-              </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {matchedWordInfo.meaning}
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                <button
-                  type="button"
-                  className="feedback-btn good"
-                  style={{ flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto' }}
-                  onClick={() => {
-                    handleToggleMyList(matchedWordInfo);
-                    setDoubleClickedText('');
-                  }}
-                >
-                  {myList.some(item => item.word.toLowerCase() === matchedWordInfo.word.toLowerCase())
-                    ? '★ Unstar Word'
-                    : '★ Add to My List'}
-                </button>
-                <button
-                  type="button"
-                  className="nav-button"
-                  style={{ padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
-                  onClick={() => setDoubleClickedText('')}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleQuickSave} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Add Selected Custom Word
-              </div>
-              <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
-                🇩🇪 {doubleClickedText}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <input
-                  type="text"
-                  className="search-input"
-                  style={{ padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%' }}
-                  placeholder="English meaning..."
-                  value={quickMeaning}
-                  onChange={(e) => setQuickMeaning(e.target.value)}
-                  required
-                  autoFocus
-                  autoComplete="off"
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <select
-                  className="search-input"
-                  style={{ padding: '8px', fontSize: '12px', borderRadius: '8px', width: '100%', height: '34px', color: '#fff', background: '#090a0f' }}
-                  value={quickCategory}
-                  onChange={(e) => setQuickCategory(e.target.value)}
-                >
-                  <option value="nouns">Noun</option>
-                  <option value="verbs">Verb</option>
-                  <option value="reflexive">Reflexive Verb</option>
-                  <option value="adjectives">Adjective / Adverb</option>
-                  <option value="connectors">Connector</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                <button
-                  type="submit"
-                  className="feedback-btn good"
-                  style={{ flexGrow: 1, padding: '8px', fontSize: '11px', borderRadius: '8px', maxWidth: 'none', minHeight: 'auto' }}
-                  disabled={!quickMeaning.trim()}
-                >
-                  ➕ Add Word
-                </button>
-                <button
-                  type="button"
-                  className="nav-button"
-                  style={{ padding: '8px 12px', fontSize: '11px', borderRadius: '8px', minWidth: 'auto', background: 'rgba(255,255,255,0.05)' }}
-                  onClick={() => setDoubleClickedText('')}
-                >
-                  Close
-                </button>
-              </div>
-            </form>
+        <>
+          {/* Mobile backdrop */}
+          {isMobileOrTablet && (
+            <div
+              onClick={() => setDoubleClickedText('')}
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(0, 0, 0, 0.65)',
+                backdropFilter: 'blur(4px)',
+                WebkitBackdropFilter: 'blur(4px)',
+                zIndex: 9998
+              }}
+            />
           )}
-        </div>
+
+          <div
+            id="double-click-popover"
+            className="glass-card"
+            style={isMobileOrTablet ? {
+              position: 'fixed',
+              bottom: '20px',
+              left: '16px',
+              right: '16px',
+              zIndex: 9999,
+              maxWidth: '440px',
+              margin: '0 auto',
+              padding: '20px',
+              boxShadow: '0 16px 40px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(139, 92, 246, 0.4)',
+              borderRadius: '20px',
+              backdropFilter: 'blur(25px)',
+              WebkitBackdropFilter: 'blur(25px)',
+              background: 'rgba(15, 17, 26, 0.96)',
+              textAlign: 'left',
+              color: 'var(--text-primary)'
+            } : {
+              position: 'absolute',
+              top: `${doubleClickPosition.y + window.scrollY + 10}px`,
+              left: `${Math.min(window.innerWidth - 300, Math.max(10, doubleClickPosition.x + window.scrollX - 130))}px`,
+              zIndex: 9999,
+              width: '280px',
+              padding: '16px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+              border: '2px solid var(--border-color)',
+              backdropFilter: 'blur(25px)',
+              WebkitBackdropFilter: 'blur(25px)',
+              textAlign: 'left',
+              color: 'var(--text-primary)'
+            }}
+          >
+            {matchedWordInfo ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    📖 B1 Dictionary Match
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDoubleClickedText('')}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>
+                    {matchedWordInfo.word}
+                  </div>
+                  <button
+                    type="button"
+                    className="sound-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.speakGerman) window.speakGerman(matchedWordInfo.word.replace(/,.*$/, ''));
+                    }}
+                    title="Listen Pronunciation"
+                    style={{ fontSize: '16px', width: '32px', height: '32px' }}
+                  >
+                    🔊
+                  </button>
+                </div>
+
+                <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                  {matchedWordInfo.meaning}
+                </div>
+
+                {matchedWordInfo.conjugation && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    {matchedWordInfo.conjugation}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    className="feedback-btn good"
+                    style={{ flexGrow: 1, padding: '12px', fontSize: '13px', borderRadius: '12px', maxWidth: 'none', minHeight: 'auto', fontWeight: '700' }}
+                    onClick={() => {
+                      handleToggleMyList(matchedWordInfo);
+                      setDoubleClickedText('');
+                    }}
+                  >
+                    {myList.some(item => item.word.toLowerCase() === matchedWordInfo.word.toLowerCase())
+                      ? '★ Remove from My List'
+                      : '★ Add to My List'}
+                  </button>
+                  <button
+                    type="button"
+                    className="nav-button"
+                    style={{ padding: '12px 18px', fontSize: '13px', borderRadius: '12px', minWidth: 'auto', background: 'rgba(255,255,255,0.06)' }}
+                    onClick={() => setDoubleClickedText('')}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleQuickSave} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    ✨ Add Custom Word to My List
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setDoubleClickedText('')}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>
+                    🇩🇪 {doubleClickedText}
+                  </div>
+                  <button
+                    type="button"
+                    className="sound-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.speakGerman) window.speakGerman(doubleClickedText);
+                    }}
+                    title="Listen"
+                    style={{ fontSize: '16px', width: '32px', height: '32px' }}
+                  >
+                    🔊
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <input
+                    type="text"
+                    className="search-input"
+                    style={{ padding: '10px 12px', fontSize: '16px', borderRadius: '10px', width: '100%' }}
+                    placeholder="English meaning..."
+                    value={quickMeaning}
+                    onChange={(e) => setQuickMeaning(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <select
+                    className="search-input"
+                    style={{ padding: '10px 12px', fontSize: '16px', borderRadius: '10px', width: '100%', height: '42px', color: '#fff', background: '#090a0f' }}
+                    value={quickCategory}
+                    onChange={(e) => setQuickCategory(e.target.value)}
+                  >
+                    <option value="nouns">Noun</option>
+                    <option value="verbs">Verb</option>
+                    <option value="reflexive">Reflexive Verb</option>
+                    <option value="adjectives">Adjective / Adverb</option>
+                    <option value="connectors">Connector</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    type="submit"
+                    className="feedback-btn good"
+                    style={{ flexGrow: 1, padding: '12px', fontSize: '13px', borderRadius: '12px', maxWidth: 'none', minHeight: 'auto', fontWeight: '700' }}
+                    disabled={!quickMeaning.trim()}
+                  >
+                    ➕ Add Word
+                  </button>
+                  <button
+                    type="button"
+                    className="nav-button"
+                    style={{ padding: '12px 18px', fontSize: '13px', borderRadius: '12px', minWidth: 'auto', background: 'rgba(255,255,255,0.06)' }}
+                    onClick={() => setDoubleClickedText('')}
+                  >
+                    Close
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
