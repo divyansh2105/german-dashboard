@@ -1,10 +1,44 @@
 export const DEFAULT_GEMINI_MODELS = [
-  'gemini-1.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
+  'gemini-3.5-flash',
+  'gemini-2.0-flash',
   'gemini-2.0-flash-exp',
+  'gemini-1.5-flash',
   'gemini-1.5-flash-8b',
-  'gemini-1.5-pro',
-  'gemini-2.0-flash'
+  'gemini-1.5-pro'
 ];
+
+/**
+ * Priority scoring for models. Lower score means tried earlier.
+ */
+function getModelPriorityScore(modelName) {
+  if (!modelName) return 999;
+  const lower = modelName.toLowerCase();
+  
+  // Highest priority requested: 3.6 flash, then 3.7 flash, then 3.5 flash
+  if (lower.includes('3.6') && lower.includes('flash')) return 10;
+  if (lower.includes('3.7') && lower.includes('flash')) return 20;
+  if (lower.includes('3.5') && lower.includes('flash')) return 30;
+  if (lower.includes('3.6')) return 32;
+  if (lower.includes('3.7')) return 34;
+  if (lower.includes('3.5')) return 36;
+  
+  // 2.0 generation models
+  if (lower.includes('2.0') && lower.includes('flash')) return 40;
+  if (lower.includes('2.0')) return 45;
+  
+  // 1.5 generation models
+  if (lower.includes('1.5') && lower.includes('flash-8b')) return 50;
+  if (lower.includes('1.5') && lower.includes('flash')) return 55;
+  if (lower.includes('1.5') && lower.includes('pro')) return 60;
+  
+  // Other flash models
+  if (lower.includes('flash')) return 70;
+  
+  // Everything else
+  return 80;
+}
 
 /**
  * Builds an ordered list of models to try, starting with preferredModel.
@@ -12,20 +46,21 @@ export const DEFAULT_GEMINI_MODELS = [
 export function getCandidateModels(preferredModel, availableModels = []) {
   const pool = Array.from(new Set([
     preferredModel,
-    ...(availableModels || []),
-    ...DEFAULT_GEMINI_MODELS
+    ...DEFAULT_GEMINI_MODELS,
+    ...(availableModels || [])
   ])).filter(Boolean);
 
   // Keep preferredModel first
   const remaining = pool.filter(m => m !== preferredModel);
 
-  // Sort remaining models: prefer modern flash/flash-8b models, then pro models
+  // Sort remaining models by priority score
   remaining.sort((a, b) => {
-    const aFlash = a.includes('flash');
-    const bFlash = b.includes('flash');
-    if (aFlash && !bFlash) return -1;
-    if (!aFlash && bFlash) return 1;
-    return 0;
+    const scoreA = getModelPriorityScore(a);
+    const scoreB = getModelPriorityScore(b);
+    if (scoreA !== scoreB) {
+      return scoreA - scoreB;
+    }
+    return a.localeCompare(b);
   });
 
   return [preferredModel, ...remaining];
@@ -155,19 +190,28 @@ export async function generateContentWithFallback({
  * Fetches available models from Gemini API.
  */
 export async function fetchAvailableModels(apiKey) {
-  if (!apiKey) return [];
+  if (!apiKey) return DEFAULT_GEMINI_MODELS;
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-    if (!res.ok) return [];
+    if (!res.ok) return DEFAULT_GEMINI_MODELS;
     const data = await res.json();
     if (data.models && data.models.length > 0) {
       const names = data.models
         .filter(m => m.supportedGenerationMethods?.includes('generateContent'))
         .map(m => m.name.replace('models/', ''));
-      return names;
+      
+      const combined = Array.from(new Set([...DEFAULT_GEMINI_MODELS, ...names]));
+      // Sort in our preferred priority order
+      combined.sort((a, b) => {
+        const scoreA = getModelPriorityScore(a);
+        const scoreB = getModelPriorityScore(b);
+        if (scoreA !== scoreB) return scoreA - scoreB;
+        return a.localeCompare(b);
+      });
+      return combined;
     }
   } catch (err) {
     console.error('Error listing Gemini models:', err);
   }
-  return [];
+  return DEFAULT_GEMINI_MODELS;
 }

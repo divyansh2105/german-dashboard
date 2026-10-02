@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateContentWithFallback, fetchAvailableModels } from '../utils/geminiApi';
+import { generateContentWithFallback, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
 
 const PREPOSITION_GROUPS = {
   Akkusativ: ['bis', 'durch', 'für', 'gegen', 'ohne', 'um'],
@@ -13,10 +13,26 @@ export default function GrammarPractice() {
   const [showKeyInput, setShowKeyInput] = useState(!apiKey);
   const [tempKey, setTempKey] = useState('');
   
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('b1_gemini_selected_model') || 'gemini-1.5-flash');
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const saved = localStorage.getItem('b1_gemini_selected_model');
+    if (!saved || saved === 'gemini-1.5-flash') {
+      return 'gemini-3.6-flash';
+    }
+    return saved;
+  });
   const [availableModels, setAvailableModels] = useState(() => {
     const saved = localStorage.getItem('b1_gemini_available_models');
-    return saved ? JSON.parse(saved) : ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-exp'];
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return Array.from(new Set([...DEFAULT_GEMINI_MODELS, ...parsed]));
+        }
+      } catch (e) {
+        // ignore JSON parse error
+      }
+    }
+    return DEFAULT_GEMINI_MODELS;
   });
 
   // State to track selected prepositions
