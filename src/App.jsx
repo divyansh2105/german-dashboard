@@ -378,7 +378,9 @@ function App() {
         if (e.cancelable) {
           e.preventDefault();
         }
-        isLongPressTriggeredRef.current = false;
+        setTimeout(() => {
+          isLongPressTriggeredRef.current = false;
+        }, 500);
         return;
       }
 
@@ -386,7 +388,7 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      if (e.target.closest('#double-click-popover')) {
+      if (e.target.closest('#double-click-popover') || e.target.closest('#popover-backdrop')) {
         return;
       }
 
@@ -462,11 +464,13 @@ function App() {
     return () => window.removeEventListener('dblclick', handleDblClick);
   }, [isAnonymous]);
 
-  // Global click outside listener to close the popup
+  // Global click outside listener to close the popup (desktop)
   useEffect(() => {
     const handleClickOutside = (e) => {
-      // Ignore clicks immediately following a selection event (prevent touch race conditions)
-      if (Date.now() - lastSelectionTimeRef.current < 450) {
+      // On mobile / tablet, the backdrop overlay handles clicks outside
+      if (isMobileOrTablet) return;
+
+      if (Date.now() - lastSelectionTimeRef.current < 600) {
         return;
       }
       const popover = document.getElementById('double-click-popover');
@@ -475,12 +479,10 @@ function App() {
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('touchend', handleClickOutside);
     return () => {
       window.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('touchend', handleClickOutside);
     };
-  }, []);
+  }, [isMobileOrTablet]);
 
   // Look up if double clicked / selected word matches any official B1 vocabulary item
   const matchedWordInfo = useMemo(() => {
@@ -1339,7 +1341,12 @@ function App() {
           {/* Mobile backdrop */}
           {isMobileOrTablet && (
             <div
+              id="popover-backdrop"
               onClick={() => setDoubleClickedText('')}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                setDoubleClickedText('');
+              }}
               style={{
                 position: 'fixed',
                 top: 0,
