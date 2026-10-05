@@ -100,7 +100,7 @@ export default function MyList({
       isCustom: true
     };
 
-    onToggleMyList(customItem);
+    onToggleMyList(customItem, true);
 
     // Reset form
     setNewWord('');

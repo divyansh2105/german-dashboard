@@ -85,8 +85,21 @@ function App() {
     }
   };
   const [myList, setMyList] = useState(() => {
-    const saved = localStorage.getItem('b1_my_list');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('b1_my_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const backup = localStorage.getItem('b1_my_list_backup');
+      if (backup) {
+        const parsedBackup = JSON.parse(backup);
+        if (Array.isArray(parsedBackup) && parsedBackup.length > 0) return parsedBackup;
+      }
+    } catch (e) {
+      console.error("Failed to load local myList:", e);
+    }
+    return [];
   });
 
   const [syncCode, setSyncCode] = useState(() => localStorage.getItem('b1_sync_code') || '');
@@ -104,39 +117,84 @@ function App() {
       if (!res.ok) throw new Error(await res.text());
       const cloudList = await res.json();
 
+      // Resolve current local items reliably (from forceList, state, or localStorage backup)
+      let localItems = Array.isArray(forceList) && forceList.length > 0 
+        ? forceList 
+        : (Array.isArray(myList) && myList.length > 0 ? myList : []);
+      
+      if (localItems.length === 0) {
+        try {
+          const stored = localStorage.getItem('b1_my_list');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed) && parsed.length > 0) localItems = parsed;
+          }
+          if (localItems.length === 0) {
+            const backupStored = localStorage.getItem('b1_my_list_backup');
+            if (backupStored) {
+              const parsedBackup = JSON.parse(backupStored);
+              if (Array.isArray(parsedBackup) && parsedBackup.length > 0) localItems = parsedBackup;
+            }
+          }
+        } catch (e) {}
+      }
+
+      const validCloudList = Array.isArray(cloudList) ? cloudList : [];
+
+      // CRITICAL SAFEGUARD:
+      // If cloud returned empty [] but local storage already has items, NEVER wipe local storage!
+      // Instead, initialize the cloud database with the local items.
       let finalConfiguredList = [];
 
-      if (forceList) {
-        // First-time connection merge: combine both lists
+      if (validCloudList.length === 0 && localItems.length > 0) {
+        finalConfiguredList = localItems;
+        try {
+          await fetch(`/api/sync?code=${cleanCode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalConfiguredList),
+            cache: 'no-store'
+          });
+        } catch (postErr) {
+          console.warn("Could not seed cloud with local items:", postErr);
+        }
+      } else {
+        // Two-way merge: combine both cloud and local items so no word is ever lost
         const mergedMap = new Map();
-        if (Array.isArray(cloudList)) {
-          cloudList.forEach(item => {
-            if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
-          });
-        }
-        if (Array.isArray(forceList)) {
-          forceList.forEach(item => {
-            if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
-          });
-        }
+        validCloudList.forEach(item => {
+          if (item && item.word) mergedMap.set(item.word.toLowerCase(), item);
+        });
+        localItems.forEach(item => {
+          if (item && item.word) {
+            if (!mergedMap.has(item.word.toLowerCase())) {
+              mergedMap.set(item.word.toLowerCase(), item);
+            }
+          }
+        });
         finalConfiguredList = Array.from(mergedMap.values());
 
-        // Upload merged list back to cloud immediately
-        const postRes = await fetch(`/api/sync?code=${cleanCode}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(finalConfiguredList),
-          cache: 'no-store'
-        });
-        if (!postRes.ok) throw new Error(await postRes.text());
-      } else {
-        // Regular background pull: database is the absolute source of truth
-        finalConfiguredList = Array.isArray(cloudList) ? cloudList : [];
+        // If local items added new entries to cloudList, update cloud with merged list
+        if (finalConfiguredList.length > validCloudList.length || forceList) {
+          try {
+            await fetch(`/api/sync?code=${cleanCode}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(finalConfiguredList),
+              cache: 'no-store'
+            });
+          } catch (postErr) {
+            console.warn("Could not sync merged items back to cloud:", postErr);
+          }
+        }
       }
 
       // Set ref to skip next upload trigger since this change came from a cloud pull
       skipNextUploadRef.current = true;
       setMyList(finalConfiguredList);
+      localStorage.setItem('b1_my_list', JSON.stringify(finalConfiguredList));
+      if (finalConfiguredList.length > 0) {
+        localStorage.setItem('b1_my_list_backup', JSON.stringify(finalConfiguredList));
+      }
 
       setSyncStatus('success');
       setSyncError('');
@@ -157,6 +215,9 @@ function App() {
   // Save list to local storage and sync to cloud if code is set
   useEffect(() => {
     localStorage.setItem('b1_my_list', JSON.stringify(myList));
+    if (Array.isArray(myList) && myList.length > 0) {
+      localStorage.setItem('b1_my_list_backup', JSON.stringify(myList));
+    }
 
     // Ignore the very first run on component mount to prevent stale local cache from overwriting fresh cloud data
     if (!isMountedRef.current) {
@@ -194,14 +255,21 @@ function App() {
     }
   }, [myList, syncCode]);
 
-  const handleToggleMyList = (wordItem) => {
+  const handleToggleMyList = (wordItem, forceAdd = false) => {
     if (isAnonymous) {
       alert("Bookmarking (My List) features are disabled in Anonymous Mode.");
       return;
     }
-    const exists = myList.some(item => item.word.toLowerCase() === wordItem.word.toLowerCase());
-    if (exists) {
-      setMyList(myList.filter(item => item.word.toLowerCase() !== wordItem.word.toLowerCase()));
+    const existsIndex = myList.findIndex(item => item.word.toLowerCase() === wordItem.word.toLowerCase());
+    if (existsIndex !== -1 && !forceAdd) {
+      setMyList(myList.filter((_, idx) => idx !== existsIndex));
+    } else if (existsIndex !== -1 && forceAdd) {
+      const updated = [...myList];
+      updated[existsIndex] = {
+        ...updated[existsIndex],
+        ...wordItem
+      };
+      setMyList(updated);
     } else {
       setMyList([...myList, {
         word: wordItem.word,
@@ -543,7 +611,7 @@ function App() {
       isCustom: true
     };
 
-    handleToggleMyList(customItem);
+    handleToggleMyList(customItem, true);
 
     setDoubleClickedText('');
     setQuickMeaning('');
