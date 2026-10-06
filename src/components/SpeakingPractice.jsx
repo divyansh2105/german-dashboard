@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateContentWithFallback, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
+import { queryGemini, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
 
 const TOPIC_HELPERS = [
   {
@@ -204,16 +204,12 @@ export default function SpeakingPractice() {
 
       const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
 
-      const { text: geminiText, usedModel, wasFallback } = await generateContentWithFallback({
+      const { text: geminiText, usedModel, wasFallback } = await queryGemini({
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        payload: {
-          contents: contentsPayload,
-          systemInstruction: {
-            parts: [{ text: systemInstructionText }]
-          }
-        },
+        contents: contentsPayload,
+        systemInstruction: systemInstructionText,
         onFallback: ({ failedModel, nextModel }) => {
           setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
@@ -270,19 +266,13 @@ You must output exactly a JSON object matching this schema:
 Output raw JSON only. Do not wrap in markdown code blocks.`;
 
     try {
-      const { text: rawJson, usedModel, wasFallback } = await generateContentWithFallback({
+      const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        payload: {
-          contents: [{ role: 'user', parts: [{ text: `Evaluate this paragraph: "${paragraphText}"` }] }],
-          systemInstruction: {
-            parts: [{ text: systemInstruction }]
-          },
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        },
+        prompt: `Evaluate this paragraph: "${paragraphText}"`,
+        systemInstruction,
+        jsonMode: true,
         onFallback: ({ failedModel, nextModel }) => {
           setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
@@ -295,7 +285,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
         setFallbackNotice('');
       }
 
-      const parsedResult = JSON.parse(rawJson);
+      const parsedResult = parsedJson || JSON.parse(rawJson);
       setEvaluationResult(parsedResult);
     } catch (err) {
       console.error(err);

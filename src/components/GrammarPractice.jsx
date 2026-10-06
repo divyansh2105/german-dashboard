@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { generateContentWithFallback, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
+import { queryGemini, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
 
 const PREPOSITION_GROUPS = {
   Akkusativ: ['bis', 'durch', 'für', 'gegen', 'ohne', 'um'],
@@ -159,17 +159,13 @@ You must return a raw JSON object matching this schema exactly:
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
     try {
-      const { text: rawJson, usedModel, wasFallback } = await generateContentWithFallback({
+      const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        payload: {
-          contents: [{ role: 'user', parts: [{ text: promptText }] }],
-          systemInstruction: { parts: [{ text: systemInstruction }] },
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        },
+        prompt: promptText,
+        systemInstruction,
+        jsonMode: true,
         onFallback: ({ failedModel, nextModel }) => {
           setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
@@ -182,7 +178,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         setFallbackNotice('');
       }
 
-      const parsedQuestion = JSON.parse(rawJson);
+      const parsedQuestion = parsedJson || JSON.parse(rawJson);
       if (!parsedQuestion.sentence || !parsedQuestion.correctPreposition) {
         throw new Error('Invalid question format returned.');
       }

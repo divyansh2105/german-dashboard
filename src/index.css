@@ -101,12 +101,16 @@ body::after {
   align-items: center;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--border-color);
+  gap: 16px;
+  width: 100%;
+  flex-wrap: wrap;
 }
 
 .logo-section {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .logo-badge {
@@ -138,6 +142,26 @@ body::after {
   padding: 6px;
   border-radius: 30px;
   border: 1px solid var(--border-color);
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.app-nav::-webkit-scrollbar {
+  height: 4px;
+}
+
+.app-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
 }
 
 .nav-button {
@@ -153,6 +177,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .nav-button:hover {
@@ -820,7 +846,7 @@ h2.section-title {
    Responsive Styles for Mobile/Tablet Devices
    ========================================== */
 
-@media (max-width: 850px) {
+@media (max-width: 1100px) {
   .app-container {
     padding: 16px;
     gap: 16px;

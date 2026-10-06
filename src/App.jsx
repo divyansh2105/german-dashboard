@@ -9,6 +9,7 @@ import MyList from './components/MyList';
 import Stats from './components/Stats';
 import SpeakingPractice from './components/SpeakingPractice';
 import GrammarPractice from './components/GrammarPractice';
+import TranslationPractice from './components/TranslationPractice';
 import './index.css';
 
 function App() {
@@ -1307,6 +1308,12 @@ function App() {
             🗣️ Speaking
           </button>
           <button
+            className={`nav-button ${activeTab === 'translations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('translations')}
+          >
+            🌐 Translations
+          </button>
+          <button
             className={`nav-button ${activeTab === 'grammar' ? 'active' : ''}`}
             onClick={() => setActiveTab('grammar')}
           >
@@ -1350,6 +1357,24 @@ function App() {
             </div>
           ) : (
             <SpeakingPractice />
+          )
+        )}
+        {activeTab === 'translations' && (
+          isAnonymous ? (
+            <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '550px', padding: '20px', margin: '40px auto' }}>
+              <div className="glass-card" style={{ padding: '40px 24px', textAlign: 'center', width: '100%' }}>
+                <span style={{ fontSize: '48px' }}>🕶️</span>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginTop: '16px', color: '#fff' }}>Translations Mode is Locked</h3>
+                <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '320px', margin: '12px auto 20px', lineHeight: '1.5' }}>
+                  Sentence translation exercises and AI evaluation powered by Gemini are disabled in Anonymous Mode.
+                </p>
+                <button onClick={handleDisableAnonymous} className="feedback-btn good" style={{ width: 'auto', padding: '10px 20px', display: 'inline-flex', alignSelf: 'center' }}>
+                  Turn Off Anonymous Mode 👤
+                </button>
+              </div>
+            </div>
+          ) : (
+            <TranslationPractice />
           )
         )}
         {activeTab === 'grammar' && (
