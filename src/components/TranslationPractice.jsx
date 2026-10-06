@@ -23,6 +23,91 @@ const SENTENCE_LENGTHS = [
   { id: 'long', label: '🔺 Long', desc: 'Longer multi-clause sentences (17-26 words)', wordRange: '17 to 26 words' }
 ];
 
+// Diverse real-world scenarios to prevent repetitive generations
+const SCENARIO_DOMAINS = [
+  { domain: "Workplace & Technology", details: "team meetings, deadlines, IT troubleshooting, remote work, client communication, software rollout, job interviews" },
+  { domain: "Housing, Landlords & Repairs", details: "rental contracts, heating malfunction, noise complaints, neighbors, kitchen renovation, waste separation" },
+  { domain: "Travel & Public Transportation", details: "railway delays, platform changes, flight delay compensation, booking compartments, luggage, road trips" },
+  { domain: "Official Bureaucracy & Admin", details: "residence permit, municipal registration (Bürgeramt), tax office inquiries, banking opening hours, post office returns" },
+  { domain: "Health, Doctor & Pharmacy", details: "prescriptions, dentist appointments, allergic reactions, physiotherapy recommendations, medical checkups" },
+  { domain: "Social Gatherings & Friendships", details: "dinner invitations, birthday surprise gifts, resolving arguments, concert tickets, mutual favors, weekend trips" },
+  { domain: "Shopping, Consumer & Services", details: "defective electronics warranty, returning clothing, organic supermarket choices, customer support hotlines" },
+  { domain: "University, Language & Study", details: "library group sessions, exam preparation, German presentation rehearsals, professor office hours" },
+  { domain: "Leisure, Outdoors & Nature", details: "hiking in the Black Forest, camping in unpredictable weather, bicycle repair, community sports clubs" },
+  { domain: "Culture, Media & City Life", details: "art museum exhibitions, attending the local theater, neighborhood street festivals, cinema debates" }
+];
+
+// Diverse sentence perspectives & rhetorical types
+const PERSPECTIVE_STYLES = [
+  "First-person singular/plural explaining an important personal decision, plan, or lesson learned",
+  "Polite professional inquiry or favor request (using formal 'Sie' or polite indirect phrasing)",
+  "Third-person situational account (narrating actions of a colleague, landlord, doctor, customer, or technician)",
+  "Cause and consequence (describing an obstacle, unforeseen change, and how it was tackled)",
+  "Contrast or concessive realization (highlighting an unexpected twist or contradiction with 'although / even though')",
+  "Hypothetical advice or constructive suggestion (using conditional advice or recommendations)",
+  "Sequential chronology (action that had to be done prior to another event or future milestone)"
+];
+
+// Topic-specific grammatical sub-nuances for deep variety
+const TOPIC_SUB_FOCUSES = {
+  past: [
+    "Präteritum of modal verbs (musste, konnte, durfte, wollte) combined with an infinitive clause",
+    "Perfekt with 'sein' for change of location or state (z.B. umgezogen, eingeschlafen, aufgewacht, angekommen)",
+    "Perfekt with reflexive verbs (z.B. sich beschwert, sich entschieden, sich gefreut)",
+    "Plusquamperfekt combined with 'nachdem' for completed past actions",
+    "Mixed narrative: reporting a past incident and its lingering consequences"
+  ],
+  future: [
+    "Futur I (werden + Infinitiv) expressing a firm plan, resolution, or prediction",
+    "Futur I expressing an assumption about the present (z.B. 'Er wird wohl im Büro sein')",
+    "Alternative future using temporal adverbs (z.B. nächsten Monat, übermorgen) + Präsens",
+    "Conditional future outcome: what will happen if a specific condition is fulfilled"
+  ],
+  prepositions: [
+    "Two-way prepositions (Wechselpräpositionen) with Dativ for stationary position (in, an, auf, unter, vor, hinter, zwischen)",
+    "Two-way prepositions with Akkusativ for motion/direction (stellen, legen, hängen, setzen)",
+    "Verbs with fixed prepositions (z.B. warten auf, teilnehmen an, sich interessieren für, träumen von, abhängen von)",
+    "Genitiv prepositions common at B1 (während, trotz, wegen, innerhalb)"
+  ],
+  subordinate: [
+    "Double connectors (nicht nur ... sondern auch, sowohl ... als auch, entweder ... oder)",
+    "Concessive clauses with 'obwohl' followed by main clause inversion",
+    "Infinitive clauses with 'um ... zu' vs causal clause with 'damit'",
+    "Infinitive with 'ohne ... zu' or 'anstatt ... zu'",
+    "Indirect questions using 'ob' or interrogative pronouns (wann, wie, warum)"
+  ],
+  modal: [
+    "Polite request or subjective permission using Konjunktiv II / Modalverben (dürfte, könnte, müsste)",
+    "Modal verb inside a subordinate clause (verb cluster at the end: '... weil er morgen arbeiten muss')",
+    "Past tense of modal verbs in everyday workplace or travel excuses",
+    "Expressing obligation vs prohibition (müssen vs nicht dürfen)"
+  ],
+  passive: [
+    "Vorgangspassiv in Präsens for ongoing processes or official rules (werden + Partizip II)",
+    "Vorgangspassiv in Präteritum/Perfekt for completed events (wurde + Partizip II)",
+    "Passive with modal verbs (z.B. 'muss repariert werden', 'kann erst morgen abgeholt werden')",
+    "Zustandspassiv (sein + Partizip II) describing the resulting state"
+  ],
+  relative: [
+    "Relative clause with preposition + case (z.B. 'der Kollege, mit dem ich gesprochen habe')",
+    "Relative clause in Dativ or Genitiv ('das Kind, dessen Eltern...', 'den Freunden, denen wir geholfen haben')",
+    "Relative clause referring to a location or indefinite pronoun ('alles, was...', 'der Ort, wo...')",
+    "Relative clause nested within a complex sentence"
+  ],
+  konjunktiv2: [
+    "Polite requests and offers using 'hätte', 'wäre', 'könnte' (z.B. 'Hätten Sie vielleicht einen Moment Zeit?')",
+    "Unreal conditions in the present ('Wenn ich mehr Zeit hätte, würde ich...')",
+    "Giving polite advice using 'sollte' ('Du solltest unbedingt den Vertrag genau lesen')",
+    "Unreal wishes or regrets in daily situations ('Ich wünschte, die Heizung würde funktionieren')"
+  ],
+  everyday: [
+    "Dealing with an unexpected delay, rescheduling an appointment with apologies",
+    "Filing a polite complaint about a defective item or service issue",
+    "Explaining requirements or asking for advice at a public administrative office",
+    "Navigating a small conflict or negotiation with a neighbor, colleague, or landlord"
+  ]
+};
+
 // Offline backup bank of curated B1 translation exercises
 const OFFLINE_EXERCISES = [
   // Short exercises (5-9 words)
@@ -30,6 +115,7 @@ const OFFLINE_EXERCISES = [
     english: "I will call you tomorrow right after work.",
     topic: "future",
     topicName: "Future Tense",
+    scenarioDomain: "Workplace & Technology",
     grammarFocus: "Temporale Angaben und Futur mit 'werden' oder Präsens.",
     hints: [
       { english: "to call", german: "anrufen (ruft an, hat angerufen)" },
@@ -41,30 +127,80 @@ const OFFLINE_EXERCISES = [
     ]
   },
   {
-    english: "She put the letter on the desk.",
-    topic: "prepositions",
-    topicName: "Prepositions (Wechselpräpositionen)",
-    grammarFocus: "Wechselpräposition 'auf' + Akkusativ bei Bewegung ('auf den Schreibtisch').",
+    english: "The technician repaired the radiator in our office.",
+    topic: "past",
+    topicName: "Past Tenses",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Perfekt / Präteritum mit Akkusativobjekt und lokaler Präposition.",
     hints: [
-      { english: "to put / place", german: "legen (hat gelegt)" },
-      { english: "desk", german: "der Schreibtisch (-e)" }
+      { english: "technician", german: "der Techniker (-)" },
+      { english: "radiator / heater", german: "der Heizkörper (-)" },
+      { english: "to repair", german: "reparieren (hat repariert)" }
     ],
     referenceTranslations: [
-      "Sie hat den Brief auf den Schreibtisch gelegt.",
-      "Sie legte den Brief auf den Schreibtisch."
+      "Der Techniker hat den Heizkörper in unserem Büro repariert.",
+      "Der Techniker reparierte die Heizung in unserem Büro."
     ]
   },
   {
-    english: "We must wait here until five o'clock.",
-    topic: "modal",
-    topicName: "Modal Verbs",
-    grammarFocus: "Modalverb 'müssen' im Präsens + Infinitiv am Satzende.",
+    english: "The keys are lying under the morning newspaper.",
+    topic: "prepositions",
+    topicName: "Prepositions (Wechselpräpositionen)",
+    scenarioDomain: "Housing, Landlords & Repairs",
+    grammarFocus: "Wechselpräposition 'unter' + Dativ bei Ortsangabe (keine Bewegung).",
     hints: [
-      { english: "to wait", german: "warten (hat gewartet)" },
-      { english: "until", german: "bis (Präposition)" }
+      { english: "to lie / rest", german: "liegen (liegt, hat gelegen)" },
+      { english: "newspaper", german: "die Zeitung (-en)" }
     ],
     referenceTranslations: [
-      "Wir müssen hier bis fünf Uhr warten."
+      "Die Schlüssel liegen unter der Morgenzeitung.",
+      "Die Schlüssel befinden sich unter der Zeitung."
+    ]
+  },
+  {
+    english: "The package was delivered to our neighbor yesterday.",
+    topic: "passive",
+    topicName: "Passive Voice (Vorgangspassiv Präteritum)",
+    scenarioDomain: "Official Bureaucracy & Admin",
+    grammarFocus: "Vorgangspassiv im Präteritum: 'wurde' + Partizip II ('geliefert').",
+    hints: [
+      { english: "package", german: "das Paket (-e)" },
+      { english: "to deliver", german: "liefern (hat geliefert) / zustellen" },
+      { english: "neighbor", german: "der Nachbar (-n, n-Deklination)" }
+    ],
+    referenceTranslations: [
+      "Das Paket wurde gestern bei unserem Nachbarn abgegeben.",
+      "Das Paket wurde gestern an unseren Nachbarn geliefert."
+    ]
+  },
+  {
+    english: "Could you please open the conference room window?",
+    topic: "konjunktiv2",
+    topicName: "Konjunktiv II (Polite Request)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Höfliche Bitte mit Konjunktiv II ('Könnten Sie ... öffnen?').",
+    hints: [
+      { english: "conference room", german: "der Konferenzraum (-räume)" },
+      { english: "to open", german: "öffnen / aufmachen" }
+    ],
+    referenceTranslations: [
+      "Könnten Sie bitte das Fenster im Konferenzraum öffnen?",
+      "Würden Sie bitte das Konferenzraumfenster öffnen?"
+    ]
+  },
+  {
+    english: "We must submit the financial report today.",
+    topic: "modal",
+    topicName: "Modal Verbs",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Modalverb 'müssen' im Präsens + Infinitiv am Satzende ('einreichen').",
+    hints: [
+      { english: "to submit", german: "einreichen (hat eingereicht)" },
+      { english: "financial report", german: "der Finanzbericht (-e)" }
+    ],
+    referenceTranslations: [
+      "Wir müssen den Finanzbericht heute einreichen.",
+      "Wir müssen heute den Finanzbericht abgeben."
     ]
   },
   // Medium exercises (10-16 words)
@@ -72,6 +208,7 @@ const OFFLINE_EXERCISES = [
     english: "Yesterday I had to cancel the doctor's appointment because my train was delayed.",
     topic: "past",
     topicName: "Past Tenses & Modal Verbs",
+    scenarioDomain: "Health, Doctor & Pharmacy",
     grammarFocus: "Modalverb im Präteritum ('musste') und Kausalsatz mit 'weil' (Verb am Ende).",
     hints: [
       { english: "to cancel", german: "absagen (hat abgesagt)" },
@@ -84,24 +221,41 @@ const OFFLINE_EXERCISES = [
     ]
   },
   {
-    english: "Next year we will move into a larger apartment near the city center.",
-    topic: "future",
-    topicName: "Future Tense (Futur I)",
-    grammarFocus: "Futur I: werden (konjugiert) + Infinitiv am Satzende ('einziehen').",
+    english: "After we arrived at the university library, we reserved a quiet study room.",
+    topic: "past",
+    topicName: "Past Tenses (Perfekt & Präteritum)",
+    scenarioDomain: "University, Language & Study",
+    grammarFocus: "Temporalsatz mit 'nachdem' (Perfekt/Plusquamperfekt) und Präteritum im Hauptsatz.",
     hints: [
-      { english: "to move in", german: "einziehen (zieht ein, ist eingezogen)" },
-      { english: "larger", german: "größer (Komparativ)" },
-      { english: "city center", german: "das Stadtzentrum / die Innenstadt" }
+      { english: "to arrive", german: "ankommen (ist angekommen)" },
+      { english: "library", german: "die Bibliothek (-en)" },
+      { english: "to reserve", german: "reservieren (hat reserviert)" }
     ],
     referenceTranslations: [
-      "Nächstes Jahr werden wir in eine größere Wohnung in der Nähe des Stadtzentrums einziehen.",
-      "Im nächsten Jahr werden wir in eine größere Wohnung nahe der Innenstadt umziehen."
+      "Nachdem wir in der Universitätsbibliothek angekommen waren, reservierten wir einen ruhigen Lernraum.",
+      "Nachdem wir an der Universitätsbibliothek angekommen sind, haben wir einen ruhigen Arbeitsraum reserviert."
+    ]
+  },
+  {
+    english: "Next month our company will introduce a new project management software for all teams.",
+    topic: "future",
+    topicName: "Future Tense (Futur I)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Futur I: werden + Infinitiv ('einführen') am Ende des Satzes.",
+    hints: [
+      { english: "to introduce / roll out", german: "einführen (hat eingeführt)" },
+      { english: "next month", german: "nächsten Monat (Akkusativ)" }
+    ],
+    referenceTranslations: [
+      "Nächsten Monat wird unser Unternehmen eine neue Projektmanagement-Software für alle Teams einführen.",
+      "Im nächsten Monat führt unsere Firma eine neue Projektmanagement-Software für alle Teams ein."
     ]
   },
   {
     english: "He placed the keys on the kitchen table before he left the house.",
     topic: "prepositions",
     topicName: "Prepositions (Wechselpräpositionen & Cases)",
+    scenarioDomain: "Housing, Landlords & Repairs",
     grammarFocus: "Wechselpräposition 'auf' + Akkusativ bei Bewegung ('legen auf den Tisch'), gefolgt von Temporalsatz mit 'bevor'.",
     hints: [
       { english: "to place / put", german: "legen (hat gelegt)" },
@@ -114,33 +268,50 @@ const OFFLINE_EXERCISES = [
     ]
   },
   {
-    english: "The application documents must be submitted to the company by Friday.",
+    english: "The broken washing machine cannot be repaired until the spare parts arrive tomorrow.",
     topic: "passive",
-    topicName: "Passive Voice (Passiv mit Modalverb)",
-    grammarFocus: "Passiv mit Modalverb: Modalverb konjugiert + Partizip II ('eingereicht') + 'werden' am Satzende.",
+    topicName: "Passive Voice with Modal Verb",
+    scenarioDomain: "Housing, Landlords & Repairs",
+    grammarFocus: "Passiv mit Modalverb ('kann nicht repariert werden') und Temporalsatz ('bis ... ankommen').",
     hints: [
-      { english: "application documents", german: "die Bewerbungsunterlagen (Plural)" },
-      { english: "to submit", german: "einreichen (hat eingereicht)" },
-      { english: "by Friday", german: "bis Freitag" }
+      { english: "washing machine", german: "die Waschmaschine (-n)" },
+      { english: "spare part", german: "das Ersatzteil (-e)" },
+      { english: "to repair", german: "reparieren (hat repariert)" }
     ],
     referenceTranslations: [
-      "Die Bewerbungsunterlagen müssen bis Freitag bei der Firma eingereicht werden.",
-      "Bis Freitag müssen die Bewerbungsunterlagen bei dem Unternehmen eingereicht werden."
+      "Die kaputte Waschmaschine kann nicht repariert werden, bis die Ersatzteile morgen ankommen.",
+      "Die defekte Waschmaschine lässt sich erst reparieren, wenn die Ersatzteile morgen eintreffen."
     ]
   },
   {
-    english: "If I had more time, I would attend an intensive German course every day.",
+    english: "If we had reserved the flight earlier, we would have saved a lot of money.",
     topic: "konjunktiv2",
-    topicName: "Konjunktiv II (Wishes & Conditions)",
-    grammarFocus: "Konditionalsatz mit Konjunktiv II: 'hätte' im Wenn-Satz, 'würde + Infinitiv' ('besuchen') im Hauptsatz.",
+    topicName: "Konjunktiv II (Past Unreal Condition)",
+    scenarioDomain: "Travel & Public Transportation",
+    grammarFocus: "Irrealer Konditionalsatz der Vergangenheit: 'hätten ... reserviert', 'hätten ... gespart'.",
     hints: [
-      { english: "if I had", german: "wenn ich ... hätte" },
-      { english: "to attend a course", german: "einen Kurs besuchen / an einem Kurs teilnehmen" },
-      { english: "intensive course", german: "der Intensivkurs (-e)" }
+      { english: "to reserve", german: "reservieren / buchen" },
+      { english: "to save money", german: "Geld sparen (hat gespart)" }
     ],
     referenceTranslations: [
-      "Wenn ich mehr Zeit hätte, würde ich jeden Tag einen Deutsch-Intensivkurs besuchen.",
-      "Hätte ich mehr Zeit, würde ich täglich an einem Deutsch-Intensivkurs teilnehmen."
+      "Wenn wir den Flug früher gebucht hätten, hätten wir eine Menge Geld gespart.",
+      "Hätten wir den Flug eher reserviert, hätten wir viel Geld gespart."
+    ]
+  },
+  {
+    english: "I am looking for a colleague who has solid experience with international contract negotiations.",
+    topic: "relative",
+    topicName: "Relative Clauses",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Relativsatz im Nominativ Maskulinum ('der ... hat') mit Verbletztstellung.",
+    hints: [
+      { english: "colleague", german: "der Kollege (-n, n-Deklination)" },
+      { english: "contract negotiations", german: "die Vertragsverhandlungen (Plural)" },
+      { english: "solid experience", german: "solide Erfahrung (-en)" }
+    ],
+    referenceTranslations: [
+      "Ich suche einen Kollegen, der solide Erfahrung mit internationalen Vertragsverhandlungen hat.",
+      "Ich suche nach einer Kollegin, die fundierte Erfahrungen mit internationalen Vertragsverhandlungen besitzt."
     ]
   },
   // Long exercises (17-26 words)
@@ -148,6 +319,7 @@ const OFFLINE_EXERCISES = [
     english: "Since I have lived in Germany for two years, I can understand most conversations at work without any major difficulties.",
     topic: "subordinate",
     topicName: "Subordinate Clauses (Kausalsatz)",
+    scenarioDomain: "Workplace & Technology",
     grammarFocus: "Nebensatz mit 'da / weil' oder 'seit', gefolgt von Hauptsatz mit Inversion.",
     hints: [
       { english: "conversation", german: "das Gespräch (-e) / die Unterhaltung" },
@@ -163,6 +335,7 @@ const OFFLINE_EXERCISES = [
     english: "Although the weather was rather cold, many colleagues went for a long walk during the lunch break because they needed fresh air.",
     topic: "subordinate",
     topicName: "Subordinate Clauses (obwohl & weil)",
+    scenarioDomain: "Leisure, Outdoors & Nature",
     grammarFocus: "Mehrere Nebensätze mit 'obwohl' und 'weil' mit Verbletztstellung.",
     hints: [
       { english: "rather cold", german: "ziemlich kalt" },
@@ -172,6 +345,38 @@ const OFFLINE_EXERCISES = [
     referenceTranslations: [
       "Obwohl das Wetter ziemlich kalt war, machten viele Kollegen in der Mittagspause einen langen Spaziergang, weil sie frische Luft brauchten.",
       "Obwohl es recht kalt war, sind viele Kollegen in der Mittagspause spazieren gegangen, da sie frische Luft benötigten."
+    ]
+  },
+  {
+    english: "Because our landlord decided to renovate the heating system, we had to find temporary accommodation in another neighborhood for two weeks.",
+    topic: "subordinate",
+    topicName: "Subordinate Clauses (Kausal & Temporal)",
+    scenarioDomain: "Housing, Landlords & Repairs",
+    grammarFocus: "Kausalsatz mit 'weil/da', gefolgt von Präteritum mit Modalverb ('mussten') und lokaler Präposition.",
+    hints: [
+      { english: "landlord", german: "der Vermieter (-)" },
+      { english: "temporary accommodation", german: "eine vorübergehende Unterkunft" },
+      { english: "heating system", german: "die Heizanlage / das Heizungssystem" }
+    ],
+    referenceTranslations: [
+      "Weil unser Vermieter beschlossen hat, die Heizung zu renovieren, mussten wir für zwei Wochen eine vorübergehende Unterkunft in einem anderen Viertel finden.",
+      "Da unser Vermieter das Heizungssystem sanieren ließ, mussten wir für zwei Wochen in einen anderen Stadtteil ausweichen."
+    ]
+  },
+  {
+    english: "Before you officially sign the employment contract, you should discuss all essential conditions concerning overtime and remote work with your team leader.",
+    topic: "everyday",
+    topicName: "Workplace & Modal Advice",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Temporalsatz mit 'bevor' und Ratschlag im Hauptsatz mit Konjunktiv II ('sollten Sie besprechen').",
+    hints: [
+      { english: "employment contract", german: "der Arbeitsvertrag (-träge)" },
+      { english: "overtime", german: "die Überstunden (Plural)" },
+      { english: "remote work", german: "das Homeoffice / das mobile Arbeiten" }
+    ],
+    referenceTranslations: [
+      "Bevor Sie den Arbeitsvertrag offiziell unterschreiben, sollten Sie alle wichtigen Bedingungen bezüglich Überstunden und Homeoffice mit Ihrem Teamleiter besprechen.",
+      "Ehe Sie den Vertrag unterzeichnen, sollten Sie alle wesentlichen Regelungen über Überstunden und Remotearbeit mit der Teamleitung klären."
     ]
   }
 ];
@@ -219,6 +424,7 @@ export default function TranslationPractice() {
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
+  const recentSentencesRef = useRef([]);
 
   // Stats / streak
   const [stats, setStats] = useState(() => {
@@ -322,6 +528,14 @@ export default function TranslationPractice() {
     const targetTopicObj = TRANSLATION_TOPICS.find(t => t.id === topicId) || TRANSLATION_TOPICS[0];
     const targetLengthObj = SENTENCE_LENGTHS.find(l => l.id === lengthId) || SENTENCE_LENGTHS[0];
 
+    // Pick randomized variation vectors (Scenario domain, rhetorical style, topic sub-focus)
+    const randomScenario = SCENARIO_DOMAINS[Math.floor(Math.random() * SCENARIO_DOMAINS.length)];
+    const randomPerspective = PERSPECTIVE_STYLES[Math.floor(Math.random() * PERSPECTIVE_STYLES.length)];
+    const subFocusList = TOPIC_SUB_FOCUSES[topicId] || [];
+    const randomSubFocus = subFocusList.length > 0
+      ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
+      : null;
+
     // If no API key is provided, choose from curated offline collection
     if (!apiKey) {
       let filtered = topicId === 'mixed'
@@ -343,7 +557,13 @@ export default function TranslationPractice() {
       }
 
       const pool = filtered.length > 0 ? filtered : OFFLINE_EXERCISES;
-      const pick = pool[Math.floor(Math.random() * pool.length)];
+      // Avoid immediate repeats of recently visited exercises
+      const unvisited = pool.filter(ex => !recentSentencesRef.current.includes(ex.english));
+      const finalPool = unvisited.length > 0 ? unvisited : pool;
+      const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
+      if (pick) {
+        recentSentencesRef.current = [pick.english, ...recentSentencesRef.current.filter(s => s !== pick.english)].slice(0, 10);
+      }
       setCurrentExercise(pick);
       setIsGenerating(false);
       return;
@@ -359,13 +579,29 @@ export default function TranslationPractice() {
             : 'Must be a longer, more elaborate multi-clause sentence between 17 and 26 words long.'
         }`;
 
-    const systemInstruction = `You are an expert German teacher creating B1 Goethe/Telc certification translation exercises.
+    const recentExList = recentSentencesRef.current;
+    const recentAvoidBlock = recentExList.length > 0
+      ? `\nDO NOT repeat, mirror, or paraphrase any of these recently generated exercises. Pick an entirely different situation, different vocabulary, and different verbs:\n${recentExList.slice(0, 6).map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
+      : '';
+
+    const systemInstruction = `You are an expert German teacher creating varied, dynamic B1 Goethe/Telc certification translation exercises.
 The user wants to practice translating an English sentence into natural, grammatically correct German at B1 level.
+
 Topic required: "${targetTopicObj.label}: ${targetTopicObj.desc}".
+${randomSubFocus ? `Specific Grammar Nuance to test: "${randomSubFocus}".` : ''}
+Required Scenario Domain: "${randomScenario.domain}" (Aspects: ${randomScenario.details}).
+Required Sentence Style / Perspective: "${randomPerspective}".
+
+CRITICAL VARIETY & DIVERSITY RULES:
+1. NEVER produce generic, cliché textbook sentences (strictly avoid repetitive tropes like missed trains, delayed doctor appointments, put the book on the table, if the weather is good we walk, call after work).
+2. Root the exercise authentically in the required scenario domain ("${randomScenario.domain}") using realistic, practical B1 vocabulary.
+3. Use diverse grammatical subjects and persons (do NOT always use "I" / "ich"; use "wir", "der Techniker", "meine Kollegin", "der Vermieter", "die Ärztin", "Sie" formal, "die Kunden", etc.).
+4. Use diverse sentence structures (direct/indirect questions, temporal sequences with 'nachdem/bevor', concessive clauses with 'obwohl', causal clauses with 'da/weil', infinitive constructions with 'um...zu' or 'ohne...zu', relative clauses, etc.).
+${recentAvoidBlock}
+${lengthInstruction}
 
 Instructions:
-1. Provide a realistic, natural English sentence testing the selected B1 topic.
-${lengthInstruction}
+1. Provide a realistic, natural English sentence testing the selected B1 topic and designated scenario domain.
 2. If the sentence includes difficult, formal, or specialized nouns, verbs, or prepositions, provide their German equivalents as hints (including article/gender for nouns and auxiliary/participle for verbs).
 3. Provide 2-3 natural German reference translations.
 4. Explain the key grammar focus tested in German.
@@ -375,6 +611,7 @@ You MUST respond strictly with a valid JSON object matching this schema:
   "english": "English sentence here",
   "topicName": "${targetTopicObj.label}",
   "lengthType": "${lengthId}",
+  "scenarioDomain": "${randomScenario.domain}",
   "grammarFocus": "Brief German explanation of what grammar pattern is being tested",
   "hints": [
     { "english": "difficult word or verb", "german": "der/die/das ... or verb (mit Präposition)" }
@@ -392,8 +629,16 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        prompt: `Generate a new B1 German translation exercise for topic: ${targetTopicObj.label} with sentence length: ${targetLengthObj.label} (${targetLengthObj.wordRange})`,
+        prompt: `Generate a new, distinct B1 German translation exercise for topic: ${targetTopicObj.label}.
+Context Domain: ${randomScenario.domain}.
+Sentence Style: ${randomPerspective}.
+Target length: ${targetLengthObj.label} (${targetLengthObj.wordRange}).
+Ensure the sentence is creative, natural, and completely different from standard textbook clichés.`,
         systemInstruction,
+        generationConfig: {
+          temperature: 0.88,
+          topP: 0.95
+        },
         jsonMode: true,
         onFallback: ({ failedModel, nextModel }) => {
           setFallbackNotice(`Modell ${failedModel} war ausgelastet. Wechsle zu ${nextModel}...`);
@@ -409,6 +654,10 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
       if (!parsed.english || !parsed.referenceTranslations) {
         throw new Error("Invalid exercise structure returned.");
       }
+      recentSentencesRef.current = [
+        parsed.english,
+        ...recentSentencesRef.current.filter(s => s !== parsed.english)
+      ].slice(0, 10);
       setCurrentExercise(parsed);
     } catch (err) {
       console.error("Failed to generate exercise with Gemini:", err);
@@ -417,7 +666,12 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
         ? OFFLINE_EXERCISES
         : OFFLINE_EXERCISES.filter(ex => ex.topic === topicId);
       const pool = filtered.length > 0 ? filtered : OFFLINE_EXERCISES;
-      const pick = pool[Math.floor(Math.random() * pool.length)];
+      const unvisited = pool.filter(ex => !recentSentencesRef.current.includes(ex.english));
+      const finalPool = unvisited.length > 0 ? unvisited : pool;
+      const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
+      if (pick) {
+        recentSentencesRef.current = [pick.english, ...recentSentencesRef.current.filter(s => s !== pick.english)].slice(0, 10);
+      }
       setCurrentExercise(pick);
       setFallbackNotice("⚠️ Offline-Übung geladen, da keine Verbindung zu Gemini möglich war.");
     } finally {
@@ -841,6 +1095,19 @@ Output raw JSON only.`;
                   }}>
                     {currentExercise.topicName || 'B1 German Exercise'}
                   </span>
+                  {currentExercise.scenarioDomain && (
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      padding: '3px 9px',
+                      borderRadius: '12px',
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      color: 'var(--color-verb)',
+                      border: '1px solid rgba(59, 130, 246, 0.25)'
+                    }}>
+                      Context: {currentExercise.scenarioDomain}
+                    </span>
+                  )}
                   {currentExercise.english && (
                     <span style={{
                       fontSize: '11px',
