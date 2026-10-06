@@ -15,8 +15,59 @@ const TRANSLATION_TOPICS = [
   { id: 'everyday', label: '☕ Everyday & Work', desc: 'B1 exam scenarios (work, appointments, doctor, housing, travel)' }
 ];
 
+// Sentence length configurations
+const SENTENCE_LENGTHS = [
+  { id: 'auto', label: '⚡ Auto', desc: 'Natural balanced B1 length (~10-18 words)', wordRange: '10 to 18 words' },
+  { id: 'small', label: '🔹 Small', desc: 'Short, direct sentences (5-9 words)', wordRange: '5 to 9 words' },
+  { id: 'medium', label: '🔸 Medium', desc: 'Standard compound sentences (10-16 words)', wordRange: '10 to 16 words' },
+  { id: 'long', label: '🔺 Long', desc: 'Longer multi-clause sentences (17-26 words)', wordRange: '17 to 26 words' }
+];
+
 // Offline backup bank of curated B1 translation exercises
 const OFFLINE_EXERCISES = [
+  // Short exercises (5-9 words)
+  {
+    english: "I will call you tomorrow right after work.",
+    topic: "future",
+    topicName: "Future Tense",
+    grammarFocus: "Temporale Angaben und Futur mit 'werden' oder Präsens.",
+    hints: [
+      { english: "to call", german: "anrufen (ruft an, hat angerufen)" },
+      { english: "after work", german: "nach der Arbeit (Dativ)" }
+    ],
+    referenceTranslations: [
+      "Ich werde dich morgen direkt nach der Arbeit anrufen.",
+      "Ich rufe dich morgen gleich nach der Arbeit an."
+    ]
+  },
+  {
+    english: "She put the letter on the desk.",
+    topic: "prepositions",
+    topicName: "Prepositions (Wechselpräpositionen)",
+    grammarFocus: "Wechselpräposition 'auf' + Akkusativ bei Bewegung ('auf den Schreibtisch').",
+    hints: [
+      { english: "to put / place", german: "legen (hat gelegt)" },
+      { english: "desk", german: "der Schreibtisch (-e)" }
+    ],
+    referenceTranslations: [
+      "Sie hat den Brief auf den Schreibtisch gelegt.",
+      "Sie legte den Brief auf den Schreibtisch."
+    ]
+  },
+  {
+    english: "We must wait here until five o'clock.",
+    topic: "modal",
+    topicName: "Modal Verbs",
+    grammarFocus: "Modalverb 'müssen' im Präsens + Infinitiv am Satzende.",
+    hints: [
+      { english: "to wait", german: "warten (hat gewartet)" },
+      { english: "until", german: "bis (Präposition)" }
+    ],
+    referenceTranslations: [
+      "Wir müssen hier bis fünf Uhr warten."
+    ]
+  },
+  // Medium exercises (10-16 words)
   {
     english: "Yesterday I had to cancel the doctor's appointment because my train was delayed.",
     topic: "past",
@@ -63,22 +114,6 @@ const OFFLINE_EXERCISES = [
     ]
   },
   {
-    english: "Although the weather was bad, many colleagues went for a walk during the lunch break.",
-    topic: "subordinate",
-    topicName: "Subordinate Clauses (Konzessivsatz mit obwohl)",
-    grammarFocus: "Nebensatz mit 'obwohl' (konjugiertes Verb am Ende) und Inversion im Hauptsatz.",
-    hints: [
-      { english: "although", german: "obwohl (Nebensatzkonjunktion)" },
-      { english: "colleague", german: "der Kollege (-n) / die Kollegin (-nen)" },
-      { english: "lunch break", german: "die Mittagspause (-n)" },
-      { english: "to go for a walk", german: "spazieren gehen" }
-    ],
-    referenceTranslations: [
-      "Obwohl das Wetter schlecht war, sind viele Kollegen in der Mittagspause spazieren gegangen.",
-      "Obwohl das Wetter schlecht war, gingen viele Kollegen in der Mittagspause spazieren."
-    ]
-  },
-  {
     english: "The application documents must be submitted to the company by Friday.",
     topic: "passive",
     topicName: "Passive Voice (Passiv mit Modalverb)",
@@ -106,6 +141,37 @@ const OFFLINE_EXERCISES = [
     referenceTranslations: [
       "Wenn ich mehr Zeit hätte, würde ich jeden Tag einen Deutsch-Intensivkurs besuchen.",
       "Hätte ich mehr Zeit, würde ich täglich an einem Deutsch-Intensivkurs teilnehmen."
+    ]
+  },
+  // Long exercises (17-26 words)
+  {
+    english: "Since I have lived in Germany for two years, I can understand most conversations at work without any major difficulties.",
+    topic: "subordinate",
+    topicName: "Subordinate Clauses (Kausalsatz)",
+    grammarFocus: "Nebensatz mit 'da / weil' oder 'seit', gefolgt von Hauptsatz mit Inversion.",
+    hints: [
+      { english: "conversation", german: "das Gespräch (-e) / die Unterhaltung" },
+      { english: "difficulty", german: "die Schwierigkeit (-en)" },
+      { english: "at work", german: "bei der Arbeit (Dativ)" }
+    ],
+    referenceTranslations: [
+      "Da ich seit zwei Jahren in Deutschland lebe, kann ich die meisten Gespräche bei der Arbeit ohne große Schwierigkeiten verstehen.",
+      "Weil ich schon zwei Jahre in Deutschland wohne, verstehe ich die meisten Unterhaltungen am Arbeitsplatz problemlos."
+    ]
+  },
+  {
+    english: "Although the weather was rather cold, many colleagues went for a long walk during the lunch break because they needed fresh air.",
+    topic: "subordinate",
+    topicName: "Subordinate Clauses (obwohl & weil)",
+    grammarFocus: "Mehrere Nebensätze mit 'obwohl' und 'weil' mit Verbletztstellung.",
+    hints: [
+      { english: "rather cold", german: "ziemlich kalt" },
+      { english: "colleague", german: "der Kollege (-n) / die Kollegin (-nen)" },
+      { english: "fresh air", german: "frische Luft" }
+    ],
+    referenceTranslations: [
+      "Obwohl das Wetter ziemlich kalt war, machten viele Kollegen in der Mittagspause einen langen Spaziergang, weil sie frische Luft brauchten.",
+      "Obwohl es recht kalt war, sind viele Kollegen in der Mittagspause spazieren gegangen, da sie frische Luft benötigten."
     ]
   }
 ];
@@ -137,6 +203,9 @@ export default function TranslationPractice() {
   });
 
   const [selectedTopic, setSelectedTopic] = useState('mixed');
+  const [selectedLength, setSelectedLength] = useState(() => {
+    return localStorage.getItem('b1_translation_length') || 'auto';
+  });
   const [currentExercise, setCurrentExercise] = useState(null);
   const [userTranslation, setUserTranslation] = useState('');
   const [showHints, setShowHints] = useState(true);
@@ -240,7 +309,7 @@ export default function TranslationPractice() {
   };
 
   // Generate a new translation exercise
-  const generateNewExercise = async (topicId = selectedTopic) => {
+  const generateNewExercise = async (topicId = selectedTopic, lengthId = selectedLength) => {
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
     }
@@ -251,12 +320,28 @@ export default function TranslationPractice() {
     setFallbackNotice('');
 
     const targetTopicObj = TRANSLATION_TOPICS.find(t => t.id === topicId) || TRANSLATION_TOPICS[0];
+    const targetLengthObj = SENTENCE_LENGTHS.find(l => l.id === lengthId) || SENTENCE_LENGTHS[0];
 
     // If no API key is provided, choose from curated offline collection
     if (!apiKey) {
-      const filtered = topicId === 'mixed'
+      let filtered = topicId === 'mixed'
         ? OFFLINE_EXERCISES
         : OFFLINE_EXERCISES.filter(ex => ex.topic === topicId);
+
+      // Filter by length if specified
+      if (lengthId !== 'auto') {
+        const lengthFiltered = filtered.filter(ex => {
+          const count = ex.english.trim().split(/\s+/).length;
+          if (lengthId === 'small') return count <= 9;
+          if (lengthId === 'medium') return count >= 10 && count <= 16;
+          if (lengthId === 'long') return count >= 17;
+          return true;
+        });
+        if (lengthFiltered.length > 0) {
+          filtered = lengthFiltered;
+        }
+      }
+
       const pool = filtered.length > 0 ? filtered : OFFLINE_EXERCISES;
       const pick = pool[Math.floor(Math.random() * pool.length)];
       setCurrentExercise(pick);
@@ -264,12 +349,23 @@ export default function TranslationPractice() {
       return;
     }
 
+    const lengthInstruction = lengthId === 'auto'
+      ? "Sentence Length: Natural B1 length (approx. 10 to 18 words)."
+      : `Sentence Length Requirement: Strictly ${targetLengthObj.label.toUpperCase()} (${targetLengthObj.wordRange}). ${
+          lengthId === 'small'
+            ? 'Must be a concise, short sentence between 5 and 9 words long.'
+            : lengthId === 'medium'
+            ? 'Must be a medium-length sentence between 10 and 16 words long.'
+            : 'Must be a longer, more elaborate multi-clause sentence between 17 and 26 words long.'
+        }`;
+
     const systemInstruction = `You are an expert German teacher creating B1 Goethe/Telc certification translation exercises.
 The user wants to practice translating an English sentence into natural, grammatically correct German at B1 level.
 Topic required: "${targetTopicObj.label}: ${targetTopicObj.desc}".
 
 Instructions:
-1. Provide a realistic, natural English sentence (12-25 words long) testing the selected B1 topic.
+1. Provide a realistic, natural English sentence testing the selected B1 topic.
+${lengthInstruction}
 2. If the sentence includes difficult, formal, or specialized nouns, verbs, or prepositions, provide their German equivalents as hints (including article/gender for nouns and auxiliary/participle for verbs).
 3. Provide 2-3 natural German reference translations.
 4. Explain the key grammar focus tested in German.
@@ -278,6 +374,7 @@ You MUST respond strictly with a valid JSON object matching this schema:
 {
   "english": "English sentence here",
   "topicName": "${targetTopicObj.label}",
+  "lengthType": "${lengthId}",
   "grammarFocus": "Brief German explanation of what grammar pattern is being tested",
   "hints": [
     { "english": "difficult word or verb", "german": "der/die/das ... or verb (mit Präposition)" }
@@ -295,7 +392,7 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        prompt: `Generate a new B1 German translation exercise for topic: ${targetTopicObj.label}`,
+        prompt: `Generate a new B1 German translation exercise for topic: ${targetTopicObj.label} with sentence length: ${targetLengthObj.label} (${targetLengthObj.wordRange})`,
         systemInstruction,
         jsonMode: true,
         onFallback: ({ failedModel, nextModel }) => {
@@ -447,7 +544,7 @@ Output raw JSON only.`;
 
   // Load first exercise on mount
   useEffect(() => {
-    generateNewExercise('mixed');
+    generateNewExercise(selectedTopic, selectedLength);
   }, []);
 
   const handleSaveKey = (e) => {
@@ -595,7 +692,7 @@ Output raw JSON only.`;
           </span>
           <button
             type="button"
-            onClick={() => generateNewExercise(selectedTopic)}
+            onClick={() => generateNewExercise(selectedTopic, selectedLength)}
             disabled={isGenerating}
             style={{
               background: 'none',
@@ -631,7 +728,7 @@ Output raw JSON only.`;
                 type="button"
                 onClick={() => {
                   setSelectedTopic(topic.id);
-                  generateNewExercise(topic.id);
+                  generateNewExercise(topic.id, selectedLength);
                 }}
                 disabled={isGenerating}
                 style={{
@@ -656,6 +753,65 @@ Output raw JSON only.`;
             );
           })}
         </div>
+
+        {/* Sentence Length Selector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+            <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: '700' }}>
+              Satzlänge / Sentence Length
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              {SENTENCE_LENGTHS.find(l => l.id === selectedLength)?.desc}
+            </span>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            overflowX: 'auto',
+            whiteSpace: 'nowrap',
+            paddingBottom: '4px',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none'
+          }}>
+            {SENTENCE_LENGTHS.map(len => {
+              const isSelected = selectedLength === len.id;
+              return (
+                <button
+                  key={len.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedLength(len.id);
+                    localStorage.setItem('b1_translation_length', len.id);
+                    generateNewExercise(selectedTopic, len.id);
+                  }}
+                  disabled={isGenerating}
+                  style={{
+                    flexShrink: 0,
+                    padding: '6px 14px',
+                    borderRadius: '18px',
+                    fontSize: '12px',
+                    fontWeight: isSelected ? '700' : '500',
+                    border: isSelected ? '1px solid var(--color-noun)' : '1px solid var(--border-color)',
+                    background: isSelected 
+                      ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.25))' 
+                      : 'rgba(255, 255, 255, 0.03)',
+                    color: isSelected ? '#fff' : 'var(--text-secondary)',
+                    cursor: isGenerating ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isSelected ? '0 2px 8px rgba(245, 158, 11, 0.2)' : 'none'
+                  }}
+                  title={`${len.desc} (${len.wordRange})`}
+                >
+                  <span>{len.label}</span>
+                  <span style={{ fontSize: '10px', opacity: 0.75, marginLeft: '6px' }}>
+                    ({len.wordRange})
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Main Exercise Card */}
@@ -673,7 +829,7 @@ Output raw JSON only.`;
             {/* Exercise Source Section */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{
                     fontSize: '11px',
                     fontWeight: '700',
@@ -685,6 +841,23 @@ Output raw JSON only.`;
                   }}>
                     {currentExercise.topicName || 'B1 German Exercise'}
                   </span>
+                  {currentExercise.english && (
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      padding: '3px 9px',
+                      borderRadius: '12px',
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border-color)'
+                    }}>
+                      {(() => {
+                        const wordCount = currentExercise.english.trim().split(/\s+/).length;
+                        const lenObj = SENTENCE_LENGTHS.find(l => l.id === selectedLength);
+                        return `${lenObj ? lenObj.label : 'Length'}: ${wordCount} words`;
+                      })()}
+                    </span>
+                  )}
                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     Translate to German
                   </span>
@@ -872,7 +1045,7 @@ Output raw JSON only.`;
                   {evaluation && (
                     <button
                       type="button"
-                      onClick={() => generateNewExercise(selectedTopic)}
+                      onClick={() => generateNewExercise(selectedTopic, selectedLength)}
                       className="nav-button"
                       style={{ padding: '8px 16px', fontSize: '13px', background: 'rgba(255, 255, 255, 0.06)' }}
                     >
@@ -1034,7 +1207,7 @@ Output raw JSON only.`;
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
                   <button
                     type="button"
-                    onClick={() => generateNewExercise(selectedTopic)}
+                    onClick={() => generateNewExercise(selectedTopic, selectedLength)}
                     className="feedback-btn good"
                     style={{ padding: '10px 22px', fontSize: '13px', width: 'auto', maxWidth: 'none', minHeight: 'auto' }}
                   >
