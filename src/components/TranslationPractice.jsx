@@ -426,6 +426,12 @@ export default function TranslationPractice() {
   const sessionBaseTextRef = useRef('');
   const recentSentencesRef = useRef([]);
 
+  // Custom English sentence practice states
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customSentenceText, setCustomSentenceText] = useState('');
+  const [isCustomListening, setIsCustomListening] = useState(false);
+  const customRecRef = useRef(null);
+
   // Stats / streak
   const [stats, setStats] = useState(() => {
     try {
@@ -511,6 +517,57 @@ export default function TranslationPractice() {
     } else {
       sessionBaseTextRef.current = userTranslation ? userTranslation.trim() : '';
       recognitionRef.current.start();
+    }
+  };
+
+  // English Voice-to-Text for dictating custom English sentences
+  const toggleCustomSpeech = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Speech recognition is not supported in this browser. Please try Google Chrome or Safari.");
+      return;
+    }
+
+    if (isCustomListening && customRecRef.current) {
+      customRecRef.current.stop();
+      setIsCustomListening(false);
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognition();
+      rec.lang = 'en-US';
+      rec.continuous = false;
+      rec.interimResults = true;
+
+      rec.onstart = () => {
+        setIsCustomListening(true);
+      };
+
+      rec.onresult = (event) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          if (event.results[i][0]) {
+            transcript += event.results[i][0].transcript;
+          }
+        }
+        setCustomSentenceText(transcript);
+      };
+
+      rec.onerror = (event) => {
+        console.error('Speech recognition error in Custom Sentence:', event.error);
+        setIsCustomListening(false);
+      };
+
+      rec.onend = () => {
+        setIsCustomListening(false);
+      };
+
+      customRecRef.current = rec;
+      rec.start();
+    } catch (err) {
+      console.warn("Could not start English speech recognition:", err);
+      setIsCustomListening(false);
     }
   };
 
@@ -674,6 +731,102 @@ Ensure the sentence is creative, natural, and completely different from standard
       }
       setCurrentExercise(pick);
       setFallbackNotice("⚠️ Offline-Übung geladen, da keine Verbindung zu Gemini möglich war.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  // Analyze a custom English sentence provided by the user
+  const handleAnalyzeCustomSentence = async (customSentence) => {
+    const sentenceToUse = (customSentence || customSentenceText).trim();
+    if (!sentenceToUse) return;
+
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (isCustomListening && customRecRef.current) {
+      customRecRef.current.stop();
+      setIsCustomListening(false);
+    }
+
+    setIsGenerating(true);
+    setFallbackNotice('');
+    setUserTranslation('');
+    setEvaluation(null);
+
+    // If no API key is provided, prompt user to enter one
+    if (!apiKey) {
+      setShowKeyInput(true);
+      setFallbackNotice('⚠️ Bitte gib deinen Gemini API-Schlüssel ein, um eigene Sätze zu analysieren.');
+      setIsGenerating(false);
+      return;
+    }
+
+    const systemInstruction = `You are an expert German teacher and linguist specializing in B1 Goethe/Telc exam preparation.
+The user has provided a custom English sentence that they want to practice translating into German.
+
+User's English Sentence: "${sentenceToUse}"
+
+Your task is to:
+1. Identify the primary B1/B2 German grammatical topic and structure needed to translate this sentence (e.g., "Subordinate Clauses (obwohl / weil)", "Passive Voice (Vorgangspassiv)", "Two-way Prepositions (Wechselpräpositionen)", "Konjunktiv II", "Modal Verbs", "Relative Clauses", etc.).
+2. Extract key nouns, difficult verbs, and specialized prepositions/phrases from the sentence and provide high-quality vocabulary hints in German:
+   - For nouns: include the definite article (der/die/das) and plural form (e.g., "das Flugzeug (-e)").
+   - For verbs: include the infinitive and if irregular or takes a preposition/case, provide that (e.g., "buchen (hat gebucht)", "warten auf + Akk", "sich verspäten").
+   - For idioms/prepositions: provide the natural German phrasing.
+3. Provide 2-3 natural, idiomatic, and grammatically flawless German translations (at standard B1/B2 level).
+4. Provide a clear explanation in German of the main grammar points tested (e.g., word order / Verbletztstellung, case government, tense selection).
+
+You MUST respond strictly with a valid JSON object matching this schema:
+{
+  "english": "${sentenceToUse.replace(/"/g, '\\"')}",
+  "topicName": "Custom: <Short Grammar Topic Identified>",
+  "lengthType": "custom",
+  "scenarioDomain": "Custom Sentence",
+  "grammarFocus": "Explanation in German of key grammar rules and word order for this translation",
+  "hints": [
+    { "english": "noun/verb/phrase in English", "german": "der/die/das ... or verb with preposition" }
+  ],
+  "referenceTranslations": [
+    "Most natural German translation 1",
+    "Alternative natural German translation 2"
+  ]
+}
+
+Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
+
+    try {
+      const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
+        apiKey,
+        preferredModel: selectedModel,
+        availableModels,
+        prompt: `Analyze this custom English sentence for German translation practice: "${sentenceToUse}"`,
+        systemInstruction,
+        generationConfig: {
+          temperature: 0.25,
+          topP: 0.95
+        },
+        jsonMode: true,
+        onFallback: ({ failedModel, nextModel }) => {
+          setFallbackNotice(`Modell ${failedModel} war ausgelastet. Wechsle zu ${nextModel}...`);
+        }
+      });
+
+      if (wasFallback) {
+        setFallbackNotice(`⚡ Übung über Backup-Modell (${usedModel}) generiert.`);
+        setTimeout(() => setFallbackNotice(''), 6000);
+      }
+
+      const parsed = parsedJson || JSON.parse(rawJson);
+      parsed.english = sentenceToUse;
+      if (!parsed.referenceTranslations || parsed.referenceTranslations.length === 0) {
+        throw new Error("Missing reference translations.");
+      }
+      setCurrentExercise(parsed);
+      setShowCustomModal(false);
+      setCustomSentenceText('');
+    } catch (err) {
+      console.error("Failed to analyze custom sentence with Gemini:", err);
+      setFallbackNotice("⚠️ Fehler bei der Analyse des Satzes mit Gemini. Bitte versuche es erneut.");
     } finally {
       setIsGenerating(false);
     }
@@ -940,30 +1093,212 @@ Output raw JSON only.`;
 
       {/* Topic Selection Carousel / Pill Bar */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: '700' }}>
             Grammatik-Thema / Topic Focus
           </span>
-          <button
-            type="button"
-            onClick={() => generateNewExercise(selectedTopic, selectedLength)}
-            disabled={isGenerating}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--color-verb)',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: isGenerating ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-          >
-            <span>🔄</span>
-            <span>{isGenerating ? 'Generiere...' : 'Neue Übung'}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setShowCustomModal(prev => !prev)}
+              style={{
+                background: showCustomModal 
+                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(234, 88, 12, 0.3))' 
+                  : 'rgba(245, 158, 11, 0.1)',
+                border: showCustomModal ? '1px solid #fbbf24' : '1px solid rgba(245, 158, 11, 0.35)',
+                borderRadius: '8px',
+                padding: '5px 12px',
+                color: '#fbbf24',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: showCustomModal ? '0 0 10px rgba(245, 158, 11, 0.2)' : 'none'
+              }}
+              title="Eigenen englischen Satz eingeben und analysieren lassen"
+            >
+              <span>✏️</span>
+              <span>{showCustomModal ? 'Eingabe schließen' : 'Eigener Satz'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => generateNewExercise(selectedTopic, selectedLength)}
+              disabled={isGenerating}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-verb)',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: isGenerating ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <span>🔄</span>
+              <span>{isGenerating ? 'Generiere...' : 'Neue Übung'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* Custom English Sentence Input Card */}
+        {showCustomModal && (
+          <div className="glass-card" style={{
+            width: '100%',
+            padding: '18px 20px',
+            background: 'rgba(26, 22, 40, 0.95)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            borderRadius: '14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)',
+            boxSizing: 'border-box'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>✍️</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
+                  Eigener englischer Satz / Custom Sentence Practice
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '16px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+              Gib einen beliebigen englischen Satz ein (oder diktiere ihn per Mikrofon). Gemini ermittelt automatisch die Grammatikstruktur, Wortschatz-Tipps (Nomen mit Artikeln, Verben) und Musterlösungen zum Üben.
+            </p>
+
+            <div style={{ position: 'relative', width: '100%' }}>
+              <textarea
+                value={customSentenceText}
+                onChange={(e) => setCustomSentenceText(e.target.value)}
+                placeholder="z.B. Although I had a lot of work today, I managed to finish the presentation before five o'clock..."
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '12px 48px 12px 14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  color: '#fff',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  lineHeight: 1.5,
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    handleAnalyzeCustomSentence(customSentenceText);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={toggleCustomSpeech}
+                title={isCustomListening ? "Aufnahme stoppen" : "Auf Englisch sprechen (Speech-to-Text)"}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '10px',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: isCustomListening ? '#ef4444' : 'rgba(255, 255, 255, 0.08)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {isCustomListening ? '⏹️' : '🎙️'}
+              </button>
+            </div>
+
+            {/* Quick Inspiration Chips */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>
+                Beispiele / Quick Examples:
+              </span>
+              {[
+                "Although the weather was bad, we enjoyed our weekend trip to Munich.",
+                "Could you please explain how to register my new address at the city hall?",
+                "If we had reserved the train tickets earlier, we would have saved a lot of money.",
+                "The project manager asked all colleagues to submit their reports by Friday."
+              ].map((ex, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setCustomSentenceText(ex)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '12px',
+                    padding: '3px 9px',
+                    fontSize: '11px',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    maxWidth: '220px',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title={ex}
+                >
+                  "{ex}"
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(false)}
+                className="nav-button"
+                style={{ padding: '8px 16px', fontSize: '12px' }}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAnalyzeCustomSentence(customSentenceText)}
+                disabled={!customSentenceText.trim() || isGenerating}
+                className="feedback-btn good"
+                style={{
+                  padding: '9px 20px',
+                  fontSize: '13px',
+                  width: 'auto',
+                  maxWidth: 'none',
+                  minHeight: 'auto',
+                  background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                  color: '#fff',
+                  fontWeight: '700',
+                  opacity: (!customSentenceText.trim() || isGenerating) ? 0.5 : 1,
+                  cursor: (!customSentenceText.trim() || isGenerating) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isGenerating ? 'Analysiere Satz...' : '🚀 Satz analysieren & üben'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={{
           display: 'flex',
@@ -1089,9 +1424,9 @@ Output raw JSON only.`;
                     fontWeight: '700',
                     padding: '3px 10px',
                     borderRadius: '12px',
-                    background: 'rgba(139, 92, 246, 0.15)',
-                    color: 'var(--color-conn)',
-                    border: '1px solid rgba(139, 92, 246, 0.3)'
+                    background: currentExercise.lengthType === 'custom' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                    color: currentExercise.lengthType === 'custom' ? '#fbbf24' : 'var(--color-conn)',
+                    border: currentExercise.lengthType === 'custom' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)'
                   }}>
                     {currentExercise.topicName || 'B1 German Exercise'}
                   </span>
@@ -1101,9 +1436,9 @@ Output raw JSON only.`;
                       fontWeight: '600',
                       padding: '3px 9px',
                       borderRadius: '12px',
-                      background: 'rgba(59, 130, 246, 0.12)',
-                      color: 'var(--color-verb)',
-                      border: '1px solid rgba(59, 130, 246, 0.25)'
+                      background: currentExercise.lengthType === 'custom' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(59, 130, 246, 0.12)',
+                      color: currentExercise.lengthType === 'custom' ? '#fbbf24' : 'var(--color-verb)',
+                      border: currentExercise.lengthType === 'custom' ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(59, 130, 246, 0.25)'
                     }}>
                       Context: {currentExercise.scenarioDomain}
                     </span>
@@ -1121,7 +1456,9 @@ Output raw JSON only.`;
                       {(() => {
                         const wordCount = currentExercise.english.trim().split(/\s+/).length;
                         const lenObj = SENTENCE_LENGTHS.find(l => l.id === selectedLength);
-                        return `${lenObj ? lenObj.label : 'Length'}: ${wordCount} words`;
+                        return currentExercise.lengthType === 'custom'
+                          ? `✏️ Custom: ${wordCount} words`
+                          : `${lenObj ? lenObj.label : 'Length'}: ${wordCount} words`;
                       })()}
                     </span>
                   )}
@@ -1310,14 +1647,26 @@ Output raw JSON only.`;
                     </button>
                   )}
                   {evaluation && (
-                    <button
-                      type="button"
-                      onClick={() => generateNewExercise(selectedTopic, selectedLength)}
-                      className="nav-button"
-                      style={{ padding: '8px 16px', fontSize: '13px', background: 'rgba(255, 255, 255, 0.06)' }}
-                    >
-                      Nächste Übung ➔
-                    </button>
+                    <>
+                      {currentExercise.lengthType === 'custom' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomModal(true)}
+                          className="nav-button"
+                          style={{ padding: '8px 14px', fontSize: '13px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+                        >
+                          ✏️ Neuer eigener Satz
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => generateNewExercise(selectedTopic, selectedLength)}
+                        className="nav-button"
+                        style={{ padding: '8px 16px', fontSize: '13px', background: 'rgba(255, 255, 255, 0.06)' }}
+                      >
+                        Nächste Übung ➔
+                      </button>
+                    </>
                   )}
                 </div>
 
@@ -1471,7 +1820,17 @@ Output raw JSON only.`;
                 </div>
 
                 {/* Bottom button: next exercise */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', flexWrap: 'wrap', marginTop: '6px' }}>
+                  {currentExercise.lengthType === 'custom' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomModal(true)}
+                      className="nav-button"
+                      style={{ padding: '10px 18px', fontSize: '13px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+                    >
+                      ✏️ Weiteren eigenen Satz üben
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => generateNewExercise(selectedTopic, selectedLength)}
