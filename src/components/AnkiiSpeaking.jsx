@@ -2072,6 +2072,7 @@ export default function AnkiiSpeaking({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={handleCardClick}
+        onContextMenu={(e) => e.preventDefault()}
         style={{
           width: '100%',
           minHeight: '340px',

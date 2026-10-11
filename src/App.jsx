@@ -568,6 +568,9 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
+      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
+        return;
+      }
       if (e.target.closest('button') || e.target.closest('.sound-btn') || e.target.closest('#double-click-popover')) {
         return;
       }
@@ -640,6 +643,9 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
+      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
+        return;
+      }
       if (e.target.closest('#double-click-popover') || e.target.closest('#popover-backdrop')) {
         return;
       }
@@ -674,16 +680,19 @@ function App() {
         clearTimeout(longPressTimerRef.current);
       }
     };
-  }, [isAnonymous]);
+  }, [isAnonymous, activeTab]);
 
   // Global listener for double clicks to select words (desktop)
   useEffect(() => {
     const handleDblClick = (e) => {
       if (isAnonymous) return;
 
-      // Ignore double-clicks inside input, select, textarea elements
+      // Ignore double-clicks inside input, select, textarea elements or in Ankii Speaking mode
       const targetTag = e.target.tagName;
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
+        return;
+      }
+      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
         return;
       }
       if (e.target.closest('#double-click-popover')) {
@@ -714,7 +723,7 @@ function App() {
     };
     window.addEventListener('dblclick', handleDblClick);
     return () => window.removeEventListener('dblclick', handleDblClick);
-  }, [isAnonymous]);
+  }, [isAnonymous, activeTab]);
 
   // Global click outside listener to close the popup (desktop)
   useEffect(() => {
@@ -1637,7 +1646,7 @@ function App() {
       </main>
 
       {/* Double click / Long press quick-add popover */}
-      {doubleClickedText && (
+      {doubleClickedText && activeTab !== 'ankii-speaking' && (
         <>
           {/* Mobile backdrop */}
           {isMobileOrTablet && (

@@ -1042,6 +1042,15 @@ h2.section-title {
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
   touch-action: pan-y;
   overflow: visible !important;
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.ankii-speaking-card * {
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 @keyframes cardWiggle {
