@@ -24,14 +24,15 @@ export default async function handler(request, response) {
   }
 
   const { method } = request;
-  const { code } = request.query;
+  const { code, type } = request.query;
 
   if (!code || code.trim().length < 3) {
     return response.status(400).json({ error: 'Sync code must be at least 3 characters long.' });
   }
 
   const cleanCode = code.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  const key = `mylist:${cleanCode}`;
+  const syncType = (type || 'mylist').toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const key = `${syncType}:${cleanCode}`;
 
   try {
     if (method === 'GET') {

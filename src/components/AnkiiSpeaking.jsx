@@ -19,14 +19,26 @@ export function getWorkplaceExample(card) {
   return match || card.examples[0];
 }
 
-export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, onReview, isAnonymous }) {
+export default function AnkiiSpeaking({
+  vocabData,
+  myList = [],
+  onToggleMyList,
+  deletedWords: propDeletedWords,
+  onDeleteWord,
+  onRestoreWord,
+  onRestoreAllDeleted,
+  onImportDeletedWords,
+  syncCode,
+  onReview,
+  isAnonymous
+}) {
   // Pre-session filter state
   const [priorityFilters, setPriorityFilters] = useState([1, 2, 3]); // High (1), Med (2), Low (3)
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [queueLimit, setQueueLimit] = useState('50');
 
   // Persistent Deleted Words (words that will never appear in any future Ankii Speaking sessions)
-  const [deletedWords, setDeletedWords] = useState(() => {
+  const [localDeletedWords, setLocalDeletedWords] = useState(() => {
     try {
       const saved = localStorage.getItem('b1_anki_speaking_deleted_words');
       return saved ? JSON.parse(saved) : [];
@@ -35,8 +47,10 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     }
   });
 
+  const deletedWords = propDeletedWords !== undefined ? propDeletedWords : localDeletedWords;
+
   const deletedWordsSet = useMemo(() => {
-    return new Set(deletedWords.map(w => w.toLowerCase()));
+    return new Set(deletedWords.map(w => (typeof w === 'string' ? w.toLowerCase() : '')));
   }, [deletedWords]);
 
   // Modal state for viewing/restoring deleted words
@@ -144,25 +158,50 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     });
   }, [vocabData, selectedCategory, priorityFilters, deletedWordsSet]);
 
-  // Priority count breakdown for the setup screen
+  // Priority count breakdown for the setup screen, respecting selectedCategory and excluding deleted words
   const priorityCounts = useMemo(() => {
-    let all = [];
-    Object.keys(vocabData).forEach(cat => {
-      const items = vocabData[cat] || [];
+    let pool = [];
+    if (selectedCategory === 'all') {
+      Object.keys(vocabData).forEach(cat => {
+        const items = vocabData[cat] || [];
+        items.forEach(item => {
+          if (!deletedWordsSet.has(item.word.toLowerCase())) {
+            pool.push(item);
+          }
+        });
+      });
+    } else {
+      const items = vocabData[selectedCategory] || [];
       items.forEach(item => {
-        // Exclude deleted words from count
         if (!deletedWordsSet.has(item.word.toLowerCase())) {
-          all.push(item);
+          pool.push(item);
         }
       });
+    }
+
+    const high = pool.filter(item => (item.priority || 1) === 1).length;
+    const med = pool.filter(item => item.priority === 2).length;
+    const low = pool.filter(item => item.priority === 3).length;
+
+    return { high, med, low, total: pool.length };
+  }, [vocabData, selectedCategory, deletedWordsSet]);
+
+  // Category counts breakdown respecting active priorityFilters and excluding deleted words
+  const categoryCounts = useMemo(() => {
+    const counts = { all: 0, nouns: 0, verbs: 0, adjectives: 0, connectors: 0 };
+    Object.keys(vocabData).forEach(cat => {
+      const items = vocabData[cat] || [];
+      const valid = items.filter(item => {
+        const p = item.priority || 1;
+        return priorityFilters.includes(p) && !deletedWordsSet.has(item.word.toLowerCase());
+      });
+      if (counts[cat] !== undefined) {
+        counts[cat] = valid.length;
+      }
+      counts.all += valid.length;
     });
-
-    const high = all.filter(item => (item.priority || 1) === 1).length;
-    const med = all.filter(item => item.priority === 2).length;
-    const low = all.filter(item => item.priority === 3).length;
-
-    return { high, med, low, total: all.length };
-  }, [vocabData, deletedWordsSet]);
+    return counts;
+  }, [vocabData, priorityFilters, deletedWordsSet]);
 
   // Toggle priority filter
   const togglePriority = (priorityNumber) => {
@@ -518,12 +557,16 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
 
     clearAdvanceTimers();
 
-    // 1. Add word to deleted list persistently in localStorage
-    setDeletedWords(prev => {
-      const updated = prev.includes(wordKey) ? prev : [...prev, wordKey];
-      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
-      return updated;
-    });
+    // 1. Add word to deleted list
+    if (onDeleteWord) {
+      onDeleteWord(wordKey);
+    } else {
+      setLocalDeletedWords(prev => {
+        const updated = prev.includes(wordKey) ? prev : [...prev, wordKey];
+        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+        return updated;
+      });
+    }
 
     // 2. Advance to the next card immediately
     const nextIdx = currentIndex + 1;
@@ -567,7 +610,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
         undoIntervalRef.current = null;
       }
     }, 10000);
-  }, [currentCard, currentIndex, sessionCards, speakGerman]);
+  }, [currentCard, currentIndex, sessionCards, speakGerman, onDeleteWord]);
 
   // Undo Delete Handler (Click within 10 seconds)
   const handleUndoDelete = useCallback(() => {
@@ -576,12 +619,16 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     const restoredWord = undoToast.word;
     const restoredCard = undoToast.card;
 
-    // 1. Remove from deletedWords list in localStorage
-    setDeletedWords(prev => {
-      const updated = prev.filter(w => w.toLowerCase() !== restoredWord.toLowerCase());
-      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
-      return updated;
-    });
+    // 1. Remove from deletedWords list
+    if (onRestoreWord) {
+      onRestoreWord(restoredWord);
+    } else {
+      setLocalDeletedWords(prev => {
+        const updated = prev.filter(w => w.toLowerCase() !== restoredWord.toLowerCase());
+        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+        return updated;
+      });
+    }
 
     // 2. Clear undo timer
     if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
@@ -600,23 +647,80 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       const restoredDe = getAudioGermanWord(restoredCard.word);
       speakGerman(restoredDe);
     }
-  }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman]);
+  }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman, onRestoreWord]);
 
   // Restore a word from the Deleted Words Manager Modal
   const handleRestoreWordFromModal = useCallback((wordToRestore) => {
-    setDeletedWords(prev => {
-      const updated = prev.filter(w => w.toLowerCase() !== wordToRestore.toLowerCase());
-      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
-      return updated;
-    });
-  }, []);
+    if (onRestoreWord) {
+      onRestoreWord(wordToRestore);
+    } else {
+      setLocalDeletedWords(prev => {
+        const updated = prev.filter(w => w.toLowerCase() !== wordToRestore.toLowerCase());
+        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  }, [onRestoreWord]);
 
   // Restore All words from modal
   const handleRestoreAllDeleted = useCallback(() => {
-    setDeletedWords([]);
-    localStorage.removeItem('b1_anki_speaking_deleted_words');
+    if (onRestoreAllDeleted) {
+      onRestoreAllDeleted();
+    } else {
+      setLocalDeletedWords([]);
+      localStorage.removeItem('b1_anki_speaking_deleted_words');
+    }
     setShowDeletedModal(false);
-  }, []);
+  }, [onRestoreAllDeleted]);
+
+  // Backup Export & Import (Disaster recovery)
+  const fileInputRef = useRef(null);
+
+  const exportDeletedBackup = useCallback(() => {
+    if (deletedWords.length === 0) {
+      alert("No deleted words to export.");
+      return;
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(deletedWords, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", "deleted_words_backup.json");
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }, [deletedWords]);
+
+  const handleImportBackupFile = useCallback((e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        if (Array.isArray(parsed)) {
+          if (onImportDeletedWords) {
+            onImportDeletedWords(parsed);
+          } else {
+            setLocalDeletedWords(prev => {
+              const merged = new Map();
+              prev.forEach(w => { if (typeof w === 'string') merged.set(w.toLowerCase(), w); });
+              parsed.forEach(w => { if (typeof w === 'string') merged.set(w.toLowerCase(), w); });
+              const res = Array.from(merged.values());
+              localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(res));
+              return res;
+            });
+          }
+          alert(`Successfully restored ${parsed.length} deleted words from backup!`);
+        } else {
+          alert("Invalid backup file: Expected a JSON array of words.");
+        }
+      } catch (err) {
+        alert("Failed to read JSON backup file.");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }, [onImportDeletedWords]);
 
   // ----------------------------------------------------
   // Desktop Keyboard Shortcuts
@@ -1015,11 +1119,18 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
               borderRadius: '12px',
               background: 'rgba(239, 68, 68, 0.08)',
               border: '1px solid rgba(239, 68, 68, 0.25)',
-              marginBottom: '20px'
+              marginBottom: '20px',
+              flexWrap: 'wrap',
+              gap: '10px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', fontWeight: '600', flexWrap: 'wrap' }}>
                 <span>🗑️</span>
                 <span>{deletedWords.length} word{deletedWords.length > 1 ? 's' : ''} deleted from future sessions</span>
+                {syncCode && (
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>
+                    (Cloud Sync: <code style={{ color: '#60a5fa' }}>{syncCode}</code>)
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -1032,7 +1143,8 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                   padding: '4px 10px',
                   fontSize: '11px',
                   fontWeight: '700',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  flexShrink: 0
                 }}
               >
                 Manage / Restore
@@ -1130,20 +1242,37 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
               {[
-                { id: 'all', label: '🌐 All Classes' },
-                { id: 'nouns', label: '🟢 Nouns' },
-                { id: 'verbs', label: '🔵 Verbs' },
-                { id: 'adjectives', label: '🟡 Adjectives' },
-                { id: 'connectors', label: '#️⃣ Connectors' }
+                { id: 'all', label: '🌐 All Classes', count: categoryCounts.all },
+                { id: 'nouns', label: '🟢 Nouns', count: categoryCounts.nouns },
+                { id: 'verbs', label: '🔵 Verbs', count: categoryCounts.verbs },
+                { id: 'adjectives', label: '🟡 Adjectives', count: categoryCounts.adjectives },
+                { id: 'connectors', label: '#️⃣ Connectors', count: categoryCounts.connectors }
               ].map(cat => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(cat.id)}
                   className={`option-pill ${selectedCategory === cat.id ? 'active' : ''}`}
-                  style={{ padding: '6px 14px', fontSize: '12px' }}
+                  style={{
+                    padding: '8px 14px',
+                    fontSize: '12px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease'
+                  }}
                 >
-                  {cat.label}
+                  <span>{cat.label}</span>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '1px 7px',
+                    borderRadius: '10px',
+                    background: selectedCategory === cat.id ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)',
+                    color: selectedCategory === cat.id ? '#fff' : 'var(--text-muted)'
+                  }}>
+                    {cat.count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -1299,6 +1428,14 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
 
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.4' }}>
                 These words will never appear in any future Ankii Speaking sessions. Click <b>Restore</b> on any word to add it back to your deck.
+                {syncCode && (
+                  <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', color: '#60a5fa' }}>
+                    ☁️ Synced across your devices with code: <b>{syncCode}</b>
+                  </span>
+                )}
+                <span style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: '#10b981' }}>
+                  💾 Real-time file backup auto-saved to <code>deleted_words_backup.json</code>
+                </span>
               </p>
 
               <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', paddingRight: '4px' }}>
@@ -1344,42 +1481,88 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                 )}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
-                {deletedWords.length > 0 && (
+              {/* Modal Footer with Disaster Recovery and Restore Controls */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    onClick={handleRestoreAllDeleted}
+                    onClick={exportDeletedBackup}
                     style={{
-                      background: 'rgba(239, 68, 68, 0.15)',
-                      border: '1px solid rgba(239, 68, 68, 0.35)',
-                      color: '#ef4444',
-                      borderRadius: '10px',
-                      padding: '10px 16px',
-                      fontSize: '12px',
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      color: '#60a5fa',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Download deleted_words_backup.json"
+                  >
+                    💾 Export Backup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid var(--border-color)',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Import or restore words from JSON backup file"
+                  >
+                    📥 Recover from Backup
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackupFile}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                  {deletedWords.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleRestoreAllDeleted}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#ef4444',
+                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Restore All
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowDeletedModal(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid var(--border-color)',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '11px',
                       fontWeight: '700',
                       cursor: 'pointer'
                     }}
                   >
-                    Restore All Words
+                    Done
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowDeletedModal(false)}
-                  style={{
-                    background: 'rgba(255,255,255,0.1)',
-                    border: '1px solid var(--border-color)',
-                    color: '#fff',
-                    borderRadius: '10px',
-                    padding: '10px 20px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    marginLeft: 'auto'
-                  }}
-                >
-                  Done
-                </button>
+                </div>
               </div>
             </div>
           </div>
