@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { exportBackupFile } from '../utils/backupStorage';
 
 // Helpers for clean TTS text extraction
 export function getAudioGermanWord(word) {
@@ -817,43 +818,11 @@ export default function AnkiiSpeaking({
   const fileInputRef = useRef(null);
 
   const exportDeletedBackup = useCallback(async () => {
-    if (deletedWords.length === 0) {
+    if (!deletedWords || deletedWords.length === 0) {
       alert("No deleted words to export.");
       return;
     }
-    const jsonString = JSON.stringify(deletedWords, null, 2);
-
-    // Modern browsers: File System Access API allows directly overwriting deleted_words_backup.json
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: 'deleted_words_backup.json',
-          types: [{
-            description: 'JSON Backup File',
-            accept: { 'application/json': ['.json'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(jsonString);
-        await writable.close();
-        alert('Successfully saved and updated deleted_words_backup.json!');
-        return;
-      } catch (err) {
-        if (err.name === 'AbortError') return; // User cancelled
-        console.warn('File picker failed, falling back to download:', err);
-      }
-    }
-
-    // Standard fallback download
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.href = url;
-    downloadAnchor.download = 'deleted_words_backup.json';
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-    URL.revokeObjectURL(url);
+    await exportBackupFile('deleted_words_backup.json', deletedWords);
   }, [deletedWords]);
 
   const handleImportBackupFile = useCallback((e) => {

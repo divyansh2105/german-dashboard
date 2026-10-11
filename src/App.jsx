@@ -12,6 +12,7 @@ import SpeakingPractice from './components/SpeakingPractice';
 import GrammarPractice from './components/GrammarPractice';
 import TranslationPractice from './components/TranslationPractice';
 import './index.css';
+import { tryAutoSyncToDirectory } from './utils/backupStorage';
 
 function App() {
   const isIOS = useMemo(() => {
@@ -322,6 +323,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(deletedWords)
     }).catch(() => {});
+    tryAutoSyncToDirectory('deleted_words_backup.json', deletedWords);
 
     if (!isDeletedMountedRef.current) {
       isDeletedMountedRef.current = true;
@@ -399,6 +401,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(myList)
     }).catch(() => {});
+    tryAutoSyncToDirectory('my_list_backup.json', myList);
 
     // Ignore the very first run on component mount to prevent stale local cache from overwriting fresh cloud data
     if (!isMountedRef.current) {
