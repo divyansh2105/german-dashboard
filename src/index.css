@@ -1097,3 +1097,9 @@ h2.section-title {
   transform: scale(0.98);
 }
 
+.ankii-star-btn:hover {
+  background: rgba(234, 179, 8, 0.25) !important;
+  color: #eab308 !important;
+  transform: scale(1.15) !important;
+}
+

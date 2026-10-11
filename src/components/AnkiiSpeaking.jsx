@@ -19,7 +19,7 @@ export function getWorkplaceExample(card) {
   return match || card.examples[0];
 }
 
-export default function AnkiiSpeaking({ vocabData, onReview }) {
+export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, onReview, isAnonymous }) {
   // Pre-session filter state
   const [priorityFilters, setPriorityFilters] = useState([1, 2, 3]); // High (1), Med (2), Low (3)
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -44,7 +44,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
   const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(null);
   const [touchFeedback, setTouchFeedback] = useState(null); // 'mastered' | 'english' | 'context' | null
 
-  // Mobile drag physics
+  // Mobile drag physics & full-screen touch state
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const touchStartRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -255,7 +255,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     utterEn.onend = () => {
       if (!isMountedRef.current) return;
       setSpeakingPhase('example');
-      // Short breath pause between languages
       audioEndTimeoutRef.current = setTimeout(() => {
         if (!isMountedRef.current) return;
         const utterDe = new SpeechSynthesisUtterance(deSentence);
@@ -304,10 +303,8 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
   // ----------------------------------------------------
 
   const handleStartSession = () => {
-    // 1. Mobile Audio Context & Speech Synthesis Unlock
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      // Speak a blank dummy utterance within user gesture context to prime iOS / Android
       const dummy = new SpeechSynthesisUtterance('');
       dummy.volume = 0;
       dummy.rate = 1;
@@ -324,7 +321,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
       }
     }
 
-    // 2. Prepare queue
     let initialList = shuffleArray(allFilteredPool);
     if (queueLimit !== 'all') {
       const limit = parseInt(queueLimit, 10);
@@ -344,7 +340,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     setSessionFinished(false);
     setSessionActive(true);
 
-    // 3. Immediately play first card's German audio
     const firstWord = getAudioGermanWord(initialList[0].word);
     setTimeout(() => {
       speakGerman(firstWord);
@@ -392,13 +387,11 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     setRevealedState('none');
 
     if (nextQueue.length === 0) {
-      // Session finished!
       setSessionFinished(true);
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     } else {
-      // Immediately play German audio of next card
       const nextWord = getAudioGermanWord(nextQueue[0].word);
       speakGerman(nextWord);
     }
@@ -407,6 +400,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
   // ----------------------------------------------------
   // Action 2: Forgot Word (English Meaning Only)
   // [N] or Swipe Left or "English" Button
+  // Re-inserts randomly between 20 and 100 places further in the queue
   // ----------------------------------------------------
   const handleForgotEnglish = useCallback(() => {
     if (!queue || queue.length === 0) return;
@@ -422,8 +416,10 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     // Only re-insert once per card appearance
     if (revealedState === 'none') {
       setCycledCount(prev => prev + 1);
-      // Re-insert randomly 3 to 5 positions ahead
-      const offset = Math.floor(Math.random() * 3) + 3; // 3, 4, or 5
+      // Re-insert randomly between 20 and 100 places further
+      const minOffset = 20;
+      const maxOffset = 100;
+      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
       const updatedQueue = [...queue];
       const [card] = updatedQueue.splice(0, 1);
       const insertIndex = Math.min(updatedQueue.length, offset);
@@ -436,7 +432,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
 
     // Read English translation aloud via TTS
     speakEnglish(currentCard.meaning, () => {
-      // Optional subtle auto-advance after TTS
       triggerAutoAdvance(2);
     });
   }, [queue, revealedState, onReview, speakEnglish, triggerAutoAdvance]);
@@ -444,6 +439,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
   // ----------------------------------------------------
   // Action 3: More Context (English + Workplace Example)
   // [M] or Swipe Up or "Context" Button
+  // Re-inserts randomly between 20 and 100 places further in the queue
   // ----------------------------------------------------
   const handleMoreContext = useCallback(() => {
     if (!queue || queue.length === 0) return;
@@ -461,8 +457,10 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     // Only re-insert once per card appearance
     if (revealedState !== 'context') {
       setCycledCount(prev => prev + 1);
-      // Re-insert 8 to 10 positions ahead
-      const offset = Math.floor(Math.random() * 3) + 8; // 8, 9, or 10
+      // Re-insert randomly between 20 and 100 places further
+      const minOffset = 20;
+      const maxOffset = 100;
+      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
       const updatedQueue = [...queue];
       const [card] = updatedQueue.splice(0, 1);
       const insertIndex = Math.min(updatedQueue.length, offset);
@@ -475,7 +473,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     const exampleDe = wpExample ? wpExample.de : '';
     // Sequentially read English translation followed by 1 German workplace example
     speakSequentialContext(currentCard.meaning, exampleDe, () => {
-      // Subtle auto-advance after sequential playback finishes
       triggerAutoAdvance(3);
     });
   }, [queue, revealedState, onReview, speakSequentialContext, triggerAutoAdvance]);
@@ -500,6 +497,21 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     }
   }, [queue, speakGerman]);
 
+  // Current Card and Star Status
+  const currentCard = queue[0];
+  const wpExample = useMemo(() => getWorkplaceExample(currentCard), [currentCard]);
+  const isStarred = useMemo(() => {
+    if (!currentCard || !Array.isArray(myList)) return false;
+    return myList.some(item => item.word.toLowerCase() === currentCard.word.toLowerCase());
+  }, [currentCard, myList]);
+
+  const handleToggleStar = useCallback((e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (onToggleMyList && currentCard) {
+      onToggleMyList(currentCard);
+    }
+  }, [onToggleMyList, currentCard]);
+
   // ----------------------------------------------------
   // Desktop Keyboard Shortcuts
   // ----------------------------------------------------
@@ -507,15 +519,14 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     if (!sessionActive || sessionFinished) return;
 
     const handleKeyDown = (e) => {
-      // Ignore if user is inside an input/textarea
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
       if (e.code === 'Space') {
         e.preventDefault();
         if (revealedState === 'none') {
-          handleMastered(); // Instant Recall (Mastered)
+          handleMastered();
         } else {
-          handleAdvanceNext(); // Advance after seeing translation
+          handleAdvanceNext();
         }
       } else if (e.code === 'KeyN' || e.key === 'n' || e.key === 'N') {
         e.preventDefault();
@@ -523,6 +534,9 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
       } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         handleMoreContext();
+      } else if (e.code === 'KeyS' || e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        handleToggleStar();
       } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         replayGerman();
@@ -548,16 +562,25 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sessionActive, sessionFinished, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman]);
+  }, [sessionActive, sessionFinished, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleToggleStar]);
 
   // ----------------------------------------------------
-  // Mobile Touch Gestures & Swipe Physics
+  // Full-Screen Mobile Touch Gestures & Swipe Physics
+  // Operates across the entire screen on smartphones
   // ----------------------------------------------------
   const handleTouchStart = (e) => {
     if (e.touches.length !== 1) return;
+    // Don't intercept touches that start on interactive buttons
+    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) {
+      touchStartRef.current = null;
+      isDraggingRef.current = false;
+      return;
+    }
+
     touchStartRef.current = {
       x: e.touches[0].clientX,
       y: e.touches[0].clientY,
+      target: e.target,
       time: Date.now()
     };
     isDraggingRef.current = true;
@@ -571,10 +594,9 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     const diffX = currentX - touchStartRef.current.x;
     const diffY = currentY - touchStartRef.current.y;
 
-    // Apply drag damping
+    // Apply drag physics to the active card
     setDragOffset({ x: diffX * 0.7, y: diffY * 0.7 });
 
-    // Show dynamic swipe direction indicator
     if (Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > 40) setTouchFeedback('mastered');
       else if (diffX < -40) setTouchFeedback('english');
@@ -591,20 +613,24 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     const diffX = touchEnd.clientX - touchStartRef.current.x;
     const diffY = touchEnd.clientY - touchStartRef.current.y;
     const duration = Date.now() - touchStartRef.current.time;
+    const touchedCard = touchStartRef.current.target && touchStartRef.current.target.closest('.ankii-speaking-card');
 
     isDraggingRef.current = false;
     setDragOffset({ x: 0, y: 0 });
     setTouchFeedback(null);
 
-    const SWIPE_THRESHOLD = 50;
+    const SWIPE_THRESHOLD = 45; // Responsive threshold for full-screen swipes
 
-    // 1. Minimal movement = Tap -> Replay German word
+    // 1. Minimal movement = Tap -> If tapped on card, replay German pronunciation
     if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15 && duration < 350) {
-      replayGerman();
+      if (touchedCard) {
+        replayGerman();
+      }
+      touchStartRef.current = null;
       return;
     }
 
-    // 2. Horizontal Swipes
+    // 2. Horizontal Swipes (Anywhere on the screen!)
     if (Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > SWIPE_THRESHOLD) {
         // Swipe Right -> Know It / Mastered
@@ -618,7 +644,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
         handleForgotEnglish();
       }
     } else {
-      // 3. Vertical Swipes
+      // 3. Vertical Swipes (Anywhere on the screen!)
       if (diffY < -SWIPE_THRESHOLD) {
         // Swipe Up -> More Context
         handleMoreContext();
@@ -633,9 +659,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
     if (e.target.closest('button')) return;
     replayGerman();
   };
-
-  const currentCard = queue[0];
-  const wpExample = useMemo(() => getWorkplaceExample(currentCard), [currentCard]);
 
   // Format elapsed time string
   const formatTime = (seconds) => {
@@ -886,7 +909,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Mastered / Know It</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[Space]</code> • Mobile: <b>Swipe Right</b>
+                    Desktop: <code>[Space]</code> • Mobile: <b>Swipe Right (Full Screen)</b>
                   </div>
                 </div>
               </div>
@@ -895,7 +918,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b' }}>Forgot (English)</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[N]</code> • Mobile: <b>Swipe Left</b>
+                    Desktop: <code>[N]</code> • Mobile: <b>Swipe Left (Full Screen)</b>
                   </div>
                 </div>
               </div>
@@ -904,7 +927,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#3b82f6' }}>More Context</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[M]</code> • Mobile: <b>Swipe Up</b>
+                    Desktop: <code>[M]</code> • Mobile: <b>Swipe Up (Full Screen)</b>
                   </div>
                 </div>
               </div>
@@ -954,13 +977,29 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
 
   // ----------------------------------------------------
   // VIEW: 2. Active Audio-First Card Session
+  // With Full-Screen Smartphone Swipe Support!
   // ----------------------------------------------------
   const progressPercent = initialQueueCount > 0 
     ? Math.min(100, Math.round((masteredCount / initialQueueCount) * 100)) 
     : 0;
 
   return (
-    <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '640px', margin: '16px auto', padding: '0 16px' }}>
+    <div
+      className="flashcard-layout animate-fade-in"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        maxWidth: '640px',
+        margin: '16px auto',
+        padding: '0 16px',
+        minHeight: 'calc(100dvh - 120px)',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        touchAction: 'pan-y'
+      }}
+    >
       
       {/* Top Header & Progress */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1061,14 +1100,15 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
         </div>
       </div>
 
-      {/* Swipe Feedback Badge (Mobile Drag) */}
+      {/* Swipe Feedback Badge (Mobile Drag across entire screen) */}
       <div style={{
         height: '24px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         transition: 'opacity 0.15s ease',
-        opacity: touchFeedback ? 1 : 0
+        opacity: touchFeedback ? 1 : 0,
+        margin: '4px 0'
       }}>
         {touchFeedback === 'mastered' && (
           <span style={{ fontSize: '12px', fontWeight: '800', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px' }}>
@@ -1091,9 +1131,6 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
       <div
         className={`glass-card ankii-speaking-card ${currentCard.category || 'nouns'}`}
         onClick={handleCardClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         style={{
           width: '100%',
           minHeight: '340px',
@@ -1119,7 +1156,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
             : 'var(--shadow-premium), var(--shadow-inset)'
         }}
       >
-        {/* Top Card Badges */}
+        {/* Top Left Card Badges */}
         <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span className={`category-tag ${currentCard.category || 'nouns'}`}>
             {currentCard.category}
@@ -1142,8 +1179,37 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
           )}
         </div>
 
-        {/* Audio Speaking Wave Badge */}
-        <div style={{ position: 'absolute', top: '18px', right: '20px' }}>
+        {/* Top Right: Add to List Star Button & Audio Replay Button */}
+        <div style={{ position: 'absolute', top: '16px', right: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Add to List Star Button */}
+          {onToggleMyList && !isAnonymous && (
+            <button
+              type="button"
+              className="sound-btn ankii-star-btn"
+              onClick={handleToggleStar}
+              title={isStarred ? "Remove from My List (Starred) [S]" : "Add to My List Star [S]"}
+              style={{
+                fontSize: '19px',
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: isStarred ? 'rgba(234, 179, 8, 0.22)' : 'rgba(255, 255, 255, 0.06)',
+                border: isStarred ? '1px solid rgba(234, 179, 8, 0.6)' : '1px solid var(--border-color)',
+                color: isStarred ? '#eab308' : 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: isStarred ? '0 0 14px rgba(234, 179, 8, 0.35)' : 'none',
+                transform: isStarred ? 'scale(1.08)' : 'scale(1)'
+              }}
+            >
+              {isStarred ? '★' : '☆'}
+            </button>
+          )}
+
+          {/* Sound Replay button */}
           <button
             type="button"
             className="sound-btn"
@@ -1151,8 +1217,15 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
               e.stopPropagation();
               replayGerman();
             }}
-            title="Tap to replay German pronunciation"
+            title="Tap to replay German pronunciation [R]"
             style={{
+              fontSize: '16px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               background: isSpeaking ? 'rgba(59, 130, 246, 0.3)' : 'rgba(255,255,255,0.06)',
               transform: isSpeaking ? 'scale(1.15)' : 'scale(1)',
               transition: 'transform 0.2s ease, background 0.2s ease'
@@ -1209,7 +1282,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
               gap: '6px'
             }}>
               <span>👆</span>
-              <span>Tap anywhere to replay audio</span>
+              <span>Tap card to replay audio • Swipe anywhere on screen</span>
             </div>
           )}
 
@@ -1302,7 +1375,7 @@ export default function AnkiiSpeaking({ vocabData, onReview }) {
             </div>
           ) : (
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context
+              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[S]</code> Star
             </div>
           )}
         </div>

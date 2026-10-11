@@ -1344,7 +1344,15 @@ function App() {
       <main style={{ flexGrow: 1 }}>
         {activeTab === 'explorer' && <WordList vocabData={vocabData} myList={myList} onToggleMyList={handleToggleMyList} isAnonymous={isAnonymous} />}
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
-        {activeTab === 'ankii-speaking' && <AnkiiSpeaking vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'ankii-speaking' && (
+          <AnkiiSpeaking
+            vocabData={vocabData}
+            myList={myList}
+            onToggleMyList={handleToggleMyList}
+            onReview={handleReviewWord}
+            isAnonymous={isAnonymous}
+          />
+        )}
         {activeTab === 'cloze' && <ClozePractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}
