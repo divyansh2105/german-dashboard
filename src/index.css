@@ -1163,12 +1163,24 @@ h2.section-title {
   filter: brightness(1.2);
 }
 
+.ankii-cue-favorite:hover {
+  transform: scale(1.08) !important;
+  filter: brightness(1.2);
+  border-color: rgba(234, 179, 8, 0.7) !important;
+}
+
 .ankii-layout-cue:active,
 .ankii-layout-cue.active-cue,
 .ankii-phone-cue:active,
 .ankii-phone-cue.active-cue {
   transform: scale(1.12) !important;
   filter: brightness(1.3);
+}
+
+.ankii-cue-favorite:active,
+.ankii-cue-favorite.active-cue {
+  transform: scale(1.12) !important;
+  box-shadow: 0 0 20px rgba(234, 179, 8, 0.5) !important;
 }
 
 .ankii-card-cue-top:active,

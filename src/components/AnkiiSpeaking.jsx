@@ -694,7 +694,14 @@ export default function AnkiiSpeaking({
       replayGerman();
       return;
     }
-  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, triggerVoiceFeedback]);
+
+    // 6. Favorite (S/F press / Add word to My List)
+    if (/\b(favorite|favourite|favorit|star|starred|stern|favoriten|favorisieren)\b/i.test(text)) {
+      triggerVoiceFeedback(isStarred ? 'Unfavorited' : 'Favorited [★]');
+      handleToggleStar();
+      return;
+    }
+  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, handleToggleStar, isStarred, triggerVoiceFeedback]);
 
   // Keep a stable ref to handleVoiceCommand to avoid re-initializing recognition on state updates
   const handleVoiceCommandRef = useRef(handleVoiceCommand);
@@ -903,7 +910,7 @@ export default function AnkiiSpeaking({
       } else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         handleMoreContext();
-      } else if (e.code === 'KeyS' || e.key === 's' || e.key === 'S') {
+      } else if (e.code === 'KeyS' || e.key === 's' || e.key === 'S' || e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         handleToggleStar();
       } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
@@ -1595,7 +1602,7 @@ export default function AnkiiSpeaking({
                   )}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Say "Next", "Translate", "More", or "Delete" (lasts whole session)
+                  Say "Next", "Translate", "More", "Delete", "Repeat", or "Favorite" (lasts whole session)
                 </div>
               </div>
             </div>
@@ -1926,7 +1933,7 @@ export default function AnkiiSpeaking({
                 }
                 setIsVoiceActive(prev => !prev);
               }}
-              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat')"}
+              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
               style={{
                 background: isVoiceActive 
                   ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))' 
@@ -2051,7 +2058,7 @@ export default function AnkiiSpeaking({
             </span>
           ) : (
             <span style={{ color: 'rgba(255,255,255,0.88)' }}>
-              🎙️ Say: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b> • <b>Repeat</b>
+              🎙️ Say: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b> • <b>Repeat</b> • <b>Favorite</b>
             </span>
           )}
         </div>
@@ -2380,6 +2387,50 @@ export default function AnkiiSpeaking({
             </button>
           </div>
 
+          {/* FAVORITE LAYOUT OPTION (Directly Underneath Repeat - Desktop & Phone) */}
+          <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleStar();
+              }}
+              className={`ankii-layout-cue ankii-cue-center ankii-cue-favorite ${isStarred ? 'active-cue' : ''}`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '5px 15px',
+                borderRadius: '20px',
+                background: isStarred ? 'rgba(234, 179, 8, 0.22)' : 'rgba(255, 255, 255, 0.06)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: isStarred ? '1px solid rgba(234, 179, 8, 0.55)' : '1px solid rgba(255, 255, 255, 0.14)',
+                color: isStarred ? '#eab308' : 'rgba(255, 255, 255, 0.82)',
+                fontSize: '11px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: isStarred ? '0 0 14px rgba(234, 179, 8, 0.3)' : '0 2px 8px rgba(0,0,0,0.12)'
+              }}
+              title={isStarred ? "Word is in My List - Click to Remove [S / F / Voice: 'Favorite']" : "Add word to My List [S / F / Voice: 'Favorite']"}
+            >
+              <span style={{ fontSize: '13px', color: isStarred ? '#eab308' : 'rgba(255, 255, 255, 0.6)' }}>
+                {isStarred ? '★' : '☆'}
+              </span>
+              <span>{isStarred ? 'In My List' : 'Favorite'}</span>
+              <kbd style={{
+                fontSize: '9px',
+                background: 'rgba(255,255,255,0.1)',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                color: 'rgba(255,255,255,0.6)'
+              }}>
+                [S]
+              </kbd>
+            </button>
+          </div>
+
           {/* AUDIO PROMPT HINT & 1-SECOND GESTURE STATUS */}
           {revealedState === 'none' && (
             <div style={{
@@ -2480,7 +2531,7 @@ export default function AnkiiSpeaking({
         {/* Bottom Card Footer: Shortcut Cheatsheet */}
         <div style={{ width: '100%', marginTop: 'auto', paddingTop: '12px' }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[D]</code> Delete
+            Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[S]</code> Favorite • <code>[D]</code> Delete
           </div>
         </div>
       </div>
