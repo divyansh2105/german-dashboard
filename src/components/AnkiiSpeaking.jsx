@@ -681,7 +681,14 @@ export default function AnkiiSpeaking({
       }
       return;
     }
-  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, triggerVoiceFeedback]);
+
+    // 5. Repeat (R press / Replay German word pronunciation)
+    if (/\b(repeat|replay|again|nochmal|wiederholen|wiederhole)\b/i.test(text)) {
+      triggerVoiceFeedback('Repeat [R]');
+      replayGerman();
+      return;
+    }
+  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, triggerVoiceFeedback]);
 
   // Keep a stable ref to handleVoiceCommand to avoid re-initializing recognition on state updates
   const handleVoiceCommandRef = useRef(handleVoiceCommand);
@@ -1798,9 +1805,6 @@ export default function AnkiiSpeaking({
   return (
     <div
       className="flashcard-layout animate-fade-in"
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
       style={{
         maxWidth: '640px',
         margin: '16px auto',
@@ -1809,7 +1813,6 @@ export default function AnkiiSpeaking({
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        touchAction: 'pan-y',
         position: 'relative'
       }}
     >
@@ -1861,9 +1864,9 @@ export default function AnkiiSpeaking({
             </span>
           </div>
 
-          {/* Quick Actions (Exit / Voice / Sound Replay) */}
+          {/* Quick Actions (Voice / Sound Replay / Exit) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Continuous Voice Control Toggle */}
+            {/* Prominent Continuous Voice Control Button */}
             <button
               type="button"
               onClick={() => {
@@ -1873,28 +1876,31 @@ export default function AnkiiSpeaking({
                 }
                 setIsVoiceActive(prev => !prev);
               }}
-              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Voice Control ('Next', 'Translate', 'More', 'Delete')"}
+              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat')"}
               style={{
-                background: isVoiceActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.06)',
-                border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color)',
-                borderRadius: '8px',
-                color: isVoiceActive ? '#10b981' : 'var(--text-muted)',
-                padding: '5px 10px',
+                background: isVoiceActive 
+                  ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))' 
+                  : 'rgba(255, 255, 255, 0.08)',
+                border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.65)' : '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '12px',
+                color: isVoiceActive ? '#10b981' : '#fff',
+                padding: '6px 14px',
                 fontSize: '12px',
+                fontWeight: '800',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
-                fontWeight: '700',
-                transition: 'all 0.2s ease'
+                gap: '7px',
+                boxShadow: isVoiceActive ? '0 0 16px rgba(16, 185, 129, 0.35)' : '0 2px 8px rgba(0,0,0,0.15)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             >
-              <span style={{ fontSize: '13px' }}>🎙️</span>
-              <span>{isVoiceActive ? 'Voice: ON' : 'Voice: OFF'}</span>
+              <span style={{ fontSize: '14px' }}>🎙️</span>
+              <span>{isVoiceActive ? 'Voice: ON' : 'Voice Control'}</span>
               {isVoiceActive && (
                 <span className="pulse-indicator" style={{
-                  width: '6px',
-                  height: '6px',
+                  width: '7px',
+                  height: '7px',
                   borderRadius: '50%',
                   background: '#10b981',
                   display: 'inline-block'
@@ -1974,34 +1980,34 @@ export default function AnkiiSpeaking({
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 9990,
-          background: 'rgba(15, 23, 42, 0.88)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          border: '1px solid rgba(16, 185, 129, 0.45)',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-          borderRadius: '20px',
-          padding: '4px 14px',
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid rgba(16, 185, 129, 0.4)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
+          borderRadius: '24px',
+          padding: '6px 16px',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          fontSize: '11px',
+          gap: '8px',
+          fontSize: '12px',
           color: '#fff',
           pointerEvents: 'none'
         }}>
-          <span style={{ fontSize: '12px' }}>🎙️</span>
+          <span className="pulse-indicator" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
           {voiceFeedbackMsg ? (
             <span style={{ color: '#10b981', fontWeight: '800' }}>
               Command: "{voiceFeedbackMsg}"
             </span>
           ) : (
-            <span style={{ color: 'var(--text-secondary)' }}>
-              Voice: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b>
+            <span style={{ color: 'rgba(255,255,255,0.88)' }}>
+              🎙️ Say: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b> • <b>Repeat</b>
             </span>
           )}
         </div>
       )}
 
-      {/* Swipe Feedback Badge (Mobile Drag across entire screen) */}
+      {/* Swipe Feedback Badge (Mobile Drag across card) */}
       <div style={{
         height: '24px',
         display: 'flex',
@@ -2033,9 +2039,12 @@ export default function AnkiiSpeaking({
         )}
       </div>
 
-      {/* MAIN AUDIO-FIRST FLASHCARD */}
+      {/* MAIN AUDIO-FIRST FLASHCARD (Touch gestures strictly bound to card area) */}
       <div
         className={`glass-card ankii-speaking-card ${currentCard.category || 'nouns'}`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onClick={handleCardClick}
         style={{
           width: '100%',
@@ -2051,6 +2060,7 @@ export default function AnkiiSpeaking({
           textAlign: 'center',
           userSelect: 'none',
           WebkitUserSelect: 'none',
+          touchAction: 'none',
           transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) rotate(${dragOffset.x * 0.05}deg)`,
           transition: isDraggingRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease',
           borderColor: touchFeedback === 'mastered' ? 'rgba(34, 197, 94, 0.8)' :
@@ -2202,11 +2212,53 @@ export default function AnkiiSpeaking({
             </div>
           )}
 
+          {/* CENTER LAYOUT CUE: Repeat (Desktop & Phone) */}
+          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                replayGerman();
+              }}
+              className="ankii-layout-cue ankii-cue-center"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 16px',
+                borderRadius: '20px',
+                background: isSpeaking ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: isSpeaking ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(255, 255, 255, 0.14)',
+                color: isSpeaking ? 'var(--color-verb)' : 'rgba(255, 255, 255, 0.85)',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.15)'
+              }}
+              title="Repeat German Pronunciation [R / Voice: 'Repeat']"
+            >
+              <span style={{ fontSize: '13px' }}>{isSpeaking ? '🔊' : '⟳'}</span>
+              <span>Repeat</span>
+              <kbd style={{
+                fontSize: '9px',
+                background: 'rgba(255,255,255,0.1)',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                color: 'rgba(255,255,255,0.6)'
+              }}>
+                [R]
+              </kbd>
+            </button>
+          </div>
+
           {/* AUDIO PROMPT HINT */}
           {revealedState === 'none' && (
             <div style={{
-              marginTop: '20px',
-              fontSize: '12px',
+              marginTop: '12px',
+              fontSize: '11px',
               color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
@@ -2214,7 +2266,7 @@ export default function AnkiiSpeaking({
               gap: '6px'
             }}>
               <span>👆</span>
-              <span>Tap card to replay audio • Swipe anywhere on screen</span>
+              <span>Tap to replay • Swipe card to triage</span>
             </div>
           )}
 
@@ -2296,35 +2348,35 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
-      {/* 4 SCREEN BORDER VISUAL LAYOUT CUES FOR PHONE (Blurred Backgrounds) */}
-      <div className="ankii-phone-border-cues">
+      {/* 4 SCREEN BORDER VISUAL LAYOUT CUES (Translucent Modern - Desktop & Phone) */}
+      <div className="ankii-layout-cues ankii-phone-border-cues">
         {/* Left Screen Border: Translate */}
         <button
           type="button"
           onClick={handleForgotEnglish}
-          className={`ankii-phone-cue ankii-cue-left ${touchFeedback === 'english' ? 'active-cue' : ''}`}
+          className={`ankii-layout-cue ankii-phone-cue ankii-cue-left ${touchFeedback === 'english' ? 'active-cue' : ''}`}
           style={{
             position: 'fixed',
-            left: '6px',
+            left: '8px',
             top: '50%',
             transform: 'translateY(-50%)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            background: touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(15, 23, 42, 0.78)',
-            border: '1px solid rgba(245, 158, 11, 0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.28)' : 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
             color: 'var(--color-adj)',
-            padding: '10px 12px',
+            padding: '9px 13px',
             borderRadius: '16px',
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: '800',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
             zIndex: 90,
             cursor: 'pointer'
           }}
-          title="Translate (Swipe Left / Voice: 'Translate')"
+          title="Translate (Swipe Left on Card / Voice: 'Translate')"
         >
           <span style={{ fontSize: '13px' }}>‹</span>
           <span>Translate</span>
@@ -2334,29 +2386,29 @@ export default function AnkiiSpeaking({
         <button
           type="button"
           onClick={revealedState === 'none' ? handleMastered : handleAdvanceNext}
-          className={`ankii-phone-cue ankii-cue-right ${touchFeedback === 'mastered' ? 'active-cue' : ''}`}
+          className={`ankii-layout-cue ankii-phone-cue ankii-cue-right ${touchFeedback === 'mastered' ? 'active-cue' : ''}`}
           style={{
             position: 'fixed',
-            right: '6px',
+            right: '8px',
             top: '50%',
             transform: 'translateY(-50%)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            background: touchFeedback === 'mastered' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(15, 23, 42, 0.78)',
-            border: '1px solid rgba(16, 185, 129, 0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'mastered' ? 'rgba(16, 185, 129, 0.28)' : 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(16, 185, 129, 0.35)',
             color: '#22c55e',
-            padding: '10px 12px',
+            padding: '9px 13px',
             borderRadius: '16px',
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: '800',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
             zIndex: 90,
             cursor: 'pointer'
           }}
-          title="Next (Swipe Right / Voice: 'Next')"
+          title="Next (Swipe Right on Card / Voice: 'Next')"
         >
           <span>Next</span>
           <span style={{ fontSize: '13px' }}>›</span>
@@ -2366,29 +2418,29 @@ export default function AnkiiSpeaking({
         <button
           type="button"
           onClick={handleMoreContext}
-          className={`ankii-phone-cue ankii-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
+          className={`ankii-layout-cue ankii-phone-cue ankii-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
           style={{
             position: 'fixed',
             top: '56px',
             left: '50%',
             transform: 'translateX(-50%)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(15, 23, 42, 0.78)',
-            border: '1px solid rgba(59, 130, 246, 0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.28)' : 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
             color: 'var(--color-verb)',
-            padding: '6px 16px',
+            padding: '5px 15px',
             borderRadius: '16px',
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: '800',
             display: 'flex',
             alignItems: 'center',
             gap: '5px',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
             zIndex: 90,
             cursor: 'pointer'
           }}
-          title="More Context (Swipe Up / Voice: 'More')"
+          title="More Context (Swipe Up on Card / Voice: 'More')"
         >
           <span style={{ fontSize: '9px' }}>▲</span>
           <span>More</span>
@@ -2398,29 +2450,29 @@ export default function AnkiiSpeaking({
         <button
           type="button"
           onClick={handleDeleteWord}
-          className={`ankii-phone-cue ankii-cue-bottom ${touchFeedback === 'delete' ? 'active-cue' : ''}`}
+          className={`ankii-layout-cue ankii-phone-cue ankii-cue-bottom ${touchFeedback === 'delete' ? 'active-cue' : ''}`}
           style={{
             position: 'fixed',
             bottom: '12px',
             left: '50%',
             transform: 'translateX(-50%)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            background: touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(15, 23, 42, 0.78)',
-            border: '1px solid rgba(239, 68, 68, 0.5)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255, 255, 255, 0.05)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
             color: '#ef4444',
-            padding: '6px 16px',
+            padding: '5px 15px',
             borderRadius: '16px',
-            fontSize: '12px',
+            fontSize: '11px',
             fontWeight: '800',
             display: 'flex',
             alignItems: 'center',
             gap: '5px',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
             zIndex: 90,
             cursor: 'pointer'
           }}
-          title="Delete Word (Swipe Down / Voice: 'Delete')"
+          title="Delete Word (Swipe Down on Card / Voice: 'Delete')"
         >
           <span style={{ fontSize: '9px' }}>▼</span>
           <span>Delete</span>
