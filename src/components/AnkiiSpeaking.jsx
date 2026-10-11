@@ -85,10 +85,15 @@ export default function AnkiiSpeaking({
   const [speakingPhase, setSpeakingPhase] = useState(null); // 'de' | 'en' | 'example'
   const [touchFeedback, setTouchFeedback] = useState(null); // 'mastered' | 'english' | 'context' | null
 
-  // Mobile drag physics & full-screen touch state
+  // Mobile drag physics & touch state (Hold 1s to activate)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isGestureMode, setIsGestureMode] = useState(false);
+  const [isWiggling, setIsWiggling] = useState(false);
   const touchStartRef = useRef(null);
   const isDraggingRef = useRef(false);
+  const longPressTimerRef = useRef(null);
+  const isGestureActiveRef = useRef(false);
+  const lastTouchEndTimeRef = useRef(0);
 
   // Voice Instruction State & Continuous Recognition Engine
   const [isVoiceActive, setIsVoiceActive] = useState(false);
@@ -114,6 +119,7 @@ export default function AnkiiSpeaking({
       if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
@@ -937,7 +943,9 @@ export default function AnkiiSpeaking({
 
   // ----------------------------------------------------
   // Full-Screen Mobile Touch Gestures & Swipe Physics
-  // Operates across the entire screen on smartphones
+  // ----------------------------------------------------
+  // Touch Gestures on Card: Click and hold for 1s to activate
+  // Card wiggles upon activation, preventing scrolling conflicts
   // ----------------------------------------------------
   const handleTouchStart = (e) => {
     if (e.touches.length !== 1) return;
@@ -947,23 +955,53 @@ export default function AnkiiSpeaking({
       return;
     }
 
+    const touch = e.touches[0];
     touchStartRef.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
+      x: touch.clientX,
+      y: touch.clientY,
       target: e.target,
       time: Date.now()
     };
-    isDraggingRef.current = true;
+    isDraggingRef.current = false;
+    isGestureActiveRef.current = false;
+    setIsGestureMode(false);
     setTouchFeedback(null);
+
+    // Click and hold for 1 second to activate gesture mode & wiggle card
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      isGestureActiveRef.current = true;
+      setIsGestureMode(true);
+      setIsWiggling(true);
+      setTimeout(() => setIsWiggling(false), 450);
+
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate(50); } catch (err) {}
+      }
+    }, 1000);
   };
 
   const handleTouchMove = (e) => {
-    if (!isDraggingRef.current || !touchStartRef.current) return;
+    if (!touchStartRef.current) return;
     const currentX = e.touches[0].clientX;
     const currentY = e.touches[0].clientY;
     const diffX = currentX - touchStartRef.current.x;
     const diffY = currentY - touchStartRef.current.y;
 
+    // If gesture mode is NOT active yet:
+    if (!isGestureActiveRef.current) {
+      // If user moved their finger more than 10px before 1s, they are scrolling!
+      if (Math.abs(diffX) > 10 || Math.abs(diffY) > 10) {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      }
+      return; // Do NOT prevent scrolling or drag card
+    }
+
+    // Gesture mode IS active: drag card and show directional feedback
+    isDraggingRef.current = true;
     setDragOffset({ x: diffX * 0.7, y: diffY * 0.7 });
 
     if (Math.abs(diffX) > Math.abs(diffY)) {
@@ -978,6 +1016,11 @@ export default function AnkiiSpeaking({
   };
 
   const handleTouchEnd = (e) => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
     if (!touchStartRef.current) return;
     const touchEnd = e.changedTouches[0];
     const diffX = touchEnd.clientX - touchStartRef.current.x;
@@ -985,47 +1028,54 @@ export default function AnkiiSpeaking({
     const duration = Date.now() - touchStartRef.current.time;
     const touchedCard = touchStartRef.current.target && touchStartRef.current.target.closest('.ankii-speaking-card');
 
+    const wasGestureActive = isGestureActiveRef.current;
+    isGestureActiveRef.current = false;
+    setIsGestureMode(false);
     isDraggingRef.current = false;
     setDragOffset({ x: 0, y: 0 });
     setTouchFeedback(null);
 
     const SWIPE_THRESHOLD = 45;
 
-    // Minimal movement = Tap -> If tapped on card, replay German pronunciation
-    if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15 && duration < 350) {
-      if (touchedCard) {
-        replayGerman();
+    // If gesture mode was active (user held for 1s), perform swipe action
+    if (wasGestureActive) {
+      if (Math.abs(diffX) > Math.abs(diffY)) {
+        if (diffX > SWIPE_THRESHOLD) {
+          if (revealedState === 'none') {
+            handleMastered();
+          } else {
+            handleAdvanceNext();
+          }
+        } else if (diffX < -SWIPE_THRESHOLD) {
+          handleForgotEnglish();
+        }
+      } else {
+        if (diffY < -SWIPE_THRESHOLD) {
+          handleMoreContext();
+        } else if (diffY > SWIPE_THRESHOLD) {
+          handleDeleteWord();
+        }
       }
+      lastTouchEndTimeRef.current = Date.now();
       touchStartRef.current = null;
       return;
     }
 
-    // Horizontal Swipes (Anywhere on screen)
-    if (Math.abs(diffX) > Math.abs(diffY)) {
-      if (diffX > SWIPE_THRESHOLD) {
-        if (revealedState === 'none') {
-          handleMastered();
-        } else {
-          handleAdvanceNext();
-        }
-      } else if (diffX < -SWIPE_THRESHOLD) {
-        handleForgotEnglish();
-      }
-    } else {
-      // Vertical Swipes (Anywhere on screen)
-      if (diffY < -SWIPE_THRESHOLD) {
-        handleMoreContext();
-      } else if (diffY > SWIPE_THRESHOLD) {
-        handleDeleteWord();
+    // If gesture mode was NOT active: Normal quick tap (< 350ms, minimal movement) replays German audio
+    if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15 && duration < 350) {
+      if (touchedCard) {
+        replayGerman();
       }
     }
 
+    lastTouchEndTimeRef.current = Date.now();
     touchStartRef.current = null;
   };
 
-  // Card click handler on desktop
+  // Card click handler on desktop (safeguarded against synthetic touch clicks)
   const handleCardClick = (e) => {
     if (e.target.closest('button')) return;
+    if (Date.now() - lastTouchEndTimeRef.current < 450) return;
     replayGerman();
   };
 
@@ -2041,7 +2091,7 @@ export default function AnkiiSpeaking({
 
       {/* MAIN AUDIO-FIRST FLASHCARD (Touch gestures strictly bound to card area) */}
       <div
-        className={`glass-card ankii-speaking-card ${currentCard.category || 'nouns'}`}
+        className={`glass-card ankii-speaking-card ${currentCard.category || 'nouns'} ${isWiggling ? 'card-wiggle' : ''} ${isGestureMode ? 'gesture-active' : ''}`}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -2060,19 +2110,95 @@ export default function AnkiiSpeaking({
           textAlign: 'center',
           userSelect: 'none',
           WebkitUserSelect: 'none',
-          touchAction: 'none',
-          transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) rotate(${dragOffset.x * 0.05}deg)`,
-          transition: isDraggingRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease',
+          touchAction: isGestureMode ? 'none' : 'pan-y',
+          transform: isWiggling 
+            ? undefined 
+            : `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) rotate(${dragOffset.x * 0.05}deg)`,
+          transition: isDraggingRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease',
           borderColor: touchFeedback === 'mastered' ? 'rgba(34, 197, 94, 0.8)' :
                        touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.8)' :
                        touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.8)' :
                        touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.8)' :
+                       isGestureMode ? 'rgba(59, 130, 246, 0.85)' :
                        isSpeaking ? 'rgba(139, 92, 246, 0.7)' : 'rgba(255, 255, 255, 0.12)',
-          boxShadow: isSpeaking 
+          boxShadow: isGestureMode
+            ? '0 0 28px rgba(59, 130, 246, 0.35), var(--shadow-premium)'
+            : isSpeaking 
             ? '0 12px 40px rgba(139, 92, 246, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.2)' 
             : 'var(--shadow-premium), var(--shadow-inset)'
         }}
       >
+        {/* TOP CARD CUE: More (Positioned directly at top edge of card to prevent overlapping with viewport) */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMoreContext();
+          }}
+          className={`ankii-layout-cue ankii-card-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
+          style={{
+            position: 'absolute',
+            top: '-15px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(59, 130, 246, 0.45)',
+            color: 'var(--color-verb)',
+            padding: '5px 15px',
+            borderRadius: '16px',
+            fontSize: '11px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+            zIndex: 10,
+            cursor: 'pointer'
+          }}
+          title="More Context (Swipe Up on Card / Voice: 'More' / [M])"
+        >
+          <span style={{ fontSize: '9px' }}>▲</span>
+          <span>More</span>
+          <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>[M]</kbd>
+        </button>
+
+        {/* BOTTOM CARD CUE: Delete (Positioned directly at bottom edge of card to prevent overlapping with viewport) */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDeleteWord();
+          }}
+          className={`ankii-layout-cue ankii-card-cue-bottom ${touchFeedback === 'delete' ? 'active-cue' : ''}`}
+          style={{
+            position: 'absolute',
+            bottom: '-15px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(239, 68, 68, 0.45)',
+            color: '#ef4444',
+            padding: '5px 15px',
+            borderRadius: '16px',
+            fontSize: '11px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+            zIndex: 10,
+            cursor: 'pointer'
+          }}
+          title="Delete Word (Swipe Down on Card / Voice: 'Delete' / [D])"
+        >
+          <span style={{ fontSize: '9px' }}>▼</span>
+          <span>Delete</span>
+          <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>[D]</kbd>
+        </button>
         {/* Top Left Card Badges */}
         <div style={{ position: 'absolute', top: '20px', left: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
           <span className={`category-tag ${currentCard.category || 'nouns'}`}>
@@ -2254,7 +2380,7 @@ export default function AnkiiSpeaking({
             </button>
           </div>
 
-          {/* AUDIO PROMPT HINT */}
+          {/* AUDIO PROMPT HINT & 1-SECOND GESTURE STATUS */}
           {revealedState === 'none' && (
             <div style={{
               marginTop: '12px',
@@ -2266,7 +2392,18 @@ export default function AnkiiSpeaking({
               gap: '6px'
             }}>
               <span>👆</span>
-              <span>Tap to replay • Swipe card to triage</span>
+              <span>Tap to replay • Hold 1s to swipe</span>
+            </div>
+          )}
+          {isGestureMode && (
+            <div style={{
+              marginTop: '8px',
+              fontSize: '11px',
+              fontWeight: '800',
+              color: '#38bdf8',
+              letterSpacing: '0.5px'
+            }}>
+              ✨ Gestures Active: Swipe card in any direction!
             </div>
           )}
 
@@ -2348,7 +2485,7 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
-      {/* 4 SCREEN BORDER VISUAL LAYOUT CUES (Translucent Modern - Desktop & Phone) */}
+      {/* 2 SCREEN BORDER VISUAL LAYOUT CUES (Left: Translate / Right: Next) */}
       <div className="ankii-layout-cues ankii-phone-border-cues">
         {/* Left Screen Border: Translate */}
         <button
@@ -2412,70 +2549,6 @@ export default function AnkiiSpeaking({
         >
           <span>Next</span>
           <span style={{ fontSize: '13px' }}>›</span>
-        </button>
-
-        {/* Up / Top Screen Border: More */}
-        <button
-          type="button"
-          onClick={handleMoreContext}
-          className={`ankii-layout-cue ankii-phone-cue ankii-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
-          style={{
-            position: 'fixed',
-            top: '56px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.28)' : 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(59, 130, 246, 0.35)',
-            color: 'var(--color-verb)',
-            padding: '5px 15px',
-            borderRadius: '16px',
-            fontSize: '11px',
-            fontWeight: '800',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-            zIndex: 90,
-            cursor: 'pointer'
-          }}
-          title="More Context (Swipe Up on Card / Voice: 'More')"
-        >
-          <span style={{ fontSize: '9px' }}>▲</span>
-          <span>More</span>
-        </button>
-
-        {/* Down / Bottom Screen Border: Delete */}
-        <button
-          type="button"
-          onClick={handleDeleteWord}
-          className={`ankii-layout-cue ankii-phone-cue ankii-cue-bottom ${touchFeedback === 'delete' ? 'active-cue' : ''}`}
-          style={{
-            position: 'fixed',
-            bottom: '12px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            background: touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.28)' : 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(239, 68, 68, 0.35)',
-            color: '#ef4444',
-            padding: '5px 15px',
-            borderRadius: '16px',
-            fontSize: '11px',
-            fontWeight: '800',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-            zIndex: 90,
-            cursor: 'pointer'
-          }}
-          title="Delete Word (Swipe Down on Card / Voice: 'Delete')"
-        >
-          <span style={{ fontSize: '9px' }}>▼</span>
-          <span>Delete</span>
         </button>
       </div>
 
