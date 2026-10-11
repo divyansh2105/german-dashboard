@@ -42,18 +42,44 @@ export default function MyList({
     }
   };
 
-  const exportBackup = () => {
+  const exportBackup = async () => {
     if (myList.length === 0) {
       alert("Your list is empty! Add or star some words first.");
       return;
     }
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(myList, null, 2));
+    const jsonString = JSON.stringify(myList, null, 2);
+
+    // Modern browsers: File System Access API allows directly overwriting my_list_backup.json
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'my_list_backup.json',
+          types: [{
+            description: 'JSON Backup File',
+            accept: { 'application/json': ['.json'] }
+          }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        alert('Successfully saved and updated my_list_backup.json!');
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return; // User cancelled
+        console.warn('File picker failed, falling back to download:', err);
+      }
+    }
+
+    // Standard fallback download with exact matching name
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `b1_german_mylist_backup.json`);
+    downloadAnchor.href = url;
+    downloadAnchor.download = 'my_list_backup.json';
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+    URL.revokeObjectURL(url);
   };
 
   const importBackup = (e) => {
