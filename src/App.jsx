@@ -297,6 +297,16 @@ function App() {
         }
       })
       .catch(() => {});
+
+    // Try loading local backup for myList from project directory if myList is empty on mount
+    fetch('/api/backup-mylist')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setMyList(prev => (prev.length === 0 ? data : prev));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Save deleted words locally, update real-time file copy in project directory, and auto-upload to cloud if syncCode is set
@@ -382,6 +392,13 @@ function App() {
     if (Array.isArray(myList) && myList.length > 0) {
       localStorage.setItem('b1_my_list_backup', JSON.stringify(myList));
     }
+
+    // Real-time copy kept in project directory (my_list_backup.json)
+    fetch('/api/backup-mylist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(myList)
+    }).catch(() => {});
 
     // Ignore the very first run on component mount to prevent stale local cache from overwriting fresh cloud data
     if (!isMountedRef.current) {

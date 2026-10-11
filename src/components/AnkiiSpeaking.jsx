@@ -750,7 +750,7 @@ export default function AnkiiSpeaking({
       } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         replayGerman();
-      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+      } else if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D' || e.code === 'Delete' || e.code === 'Backspace') {
         e.preventDefault();
         handleDeleteWord();
       } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
@@ -1347,7 +1347,7 @@ export default function AnkiiSpeaking({
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#ef4444' }}>Delete Word</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Trash Icon <code>[Del]</code> • 10s Undo Timer
+                    Desktop: <code>[D]</code> / <code>[Del]</code> • 10s Undo Timer
                   </div>
                 </div>
               </div>
@@ -1800,7 +1800,7 @@ export default function AnkiiSpeaking({
             type="button"
             className="sound-btn ankii-delete-btn"
             onClick={handleDeleteWord}
-            title="Never show this word in any future Anki Speaking session [Del]"
+            title="Never show this word in any future Anki Speaking session [D / Del]"
             style={{
               fontSize: '15px',
               width: '36px',
@@ -2013,7 +2013,7 @@ export default function AnkiiSpeaking({
             </div>
           ) : (
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[Del]</code> Delete
+              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[D]</code> Delete
             </div>
           )}
         </div>
