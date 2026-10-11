@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
+import AnkiiSpeaking from './components/AnkiiSpeaking';
 import ClozePractice from './components/ClozePractice';
 import ReorderPractice from './components/ReorderPractice';
 import SentenceCreator from './components/SentenceCreator';
@@ -1278,6 +1279,12 @@ function App() {
             🗂️ Ankii
           </button>
           <button
+            className={`nav-button ${activeTab === 'ankii-speaking' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ankii-speaking')}
+          >
+            🗣️ Ankii Speaking
+          </button>
+          <button
             className={`nav-button ${activeTab === 'cloze' ? 'active' : ''}`}
             onClick={() => setActiveTab('cloze')}
           >
@@ -1337,6 +1344,7 @@ function App() {
       <main style={{ flexGrow: 1 }}>
         {activeTab === 'explorer' && <WordList vocabData={vocabData} myList={myList} onToggleMyList={handleToggleMyList} isAnonymous={isAnonymous} />}
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
+        {activeTab === 'ankii-speaking' && <AnkiiSpeaking vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'cloze' && <ClozePractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'reorder' && <ReorderPractice vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'creator' && <SentenceCreator vocabData={vocabData} onReview={handleReviewWord} />}

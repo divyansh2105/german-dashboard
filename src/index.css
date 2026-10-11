@@ -1033,3 +1033,67 @@ h2.section-title {
     margin: 0 auto;
   }
 }
+
+/* =========================================
+   Ankii Speaking (Audio-First Triage) Styles
+   ========================================= */
+
+.ankii-speaking-card {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  touch-action: pan-y;
+}
+
+.ankii-speaking-card.nouns { border-color: rgba(16, 185, 129, 0.35); }
+.ankii-speaking-card.verbs { border-color: rgba(59, 130, 246, 0.35); }
+.ankii-speaking-card.adjectives { border-color: rgba(245, 158, 11, 0.35); }
+.ankii-speaking-card.connectors { border-color: rgba(139, 92, 246, 0.35); }
+
+.ankii-speaking-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.triage-btn {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.triage-btn:active {
+  transform: scale(0.96);
+}
+
+.triage-btn.forgot-btn:hover {
+  background: rgba(245, 158, 11, 0.18) !important;
+  border-color: rgba(245, 158, 11, 0.6) !important;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.2);
+}
+
+.triage-btn.context-btn:hover {
+  background: rgba(59, 130, 246, 0.18) !important;
+  border-color: rgba(59, 130, 246, 0.6) !important;
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+}
+
+.triage-btn.mastered-btn:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.35), rgba(16, 185, 129, 0.2)) !important;
+  border-color: rgba(16, 185, 129, 0.7) !important;
+  box-shadow: 0 6px 24px rgba(16, 185, 129, 0.3);
+}
+
+.ankii-priority-btn:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  transform: translateY(-1px);
+}
+
+.ankii-next-bar:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.ankii-next-bar:active {
+  transform: scale(0.98);
+}
+
