@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { exportBackupFile } from '../utils/backupStorage';
+import { exportBackupFile, chooseBackupDirectory } from '../utils/backupStorage';
 
 export default function MyList({ 
   myList, 
@@ -145,9 +145,19 @@ export default function MyList({
             className="nav-button"
             style={{padding: '8px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', fontSize: '12px'}}
             onClick={exportBackup}
-            title="Export My List as JSON backup file to copy to other devices"
+            title="Export My List directly into my_list_backup.json"
           >
             📤 Export
+          </button>
+          
+          <button
+            type="button"
+            className="nav-button"
+            style={{padding: '8px 12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', fontSize: '12px'}}
+            onClick={chooseBackupDirectory}
+            title="Connect your local 'german-dashboard' project directory to auto-overwrite backups without asking"
+          >
+            📁 Set Folder
           </button>
           
           <label

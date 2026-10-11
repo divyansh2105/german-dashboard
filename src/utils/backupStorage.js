@@ -1,10 +1,12 @@
 // Persistent File System Access & Backup Utility
-// Automatically overwrites deleted_words_backup.json and my_list_backup.json
+// Directly overwrites deleted_words_backup.json and my_list_backup.json
 // in the project folder without repeatedly asking the user to choose directories.
 
 const DB_NAME = 'GermanDashboardBackupDB';
 const STORE_NAME = 'handles';
 const DIR_KEY = 'project_backup_directory';
+
+let inMemoryDirHandle = null;
 
 function openDB() {
   return new Promise((resolve, reject) => {
@@ -24,13 +26,17 @@ function openDB() {
 }
 
 export async function getStoredDirectoryHandle() {
+  if (inMemoryDirHandle) return inMemoryDirHandle;
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const req = store.get(DIR_KEY);
-      req.onsuccess = () => resolve(req.result || null);
+      req.onsuccess = () => {
+        if (req.result) inMemoryDirHandle = req.result;
+        resolve(req.result || null);
+      };
       req.onerror = () => reject(req.error);
     });
   } catch (err) {
@@ -40,6 +46,7 @@ export async function getStoredDirectoryHandle() {
 }
 
 export async function saveDirectoryHandle(handle) {
+  inMemoryDirHandle = handle;
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -56,6 +63,7 @@ export async function saveDirectoryHandle(handle) {
 }
 
 export async function clearStoredDirectoryHandle() {
+  inMemoryDirHandle = null;
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -70,6 +78,11 @@ export async function clearStoredDirectoryHandle() {
   }
 }
 
+// Preload stored directory handle into memory on initial script load
+if (typeof window !== 'undefined' && 'indexedDB' in window) {
+  getStoredDirectoryHandle().catch(() => {});
+}
+
 /**
  * Attempts silent real-time background sync to the remembered project directory
  * if permission is already granted.
@@ -77,8 +90,9 @@ export async function clearStoredDirectoryHandle() {
 export async function tryAutoSyncToDirectory(filename, data) {
   if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) return false;
   try {
-    const dirHandle = await getStoredDirectoryHandle();
+    let dirHandle = inMemoryDirHandle || (await getStoredDirectoryHandle());
     if (!dirHandle) return false;
+
     const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') return false;
 
@@ -93,13 +107,80 @@ export async function tryAutoSyncToDirectory(filename, data) {
 }
 
 /**
+ * Connect/select the project directory explicitly
+ */
+export async function chooseBackupDirectory() {
+  if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
+    alert("Your browser does not support folder selection. Please use Chrome or Edge on desktop to directly connect your project folder.");
+    return null;
+  }
+
+  try {
+    const dirHandle = await window.showDirectoryPicker({
+      id: 'german-dashboard-project',
+      mode: 'readwrite'
+    });
+    await saveDirectoryHandle(dirHandle);
+    alert(`✅ Project folder "${dirHandle.name}" connected! Backups will now automatically overwrite here without asking again.`);
+    return dirHandle;
+  } catch (err) {
+    if (err.name === 'AbortError') return null;
+    console.error('Directory selection failed:', err);
+    throw err;
+  }
+}
+
+/**
  * Universal export function that saves directly to the project folder
  * without prompting the user to select the directory every time.
  */
 export async function exportBackupFile(filename, data) {
   const jsonString = JSON.stringify(data, null, 2);
 
-  // 1. Try local Vite dev server API first (if running locally on localhost)
+  // 1. File System Access API (Chrome / Edge on macOS / Windows)
+  // Preserves transient user gesture by NOT placing any alert() or slow network calls before the picker
+  if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
+    try {
+      let dirHandle = inMemoryDirHandle || (await getStoredDirectoryHandle());
+
+      // If we already have a remembered directory handle, verify or request permission
+      if (dirHandle) {
+        let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+        }
+        if (perm !== 'granted') {
+          dirHandle = null; // permission denied, will re-prompt picker below
+        }
+      }
+
+      // If no directory handle remembered yet, open the folder picker immediately
+      // (NO alert() before this, so browser user activation is 100% valid!)
+      if (!dirHandle) {
+        dirHandle = await window.showDirectoryPicker({
+          id: 'german-dashboard-project',
+          mode: 'readwrite'
+        });
+        await saveDirectoryHandle(dirHandle);
+      }
+
+      // Overwrite the file directly inside the remembered folder
+      const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(jsonString);
+      await writable.close();
+
+      alert(`✅ Automatically overwritten ${filename} in "${dirHandle.name}"!\nFolder is remembered — future exports will overwrite without asking.`);
+      return { success: true, method: 'directory-handle' };
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return { success: false, cancelled: true };
+      }
+      console.warn('Directory handle write error, attempting fallback:', err);
+    }
+  }
+
+  // 2. Try local dev server API if available (running on localhost)
   try {
     const endpoint = filename === 'deleted_words_backup.json' ? '/api/backup-deleted' : '/api/backup-mylist';
     const localRes = await fetch(endpoint, {
@@ -108,56 +189,12 @@ export async function exportBackupFile(filename, data) {
       body: jsonString
     });
     if (localRes.ok) {
-      alert(`✅ Successfully updated ${filename} directly in your project folder!`);
+      alert(`✅ Automatically updated ${filename} directly in your project folder!`);
       return { success: true, method: 'local-api' };
     }
-  } catch (err) {
-    // Local server not responding, proceed to File System Access API
-  }
+  } catch (err) {}
 
-  // 2. File System Access API with persistent directory handle
-  if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
-    try {
-      let dirHandle = await getStoredDirectoryHandle();
-
-      // Check permission on existing handle
-      if (dirHandle) {
-        let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
-        if (perm !== 'granted') {
-          perm = await dirHandle.requestPermission({ mode: 'readwrite' });
-        }
-        if (perm !== 'granted') {
-          dirHandle = null;
-        }
-      }
-
-      // If no directory handle remembered yet, ask once and remember it
-      if (!dirHandle) {
-        alert("Please select the 'german-dashboard' project directory once. Your browser will remember this folder and automatically overwrite your backup files here without asking again!");
-        dirHandle = await window.showDirectoryPicker({
-          id: 'german-dashboard-project',
-          mode: 'readwrite'
-        });
-        await saveDirectoryHandle(dirHandle);
-      }
-
-      // Write directly and overwrite the file in the remembered directory
-      const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(jsonString);
-      await writable.close();
-
-      alert(`✅ Successfully saved and updated ${filename} in "${dirHandle.name}"!`);
-      return { success: true, method: 'directory-handle' };
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        return { success: false, cancelled: true };
-      }
-      console.warn('Directory handle write failed, falling through to download:', err);
-    }
-  }
-
-  // 3. Fallback: Standard browser download
+  // 3. Fallback: Browser download
   const blob = new Blob([jsonString], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const downloadAnchor = document.createElement('a');
@@ -167,6 +204,6 @@ export async function exportBackupFile(filename, data) {
   downloadAnchor.click();
   downloadAnchor.remove();
   URL.revokeObjectURL(url);
-  alert(`✅ Downloaded ${filename}`);
+  alert(`✅ Downloaded ${filename}.\nTip: Use Chrome or Edge on your Mac to automatically overwrite your project folder without download dialogs!`);
   return { success: true, method: 'download' };
 }

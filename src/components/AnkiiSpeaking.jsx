@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { exportBackupFile } from '../utils/backupStorage';
+import { exportBackupFile, chooseBackupDirectory } from '../utils/backupStorage';
 
 // Helpers for clean TTS text extraction
 export function getAudioGermanWord(word) {
@@ -1744,9 +1744,26 @@ export default function AnkiiSpeaking({
                       fontWeight: '700',
                       cursor: 'pointer'
                     }}
-                    title="Download deleted_words_backup.json"
+                    title="Download and update deleted_words_backup.json directly"
                   >
                     💾 Export Backup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={chooseBackupDirectory}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-secondary)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Connect or re-select your local 'german-dashboard' project directory"
+                  >
+                    📁 Set Folder
                   </button>
                   <button
                     type="button"
