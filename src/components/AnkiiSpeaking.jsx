@@ -23,16 +23,14 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   // Pre-session filter state
   const [priorityFilters, setPriorityFilters] = useState([1, 2, 3]); // High (1), Med (2), Low (3)
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [queueLimit, setQueueLimit] = useState('all');
+  const [queueLimit, setQueueLimit] = useState('50');
 
   // Session lifecycle state
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionFinished, setSessionFinished] = useState(false);
-  const [queue, setQueue] = useState([]);
-  const [initialQueueCount, setInitialQueueCount] = useState(0);
-  const [masteredCount, setMasteredCount] = useState(0);
-  const [totalActions, setTotalActions] = useState(0);
-  const [cycledCount, setCycledCount] = useState(0);
+  const [sessionCards, setSessionCards] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [sessionResults, setSessionResults] = useState([]); // Array of { card, result: 'mastered' | 'english' | 'context' }
   const [sessionStartTime, setSessionStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
 
@@ -48,6 +46,9 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const touchStartRef = useRef(null);
   const isDraggingRef = useRef(false);
+
+  // Filter for completed summary list: 'all' | 'mastered' | 'english' | 'context'
+  const [summaryFilter, setSummaryFilter] = useState('all');
 
   // Refs for audio and timers to avoid memory leaks
   const autoAdvanceTimerRef = useRef(null);
@@ -290,16 +291,24 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     window.speechSynthesis.speak(utterEn);
   }, []);
 
+  // Current Card
+  const currentCard = sessionCards[currentIndex];
+  const wpExample = useMemo(() => getWorkplaceExample(currentCard), [currentCard]);
+  const isStarred = useMemo(() => {
+    if (!currentCard || !Array.isArray(myList)) return false;
+    return myList.some(item => item.word.toLowerCase() === currentCard.word.toLowerCase());
+  }, [currentCard, myList]);
+
   // Replay German word (tap on card)
   const replayGerman = useCallback(() => {
-    if (!queue || queue.length === 0) return;
-    const current = queue[0];
-    const deWord = getAudioGermanWord(current.word);
+    if (!currentCard) return;
+    const deWord = getAudioGermanWord(currentCard.word);
     speakGerman(deWord);
-  }, [queue, speakGerman]);
+  }, [currentCard, speakGerman]);
 
   // ----------------------------------------------------
-  // Session Queue Initiation & Audio Unlock
+  // Session Initiation & Audio Unlock
+  // Each word is seen exactly once! Zero cycling.
   // ----------------------------------------------------
 
   const handleStartSession = () => {
@@ -329,11 +338,9 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
 
     if (initialList.length === 0) return;
 
-    setQueue(initialList);
-    setInitialQueueCount(initialList.length);
-    setMasteredCount(0);
-    setTotalActions(0);
-    setCycledCount(0);
+    setSessionCards(initialList);
+    setCurrentIndex(0);
+    setSessionResults([]);
     setSessionStartTime(Date.now());
     setElapsedTime(0);
     setRevealedState('none');
@@ -346,7 +353,24 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     }, 100);
   };
 
-  // Helper to start auto-advance countdown
+  // Helper to advance to the next card in line (no cycling)
+  const advanceToNextWord = useCallback(() => {
+    clearAdvanceTimers();
+    const nextIdx = currentIndex + 1;
+    if (nextIdx >= sessionCards.length) {
+      setSessionFinished(true);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    } else {
+      setCurrentIndex(nextIdx);
+      setRevealedState('none');
+      const nextWord = getAudioGermanWord(sessionCards[nextIdx].word);
+      speakGerman(nextWord);
+    }
+  }, [currentIndex, sessionCards, speakGerman]);
+
+  // Helper for auto-advance countdown after hearing translation/context
   const triggerAutoAdvance = useCallback((seconds = 2) => {
     clearAdvanceTimers();
     let remaining = seconds;
@@ -362,70 +386,45 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     }, 1000);
 
     autoAdvanceTimerRef.current = setTimeout(() => {
-      handleAdvanceNext();
+      advanceToNextWord();
     }, seconds * 1000);
-  }, []);
+  }, [advanceToNextWord]);
 
   // ----------------------------------------------------
   // Action 1: Mastered / Known (Instant Recall)
   // [Space] or Swipe Right or "Know It" Button
+  // Advances directly to the next word.
   // ----------------------------------------------------
   const handleMastered = useCallback(() => {
-    if (!queue || queue.length === 0) return;
+    if (!currentCard) return;
     clearAdvanceTimers();
-
-    const currentCard = queue[0];
-    setTotalActions(prev => prev + 1);
-    setMasteredCount(prev => prev + 1);
 
     if (onReview) {
       onReview(currentCard.word, currentCard.category, 'easy');
     }
 
-    const nextQueue = queue.slice(1);
-    setQueue(nextQueue);
-    setRevealedState('none');
+    setSessionResults(prev => [...prev, { card: currentCard, result: 'mastered' }]);
 
-    if (nextQueue.length === 0) {
-      setSessionFinished(true);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    } else {
-      const nextWord = getAudioGermanWord(nextQueue[0].word);
-      speakGerman(nextWord);
-    }
-  }, [queue, onReview, speakGerman]);
+    advanceToNextWord();
+  }, [currentCard, onReview, advanceToNextWord]);
 
   // ----------------------------------------------------
   // Action 2: Forgot Word (English Meaning Only)
   // [N] or Swipe Left or "English" Button
-  // Re-inserts randomly between 20 and 100 places further in the queue
+  // Reveals English translation, reads aloud via TTS.
+  // Does NOT cycle back. Word is seen once.
   // ----------------------------------------------------
   const handleForgotEnglish = useCallback(() => {
-    if (!queue || queue.length === 0) return;
+    if (!currentCard) return;
     clearAdvanceTimers();
-
-    const currentCard = queue[0];
-    setTotalActions(prev => prev + 1);
 
     if (onReview) {
       onReview(currentCard.word, currentCard.category, 'hard');
     }
 
-    // Only re-insert once per card appearance
+    // Record result if not already recorded for this card
     if (revealedState === 'none') {
-      setCycledCount(prev => prev + 1);
-      // Re-insert randomly between 20 and 100 places further
-      const minOffset = 20;
-      const maxOffset = 100;
-      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
-      const updatedQueue = [...queue];
-      const [card] = updatedQueue.splice(0, 1);
-      const insertIndex = Math.min(updatedQueue.length, offset);
-      updatedQueue.splice(insertIndex, 0, card);
-      // Keep card active at index 0 for current display until advanced
-      setQueue([card, ...updatedQueue.slice(1)]);
+      setSessionResults(prev => [...prev, { card: currentCard, result: 'english' }]);
     }
 
     setRevealedState('english');
@@ -434,77 +433,44 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     speakEnglish(currentCard.meaning, () => {
       triggerAutoAdvance(2);
     });
-  }, [queue, revealedState, onReview, speakEnglish, triggerAutoAdvance]);
+  }, [currentCard, revealedState, onReview, speakEnglish, triggerAutoAdvance]);
 
   // ----------------------------------------------------
   // Action 3: More Context (English + Workplace Example)
   // [M] or Swipe Up or "Context" Button
-  // Re-inserts randomly between 20 and 100 places further in the queue
+  // Reveals English & Workplace Example, reads sequentially via TTS.
+  // Does NOT cycle back. Word is seen once.
   // ----------------------------------------------------
   const handleMoreContext = useCallback(() => {
-    if (!queue || queue.length === 0) return;
+    if (!currentCard) return;
     clearAdvanceTimers();
-
-    const currentCard = queue[0];
-    setTotalActions(prev => prev + 1);
 
     if (onReview) {
       onReview(currentCard.word, currentCard.category, 'hard');
     }
 
-    const wpExample = getWorkplaceExample(currentCard);
+    const example = getWorkplaceExample(currentCard);
 
-    // Only re-insert once per card appearance
-    if (revealedState !== 'context') {
-      setCycledCount(prev => prev + 1);
-      // Re-insert randomly between 20 and 100 places further
-      const minOffset = 20;
-      const maxOffset = 100;
-      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
-      const updatedQueue = [...queue];
-      const [card] = updatedQueue.splice(0, 1);
-      const insertIndex = Math.min(updatedQueue.length, offset);
-      updatedQueue.splice(insertIndex, 0, card);
-      setQueue([card, ...updatedQueue.slice(1)]);
+    // Record result if not already recorded for this card
+    if (revealedState === 'none') {
+      setSessionResults(prev => [...prev, { card: currentCard, result: 'context' }]);
     }
 
     setRevealedState('context');
 
-    const exampleDe = wpExample ? wpExample.de : '';
+    const exampleDe = example ? example.de : '';
     // Sequentially read English translation followed by 1 German workplace example
     speakSequentialContext(currentCard.meaning, exampleDe, () => {
       triggerAutoAdvance(3);
     });
-  }, [queue, revealedState, onReview, speakSequentialContext, triggerAutoAdvance]);
+  }, [currentCard, revealedState, onReview, speakSequentialContext, triggerAutoAdvance]);
 
-  // Advance to next card manually
+  // Advance to next card manually (when card is revealed)
   const handleAdvanceNext = useCallback(() => {
-    if (!queue || queue.length === 0) return;
-    clearAdvanceTimers();
+    advanceToNextWord();
+  }, [advanceToNextWord]);
 
-    const nextQueue = queue.slice(1);
-    setQueue(nextQueue);
-    setRevealedState('none');
-
-    if (nextQueue.length === 0) {
-      setSessionFinished(true);
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-    } else {
-      const nextWord = getAudioGermanWord(nextQueue[0].word);
-      speakGerman(nextWord);
-    }
-  }, [queue, speakGerman]);
-
-  // Current Card and Star Status
-  const currentCard = queue[0];
-  const wpExample = useMemo(() => getWorkplaceExample(currentCard), [currentCard]);
-  const isStarred = useMemo(() => {
-    if (!currentCard || !Array.isArray(myList)) return false;
-    return myList.some(item => item.word.toLowerCase() === currentCard.word.toLowerCase());
-  }, [currentCard, myList]);
-
+  // Star toggle
   const handleToggleStar = useCallback((e) => {
     if (e && e.stopPropagation) e.stopPropagation();
     if (onToggleMyList && currentCard) {
@@ -633,7 +599,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     // 2. Horizontal Swipes (Anywhere on the screen!)
     if (Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > SWIPE_THRESHOLD) {
-        // Swipe Right -> Know It / Mastered
+        // Swipe Right -> Know It / Mastered (or Next if revealed)
         if (revealedState === 'none') {
           handleMastered();
         } else {
@@ -667,20 +633,33 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Derived counts for words seen and triage breakdown
+  const totalSessionWords = sessionCards.length;
+  const wordsSeenCount = sessionActive && !sessionFinished ? currentIndex + 1 : totalSessionWords;
+  const masteredCount = sessionResults.filter(r => r.result === 'mastered').length;
+  const englishCount = sessionResults.filter(r => r.result === 'english').length;
+  const contextCount = sessionResults.filter(r => r.result === 'context').length;
+  const remainingCount = Math.max(0, totalSessionWords - (currentIndex + 1));
+
   // ----------------------------------------------------
   // VIEW: 1. Pre-Session Setup & Filters
   // ----------------------------------------------------
   if (!sessionActive || !currentCard) {
     if (sessionFinished) {
+      const filteredResults = sessionResults.filter(r => {
+        if (summaryFilter === 'all') return true;
+        return r.result === summaryFilter;
+      });
+
       return (
         <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '680px', margin: '20px auto', padding: '0 16px' }}>
-          <div className="glass-card" style={{ padding: '48px 24px', textAlign: 'center', width: '100%', position: 'relative' }}>
+          <div className="glass-card" style={{ padding: '40px 24px', textAlign: 'center', width: '100%', position: 'relative' }}>
             <div style={{ fontSize: '56px', marginBottom: '16px' }}>🎉</div>
             <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#fff', marginBottom: '8px' }}>
               Speaking Session Completed!
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', maxWidth: '420px', margin: '0 auto 28px' }}>
-              All {initialQueueCount} cards in this queue have been cleanly mastered via active audio recall.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', maxWidth: '440px', margin: '0 auto 24px' }}>
+              You reviewed all <b>{totalSessionWords} words</b> in this session (each seen exactly once).
             </p>
 
             {/* Performance Stats Grid */}
@@ -688,24 +667,149 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
               gap: '12px',
-              maxWidth: '520px',
-              margin: '0 auto 32px'
+              maxWidth: '540px',
+              margin: '0 auto 28px'
             }}>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px 12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
+              <div style={{ background: 'rgba(59, 130, 246, 0.1)', padding: '16px 12px', borderRadius: '14px', border: '1px solid rgba(59, 130, 246, 0.25)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Words Seen</div>
+                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-verb)', marginTop: '4px' }}>{totalSessionWords}</div>
+              </div>
+              <div style={{ background: 'rgba(34, 197, 94, 0.1)', padding: '16px 12px', borderRadius: '14px', border: '1px solid rgba(34, 197, 94, 0.25)' }}>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Mastered</div>
                 <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-noun)', marginTop: '4px' }}>{masteredCount}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px 12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Cycles / Misses</div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-adj)', marginTop: '4px' }}>{cycledCount}</div>
+              <div style={{ background: 'rgba(245, 158, 11, 0.1)', padding: '16px 12px', borderRadius: '14px', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>English Needed</div>
+                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-adj)', marginTop: '4px' }}>{englishCount}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px 12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Total Triage</div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-verb)', marginTop: '4px' }}>{totalActions}</div>
+              <div style={{ background: 'rgba(139, 92, 246, 0.1)', padding: '16px 12px', borderRadius: '14px', border: '1px solid rgba(139, 92, 246, 0.25)' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Context Needed</div>
+                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-conn)', marginTop: '4px' }}>{contextCount}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px 12px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Duration</div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: '#fff', marginTop: '4px' }}>{formatTime(elapsedTime)}</div>
+              <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px 12px', borderRadius: '14px', border: '1px solid var(--border-color)', gridColumn: 'span 2' }}>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700' }}>Total Duration</div>
+                <div style={{ fontSize: '22px', fontWeight: '800', color: '#fff', marginTop: '4px' }}>⏱️ {formatTime(elapsedTime)}</div>
+              </div>
+            </div>
+
+            {/* Word Recap Breakdown */}
+            <div style={{
+              background: 'rgba(0,0,0,0.25)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '18px',
+              padding: '20px 16px',
+              marginBottom: '28px',
+              textAlign: 'left'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', color: '#fff' }}>
+                  📋 Session Words Recap ({sessionResults.length})
+                </div>
+                {/* Filter Pills */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryFilter('all')}
+                    className={`option-pill ${summaryFilter === 'all' ? 'active' : ''}`}
+                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                  >
+                    All ({sessionResults.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryFilter('mastered')}
+                    className={`option-pill ${summaryFilter === 'mastered' ? 'active' : ''}`}
+                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                  >
+                    ✓ Mastered ({masteredCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryFilter('english')}
+                    className={`option-pill ${summaryFilter === 'english' ? 'active' : ''}`}
+                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                  >
+                    🇬🇧 English ({englishCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSummaryFilter('context')}
+                    className={`option-pill ${summaryFilter === 'context' ? 'active' : ''}`}
+                    style={{ padding: '3px 8px', fontSize: '11px' }}
+                  >
+                    🏢 Context ({contextCount})
+                  </button>
+                </div>
+              </div>
+
+              {/* Scrollable List of Words Seen */}
+              <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
+                {filteredResults.map(({ card, result }, idx) => {
+                  const starred = myList && myList.some(item => item.word.toLowerCase() === card.word.toLowerCase());
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        borderRadius: '12px',
+                        border: '1px solid rgba(255, 255, 255, 0.06)'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: '22px' }}>
+                          #{idx + 1}
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
+                            {card.word}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {card.meaning}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                        {result === 'mastered' && (
+                          <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                            ✓ Know It
+                          </span>
+                        )}
+                        {result === 'english' && (
+                          <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                            🇬🇧 English
+                          </span>
+                        )}
+                        {result === 'context' && (
+                          <span style={{ fontSize: '11px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                            🏢 Context
+                          </span>
+                        )}
+                        {onToggleMyList && !isAnonymous && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleMyList(card)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: starred ? '#eab308' : 'var(--text-muted)',
+                              fontSize: '16px',
+                              cursor: 'pointer',
+                              padding: '2px 4px'
+                            }}
+                            title={starred ? "Remove from My List" : "Add to My List"}
+                          >
+                            {starred ? '★' : '☆'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -729,7 +833,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                   boxShadow: '0 8px 24px rgba(59, 130, 246, 0.3)'
                 }}
               >
-                ⚙️ Adjust Filters & Practice Again
+                ⚙️ Adjust Filters & Start New Session
               </button>
             </div>
           </div>
@@ -747,14 +851,14 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.25)', padding: '6px 14px', borderRadius: '20px', marginBottom: '12px' }}>
               <span style={{ fontSize: '14px' }}>🗣️</span>
               <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-conn)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                Zero-Friction Audio Triage
+                Single-Pass Audio Triage
               </span>
             </div>
             <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#fff', letterSpacing: '-0.5px', margin: '4px 0' }}>
               Ankii Speaking
             </h2>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '440px', margin: '8px auto 0', lineHeight: '1.5' }}>
-              Audio-first flashcards. Words play immediately via German TTS. Swipe or press keys to triage cards instantly until mastered.
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '460px', margin: '8px auto 0', lineHeight: '1.5' }}>
+              Audio-first flashcards. Words play immediately via German TTS. Each word is seen once per session with zero cycling.
             </p>
           </div>
 
@@ -870,14 +974,14 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           {/* 3. Session Batch Size */}
           <div style={{ marginBottom: '28px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
-              3. Session Size:
+              3. Session Size (Words Seen):
             </label>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               {[
-                { id: 'all', label: `All Matching (${allFilteredPool.length})` },
-                { id: '25', label: '⚡ 25 Cards' },
-                { id: '50', label: '🎯 50 Cards' },
-                { id: '100', label: '🔥 100 Cards' }
+                { id: '25', label: '⚡ 25 Words' },
+                { id: '50', label: '🎯 50 Words' },
+                { id: '100', label: '🔥 100 Words' },
+                { id: 'all', label: `All Matching (${allFilteredPool.length})` }
               ].map(item => (
                 <button
                   key={item.id}
@@ -901,7 +1005,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             marginBottom: '28px'
           }}>
             <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--color-verb)', marginBottom: '10px' }}>
-              🎮 Dual Control Scheme (Zero Grading Friction):
+              🎮 Controls (Seen Once • Zero Grading Friction):
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -909,7 +1013,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#22c55e' }}>Mastered / Know It</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[Space]</code> • Mobile: <b>Swipe Right (Full Screen)</b>
+                    Desktop: <code>[Space]</code> • Mobile: <b>Swipe Right</b>
                   </div>
                 </div>
               </div>
@@ -918,7 +1022,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#f59e0b' }}>Forgot (English)</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[N]</code> • Mobile: <b>Swipe Left (Full Screen)</b>
+                    Desktop: <code>[N]</code> • Mobile: <b>Swipe Left</b>
                   </div>
                 </div>
               </div>
@@ -927,7 +1031,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                 <div>
                   <div style={{ fontSize: '12px', fontWeight: '700', color: '#3b82f6' }}>More Context</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Desktop: <code>[M]</code> • Mobile: <b>Swipe Up (Full Screen)</b>
+                    Desktop: <code>[M]</code> • Mobile: <b>Swipe Up</b>
                   </div>
                 </div>
               </div>
@@ -962,12 +1066,12 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           >
             <span style={{ fontSize: '20px' }}>🚀</span>
             <span>
-              Start Session ({queueLimit === 'all' ? allFilteredPool.length : Math.min(allFilteredPool.length, parseInt(queueLimit, 10))} Cards)
+              Start Session ({queueLimit === 'all' ? allFilteredPool.length : Math.min(allFilteredPool.length, parseInt(queueLimit, 10))} Words)
             </span>
           </button>
           
           <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
-            💡 Unlocks mobile audio context automatically. German word will play immediately.
+            💡 Words play automatically in German. Each word is seen once.
           </div>
 
         </div>
@@ -978,9 +1082,10 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   // ----------------------------------------------------
   // VIEW: 2. Active Audio-First Card Session
   // With Full-Screen Smartphone Swipe Support!
+  // Shows Words Seen Counter prominently.
   // ----------------------------------------------------
-  const progressPercent = initialQueueCount > 0 
-    ? Math.min(100, Math.round((masteredCount / initialQueueCount) * 100)) 
+  const progressPercent = totalSessionWords > 0 
+    ? Math.min(100, Math.round((wordsSeenCount / totalSessionWords) * 100)) 
     : 0;
 
   return (
@@ -1001,18 +1106,27 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       }}
     >
       
-      {/* Top Header & Progress */}
+      {/* Top Header & Words Seen Counter */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           
-          {/* Remaining & Mastered badges */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-              Card 1 of {queue.length}
+          {/* Words Seen & Triage Counters */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{
+              fontSize: '13px',
+              fontWeight: '800',
+              color: '#fff',
+              background: 'rgba(59, 130, 246, 0.2)',
+              border: '1px solid rgba(59, 130, 246, 0.4)',
+              padding: '3px 10px',
+              borderRadius: '12px'
+            }}>
+              👁️ Words Seen: {wordsSeenCount} / {totalSessionWords}
             </span>
+
             <span style={{
               fontSize: '11px',
-              padding: '2px 8px',
+              padding: '3px 8px',
               borderRadius: '12px',
               background: 'rgba(16, 185, 129, 0.15)',
               color: 'var(--color-noun)',
@@ -1020,18 +1134,23 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             }}>
               ✓ {masteredCount} Mastered
             </span>
-            {cycledCount > 0 && (
+
+            {(englishCount > 0 || contextCount > 0) && (
               <span style={{
                 fontSize: '11px',
-                padding: '2px 8px',
+                padding: '3px 8px',
                 borderRadius: '12px',
                 background: 'rgba(245, 158, 11, 0.15)',
                 color: 'var(--color-adj)',
                 fontWeight: '700'
               }}>
-                ↻ {cycledCount} Cycling
+                📖 {englishCount + contextCount} Assisted
               </span>
             )}
+
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              ({remainingCount} left)
+            </span>
           </div>
 
           {/* Quick Actions (Exit / Sound Replay) */}
@@ -1082,7 +1201,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           </div>
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress Bar (Words Seen %) */}
         <div style={{
           width: '100%',
           height: '6px',
@@ -1093,7 +1212,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           <div style={{
             width: `${progressPercent}%`,
             height: '100%',
-            background: 'linear-gradient(90deg, var(--color-noun), var(--color-verb))',
+            background: 'linear-gradient(90deg, var(--color-verb), var(--color-noun))',
             borderRadius: '3px',
             transition: 'width 0.3s ease'
           }} />
@@ -1245,7 +1364,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             fontWeight: '700',
             marginBottom: '10px'
           }}>
-            German Word
+            German Word ({currentIndex + 1} of {totalSessionWords})
           </div>
 
           <div style={{
@@ -1408,7 +1527,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
               boxShadow: '0 6px 20px rgba(16, 185, 129, 0.25)'
             }}
           >
-            <span>Next Card</span>
+            <span>Next Word ({currentIndex + 2 > totalSessionWords ? 'Finish' : `${currentIndex + 2} of ${totalSessionWords}`})</span>
             <kbd style={{
               fontSize: '11px',
               background: 'rgba(0,0,0,0.25)',
