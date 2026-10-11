@@ -75,7 +75,6 @@ export default function AnkiiSpeaking({
   const [revealedState, setRevealedState] = useState('none');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingPhase, setSpeakingPhase] = useState(null); // 'de' | 'en' | 'example'
-  const [autoAdvanceSeconds, setAutoAdvanceSeconds] = useState(null);
   const [touchFeedback, setTouchFeedback] = useState(null); // 'mastered' | 'english' | 'context' | null
 
   // Mobile drag physics & full-screen touch state
@@ -87,8 +86,6 @@ export default function AnkiiSpeaking({
   const [summaryFilter, setSummaryFilter] = useState('all');
 
   // Refs for audio and timers to avoid memory leaks
-  const autoAdvanceTimerRef = useRef(null);
-  const autoAdvanceIntervalRef = useRef(null);
   const audioEndTimeoutRef = useRef(null);
   const isMountedRef = useRef(true);
 
@@ -119,19 +116,10 @@ export default function AnkiiSpeaking({
   }, [sessionActive, sessionFinished, sessionStartTime]);
 
   const clearAdvanceTimers = () => {
-    if (autoAdvanceTimerRef.current) {
-      clearTimeout(autoAdvanceTimerRef.current);
-      autoAdvanceTimerRef.current = null;
-    }
-    if (autoAdvanceIntervalRef.current) {
-      clearInterval(autoAdvanceIntervalRef.current);
-      autoAdvanceIntervalRef.current = null;
-    }
     if (audioEndTimeoutRef.current) {
       clearTimeout(audioEndTimeoutRef.current);
       audioEndTimeoutRef.current = null;
     }
-    setAutoAdvanceSeconds(null);
   };
 
   // Compile all available words from vocabData, EXCLUDING any deleted words
@@ -440,26 +428,6 @@ export default function AnkiiSpeaking({
     }
   }, [currentIndex, sessionCards, speakGerman]);
 
-  // Helper for auto-advance countdown after hearing translation/context
-  const triggerAutoAdvance = useCallback((seconds = 2) => {
-    clearAdvanceTimers();
-    let remaining = seconds;
-    setAutoAdvanceSeconds(remaining);
-
-    autoAdvanceIntervalRef.current = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clearInterval(autoAdvanceIntervalRef.current);
-        autoAdvanceIntervalRef.current = null;
-      }
-      setAutoAdvanceSeconds(remaining > 0 ? remaining : null);
-    }, 1000);
-
-    autoAdvanceTimerRef.current = setTimeout(() => {
-      advanceToNextWord();
-    }, seconds * 1000);
-  }, [advanceToNextWord]);
-
   // ----------------------------------------------------
   // Action 1: Mastered / Known (Instant Recall)
   // [Space] or Swipe Right or "Know It" Button
@@ -482,7 +450,7 @@ export default function AnkiiSpeaking({
   // Action 2: Forgot Word (English Meaning Only)
   // [N] or Swipe Left or "English" Button
   // Reveals English translation, reads aloud via TTS.
-  // Does NOT cycle back. Word is seen once.
+  // Does NOT auto-advance; stays until user chooses to advance.
   // ----------------------------------------------------
   const handleForgotEnglish = useCallback(() => {
     if (!currentCard) return;
@@ -497,17 +465,14 @@ export default function AnkiiSpeaking({
     }
 
     setRevealedState('english');
-
-    speakEnglish(currentCard.meaning, () => {
-      triggerAutoAdvance(2);
-    });
-  }, [currentCard, revealedState, onReview, speakEnglish, triggerAutoAdvance]);
+    speakEnglish(currentCard.meaning);
+  }, [currentCard, revealedState, onReview, speakEnglish]);
 
   // ----------------------------------------------------
   // Action 3: More Context (English + Workplace Example)
   // [M] or Swipe Up or "Context" Button
   // Reveals English & Workplace Example, reads sequentially via TTS.
-  // Does NOT cycle back. Word is seen once.
+  // Does NOT auto-advance; stays until user chooses to advance.
   // ----------------------------------------------------
   const handleMoreContext = useCallback(() => {
     if (!currentCard) return;
@@ -526,10 +491,8 @@ export default function AnkiiSpeaking({
     setRevealedState('context');
 
     const exampleDe = example ? example.de : '';
-    speakSequentialContext(currentCard.meaning, exampleDe, () => {
-      triggerAutoAdvance(3);
-    });
-  }, [currentCard, revealedState, onReview, speakSequentialContext, triggerAutoAdvance]);
+    speakSequentialContext(currentCard.meaning, exampleDe);
+  }, [currentCard, revealedState, onReview, speakSequentialContext]);
 
   // Advance to next card manually (when card is revealed)
   const handleAdvanceNext = useCallback(() => {
@@ -1994,28 +1957,11 @@ export default function AnkiiSpeaking({
           )}
         </div>
 
-        {/* Bottom Card Footer: Shortcut Cheatsheet or Countdown */}
+        {/* Bottom Card Footer: Shortcut Cheatsheet */}
         <div style={{ width: '100%', marginTop: 'auto', paddingTop: '12px' }}>
-          {autoAdvanceSeconds !== null ? (
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              color: 'var(--color-noun)',
-              fontWeight: '700',
-              background: 'rgba(16, 185, 129, 0.1)',
-              padding: '4px 12px',
-              borderRadius: '20px'
-            }}>
-              <span>⏱️ Advancing in {autoAdvanceSeconds}s</span>
-              <span style={{ color: 'var(--text-secondary)', fontWeight: '400' }}>(or press Space / tap Next)</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[D]</code> Delete
-            </div>
-          )}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[D]</code> Delete
+          </div>
         </div>
       </div>
 
