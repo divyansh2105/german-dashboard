@@ -1,1 +1,154 @@
-[]
+[
+  {
+    "word": "außerdem",
+    "meaning": "besides",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Möchten Sie außerdem noch etwas?",
+        "en": "Would you also like something else?"
+      },
+      {
+        "de": "Der Film war langweilig, und außerdem haben die Schauspieler schlecht gespielt.",
+        "en": "The movie was boring, and besides, the actors played badly."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "fröhlich",
+    "meaning": "happy",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [],
+    "isCustom": true
+  },
+  {
+    "word": "bestätigen",
+    "meaning": "to confirm",
+    "category": "verbs",
+    "conjugation": "bestätigen, bestätigt, bestätigte, hat bestätigt",
+    "examples": [
+      {
+        "de": "Lassen Sie sich den Termin schriftlich bestätigen.",
+        "en": "Let us confirm the appointment in writing."
+      },
+      {
+        "de": "Ich kann bestätigen, dass mein Sohn den ganzen Vormittag zu Hause war.",
+        "en": "Ich can confirm that my son was at home all morning."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "verschieben",
+    "meaning": "to postpone, shift",
+    "category": "verbs",
+    "conjugation": "verschieben, verschiebt, verschob, hat verschoben",
+    "examples": [
+      {
+        "de": "Leider muss ich den Termin verschieben. Morgen kann ich nicht.",
+        "en": "Unfortunately, I have to postpone the appointment. Tomorrow I can not."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erwarten",
+    "meaning": "to expect",
+    "category": "verbs",
+    "conjugation": "erwarten, erwartet, erwartete, hat erwartet",
+    "examples": [
+      {
+        "en": "I am expecting a call from Berlin.",
+        "de": "Ich erwarte einen Anruf aus Berlin."
+      },
+      {
+        "de": "Frau Müller erwartet ein Kind.",
+        "en": "Mrs. Müller is expecting a child."
+      },
+      {
+        "de": "Wir hatten nichts anderes erwartet.",
+        "en": "We had expected nothing else."
+      },
+      {
+        "de": "Ich kann es gar nicht erwarten, euch wiederzusehen.",
+        "en": "I can not wait to see you again."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "raten",
+    "meaning": "to guess, to advise",
+    "category": "verbs",
+    "conjugation": "raten, rät, riet, hat geraten",
+    "examples": [
+      {
+        "de": "Ich möchte billig Urlaub machen.",
+        "en": "I want to go on a cheap holiday."
+      },
+      {
+        "en": "What do you advise me?",
+        "de": "Was raten Sie mir?"
+      },
+      {
+        "de": "Rate mal, wen ich heute getroffen habe! Deinen Lehrer.",
+        "en": "Guess who I met today! Your teacher."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erreichen",
+    "meaning": "to reach",
+    "category": "verbs",
+    "conjugation": "erreichen, erreicht, erreichte, hat erreicht",
+    "examples": [
+      {
+        "en": "If we hurry, we still reach the 8 o'clock train.",
+        "de": "Wenn wir uns beeilen, erreichen wir noch den 8Uhr-Zug."
+      },
+      {
+        "en": "You can reach me in the office by 5 pm",
+        "de": "Bis 17 Uhr können Sie mich im Büro erreichen."
+      },
+      {
+        "de": "Auf diese Art erreichen Sie bei mir gar nichts.",
+        "en": "That way, you can not achieve anything with me."
+      },
+      {
+        "de": "Dieser Zug erreicht eine Geschwindigkeit von 200 Kilometern.",
+        "en": "This train reaches a speed of 200 kilometers."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "häufig",
+    "meaning": "frequent, frequently",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Haben Sie häufig Kopfschmerzen? Dann sollten Sie nicht so lange am Computer sitzen.",
+        "en": "Do you often have a headache? Then you should not sit at the computer for so long."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "sich unterhalten (mit/über)",
+    "meaning": "to talk/converse (with someone about something)",
+    "category": "reflexive",
+    "conjugation": "sich unterhalten, unterhält sich, unterhielt sich, hat sich unterhalten",
+    "examples": [
+      {
+        "de": "Wir haben uns sehr gut über den Film unterhalten.",
+        "en": "We had a great talk about the movie."
+      }
+    ],
+    "isCustom": false
+  }
+]
