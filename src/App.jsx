@@ -244,12 +244,12 @@ function App() {
 
       // Two-way merge: combine both cloud and local deleted words so no deletion is lost across devices
       const mergedMap = new Map();
-      validCloudList.forEach(w => {
-        if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w);
-      });
-      localItems.forEach(w => {
-        if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w);
-      });
+      const addWord = (w) => {
+        const str = typeof w === 'string' ? w : (w && typeof w.word === 'string' ? w.word : null);
+        if (str) mergedMap.set(str.toLowerCase(), str);
+      };
+      validCloudList.forEach(addWord);
+      localItems.forEach(addWord);
       const finalConfiguredList = Array.from(mergedMap.values());
 
       if (finalConfiguredList.length > 0) {

@@ -50,7 +50,11 @@ export default function AnkiiSpeaking({
   const deletedWords = propDeletedWords !== undefined ? propDeletedWords : localDeletedWords;
 
   const deletedWordsSet = useMemo(() => {
-    return new Set(deletedWords.map(w => (typeof w === 'string' ? w.toLowerCase() : '')));
+    return new Set(deletedWords.map(w => {
+      if (typeof w === 'string') return w.toLowerCase();
+      if (w && typeof w.word === 'string') return w.word.toLowerCase();
+      return '';
+    }));
   }, [deletedWords]);
 
   // Modal state for viewing/restoring deleted words
@@ -1433,40 +1437,43 @@ export default function AnkiiSpeaking({
                     No deleted words.
                   </div>
                 ) : (
-                  deletedWords.map((word, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid var(--border-color)'
-                      }}
-                    >
-                      <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
-                        {word}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRestoreWordFromModal(word)}
+                  deletedWords.map((item, idx) => {
+                    const wordStr = typeof item === 'string' ? item : (item && item.word ? item.word : String(item));
+                    return (
+                      <div
+                        key={idx}
                         style={{
-                          background: 'rgba(34, 197, 94, 0.15)',
-                          border: '1px solid rgba(34, 197, 94, 0.35)',
-                          color: '#22c55e',
-                          borderRadius: '8px',
-                          padding: '4px 10px',
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          cursor: 'pointer'
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border-color)'
                         }}
                       >
-                        ↩ Restore
-                      </button>
-                    </div>
-                  ))
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
+                          {wordStr}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreWordFromModal(wordStr)}
+                          style={{
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            border: '1px solid rgba(34, 197, 94, 0.35)',
+                            color: '#22c55e',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ↩ Restore
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
 
