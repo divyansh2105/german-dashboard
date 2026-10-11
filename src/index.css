@@ -1103,3 +1103,11 @@ h2.section-title {
   transform: scale(1.15) !important;
 }
 
+.ankii-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.6) !important;
+  color: #ef4444 !important;
+  transform: scale(1.15) !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.35);
+}
+

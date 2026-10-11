@@ -25,6 +25,28 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [queueLimit, setQueueLimit] = useState('50');
 
+  // Persistent Deleted Words (words that will never appear in any future Ankii Speaking sessions)
+  const [deletedWords, setDeletedWords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_anki_speaking_deleted_words');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const deletedWordsSet = useMemo(() => {
+    return new Set(deletedWords.map(w => w.toLowerCase()));
+  }, [deletedWords]);
+
+  // Modal state for viewing/restoring deleted words
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
+
+  // 10-Second Undo Timer Toast State: { word: string, card: object, secondsLeft: number }
+  const [undoToast, setUndoToast] = useState(null);
+  const undoIntervalRef = useRef(null);
+  const undoTimeoutRef = useRef(null);
+
   // Session lifecycle state
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionFinished, setSessionFinished] = useState(false);
@@ -64,6 +86,8 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
         window.speechSynthesis.cancel();
       }
       clearAdvanceTimers();
+      if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     };
   }, []);
 
@@ -96,7 +120,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     setAutoAdvanceSeconds(null);
   };
 
-  // Compile all available words from vocabData
+  // Compile all available words from vocabData, EXCLUDING any deleted words
   const allFilteredPool = useMemo(() => {
     let pool = [];
     if (selectedCategory === 'all') {
@@ -111,19 +135,26 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       pool = items.map(item => ({ ...item, category: selectedCategory }));
     }
 
-    // Filter by selected priorities
+    // Filter by selected priorities AND exclude deleted words
     return pool.filter(item => {
       const p = item.priority || 1;
-      return priorityFilters.includes(p);
+      const isPriority = priorityFilters.includes(p);
+      const isDeleted = deletedWordsSet.has(item.word.toLowerCase());
+      return isPriority && !isDeleted;
     });
-  }, [vocabData, selectedCategory, priorityFilters]);
+  }, [vocabData, selectedCategory, priorityFilters, deletedWordsSet]);
 
   // Priority count breakdown for the setup screen
   const priorityCounts = useMemo(() => {
     let all = [];
     Object.keys(vocabData).forEach(cat => {
       const items = vocabData[cat] || [];
-      items.forEach(item => all.push(item));
+      items.forEach(item => {
+        // Exclude deleted words from count
+        if (!deletedWordsSet.has(item.word.toLowerCase())) {
+          all.push(item);
+        }
+      });
     });
 
     const high = all.filter(item => (item.priority || 1) === 1).length;
@@ -131,7 +162,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     const low = all.filter(item => item.priority === 3).length;
 
     return { high, med, low, total: all.length };
-  }, [vocabData]);
+  }, [vocabData, deletedWordsSet]);
 
   // Toggle priority filter
   const togglePriority = (priorityNumber) => {
@@ -422,14 +453,12 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       onReview(currentCard.word, currentCard.category, 'hard');
     }
 
-    // Record result if not already recorded for this card
     if (revealedState === 'none') {
       setSessionResults(prev => [...prev, { card: currentCard, result: 'english' }]);
     }
 
     setRevealedState('english');
 
-    // Read English translation aloud via TTS
     speakEnglish(currentCard.meaning, () => {
       triggerAutoAdvance(2);
     });
@@ -451,7 +480,6 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
 
     const example = getWorkplaceExample(currentCard);
 
-    // Record result if not already recorded for this card
     if (revealedState === 'none') {
       setSessionResults(prev => [...prev, { card: currentCard, result: 'context' }]);
     }
@@ -459,7 +487,6 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     setRevealedState('context');
 
     const exampleDe = example ? example.de : '';
-    // Sequentially read English translation followed by 1 German workplace example
     speakSequentialContext(currentCard.meaning, exampleDe, () => {
       triggerAutoAdvance(3);
     });
@@ -479,10 +506,123 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   }, [onToggleMyList, currentCard]);
 
   // ----------------------------------------------------
+  // DELETE WORD (Never show in any future Ankii Speaking session)
+  // With 10-Second Undo Timer Toast
+  // ----------------------------------------------------
+  const handleDeleteWord = useCallback((e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (!currentCard) return;
+
+    const cardToDelete = currentCard;
+    const wordKey = cardToDelete.word;
+
+    clearAdvanceTimers();
+
+    // 1. Add word to deleted list persistently in localStorage
+    setDeletedWords(prev => {
+      const updated = prev.includes(wordKey) ? prev : [...prev, wordKey];
+      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Advance to the next card immediately
+    const nextIdx = currentIndex + 1;
+    if (nextIdx >= sessionCards.length) {
+      setSessionFinished(true);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    } else {
+      setCurrentIndex(nextIdx);
+      setRevealedState('none');
+      const nextWord = getAudioGermanWord(sessionCards[nextIdx].word);
+      speakGerman(nextWord);
+    }
+
+    // 3. Initiate 10-Second Undo Notification
+    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+
+    let seconds = 10;
+    setUndoToast({
+      word: wordKey,
+      card: cardToDelete,
+      insertIndex: currentIndex,
+      secondsLeft: seconds
+    });
+
+    undoIntervalRef.current = setInterval(() => {
+      seconds -= 1;
+      if (seconds <= 0) {
+        clearInterval(undoIntervalRef.current);
+        undoIntervalRef.current = null;
+        setUndoToast(null);
+      } else {
+        setUndoToast(prev => prev ? { ...prev, secondsLeft: seconds } : null);
+      }
+    }, 1000);
+
+    undoTimeoutRef.current = setTimeout(() => {
+      setUndoToast(null);
+      if (undoIntervalRef.current) {
+        clearInterval(undoIntervalRef.current);
+        undoIntervalRef.current = null;
+      }
+    }, 10000);
+  }, [currentCard, currentIndex, sessionCards, speakGerman]);
+
+  // Undo Delete Handler (Click within 10 seconds)
+  const handleUndoDelete = useCallback(() => {
+    if (!undoToast) return;
+
+    const restoredWord = undoToast.word;
+    const restoredCard = undoToast.card;
+
+    // 1. Remove from deletedWords list in localStorage
+    setDeletedWords(prev => {
+      const updated = prev.filter(w => w.toLowerCase() !== restoredWord.toLowerCase());
+      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 2. Clear undo timer
+    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    setUndoToast(null);
+
+    // 3. Put card back into session queue right at current position so user can study it
+    if (sessionActive && !sessionFinished) {
+      setSessionCards(prev => {
+        const next = [...prev];
+        next.splice(currentIndex, 0, restoredCard);
+        return next;
+      });
+      // Immediately present restored card
+      setRevealedState('none');
+      const restoredDe = getAudioGermanWord(restoredCard.word);
+      speakGerman(restoredDe);
+    }
+  }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman]);
+
+  // Restore a word from the Deleted Words Manager Modal
+  const handleRestoreWordFromModal = useCallback((wordToRestore) => {
+    setDeletedWords(prev => {
+      const updated = prev.filter(w => w.toLowerCase() !== wordToRestore.toLowerCase());
+      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  // Restore All words from modal
+  const handleRestoreAllDeleted = useCallback(() => {
+    setDeletedWords([]);
+    localStorage.removeItem('b1_anki_speaking_deleted_words');
+    setShowDeletedModal(false);
+  }, []);
+
+  // ----------------------------------------------------
   // Desktop Keyboard Shortcuts
   // ----------------------------------------------------
   useEffect(() => {
-    if (!sessionActive || sessionFinished) return;
+    if (!sessionActive || sessionFinished || showDeletedModal) return;
 
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
@@ -506,6 +646,14 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         replayGerman();
+      } else if (e.code === 'Delete' || e.code === 'Backspace') {
+        e.preventDefault();
+        handleDeleteWord();
+      } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        if (undoToast) {
+          e.preventDefault();
+          handleUndoDelete();
+        }
       } else if (e.code === 'ArrowRight') {
         e.preventDefault();
         if (revealedState === 'none') handleMastered();
@@ -528,7 +676,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sessionActive, sessionFinished, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleToggleStar]);
+  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast]);
 
   // ----------------------------------------------------
   // Full-Screen Mobile Touch Gestures & Swipe Physics
@@ -536,7 +684,6 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   // ----------------------------------------------------
   const handleTouchStart = (e) => {
     if (e.touches.length !== 1) return;
-    // Don't intercept touches that start on interactive buttons
     if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) {
       touchStartRef.current = null;
       isDraggingRef.current = false;
@@ -560,7 +707,6 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     const diffX = currentX - touchStartRef.current.x;
     const diffY = currentY - touchStartRef.current.y;
 
-    // Apply drag physics to the active card
     setDragOffset({ x: diffX * 0.7, y: diffY * 0.7 });
 
     if (Math.abs(diffX) > Math.abs(diffY)) {
@@ -585,9 +731,9 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
     setDragOffset({ x: 0, y: 0 });
     setTouchFeedback(null);
 
-    const SWIPE_THRESHOLD = 45; // Responsive threshold for full-screen swipes
+    const SWIPE_THRESHOLD = 45;
 
-    // 1. Minimal movement = Tap -> If tapped on card, replay German pronunciation
+    // Minimal movement = Tap -> If tapped on card, replay German pronunciation
     if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15 && duration < 350) {
       if (touchedCard) {
         replayGerman();
@@ -596,23 +742,20 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
       return;
     }
 
-    // 2. Horizontal Swipes (Anywhere on the screen!)
+    // Horizontal Swipes (Anywhere on screen)
     if (Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > SWIPE_THRESHOLD) {
-        // Swipe Right -> Know It / Mastered (or Next if revealed)
         if (revealedState === 'none') {
           handleMastered();
         } else {
           handleAdvanceNext();
         }
       } else if (diffX < -SWIPE_THRESHOLD) {
-        // Swipe Left -> Forgot (English)
         handleForgotEnglish();
       }
     } else {
-      // 3. Vertical Swipes (Anywhere on the screen!)
+      // Vertical Swipes (Anywhere on screen)
       if (diffY < -SWIPE_THRESHOLD) {
-        // Swipe Up -> More Context
         handleMoreContext();
       }
     }
@@ -862,6 +1005,41 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             </p>
           </div>
 
+          {/* Deleted Words Notice (If any words were permanently deleted) */}
+          {deletedWords.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 16px',
+              borderRadius: '12px',
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              marginBottom: '20px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', fontWeight: '600' }}>
+                <span>🗑️</span>
+                <span>{deletedWords.length} word{deletedWords.length > 1 ? 's' : ''} deleted from future sessions</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeletedModal(true)}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  color: '#fff',
+                  borderRadius: '8px',
+                  padding: '4px 10px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                Manage / Restore
+              </button>
+            </div>
+          )}
+
           {/* 1. Priority Filters */}
           <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
@@ -1035,6 +1213,15 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
                   </div>
                 </div>
               </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <span style={{ fontSize: '16px', lineHeight: 1 }}>🗑️</span>
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#ef4444' }}>Delete Word</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Trash Icon <code>[Del]</code> • 10s Undo Timer
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1075,6 +1262,129 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           </div>
 
         </div>
+
+        {/* MODAL: Manage / Restore Deleted Words */}
+        {showDeletedModal && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}>
+            <div className="glass-card animate-fade-in" style={{
+              maxWidth: '520px',
+              width: '100%',
+              padding: '24px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🗑️</span> Deleted Words ({deletedWords.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.4' }}>
+                These words will never appear in any future Ankii Speaking sessions. Click <b>Restore</b> on any word to add it back to your deck.
+              </p>
+
+              <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', paddingRight: '4px' }}>
+                {deletedWords.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    No deleted words.
+                  </div>
+                ) : (
+                  deletedWords.map((word, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.03)',
+                        border: '1px solid var(--border-color)'
+                      }}
+                    >
+                      <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
+                        {word}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreWordFromModal(word)}
+                        style={{
+                          background: 'rgba(34, 197, 94, 0.15)',
+                          border: '1px solid rgba(34, 197, 94, 0.35)',
+                          color: '#22c55e',
+                          borderRadius: '8px',
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ↩ Restore
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+                {deletedWords.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRestoreAllDeleted}
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      color: '#ef4444',
+                      borderRadius: '10px',
+                      padding: '10px 16px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Restore All Words
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedModal(false)}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    border: '1px solid var(--border-color)',
+                    color: '#fff',
+                    borderRadius: '10px',
+                    padding: '10px 20px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     );
   }
@@ -1082,7 +1392,7 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
   // ----------------------------------------------------
   // VIEW: 2. Active Audio-First Card Session
   // With Full-Screen Smartphone Swipe Support!
-  // Shows Words Seen Counter prominently.
+  // Shows Words Seen Counter & Delete with 10s Undo Timer
   // ----------------------------------------------------
   const progressPercent = totalSessionWords > 0 
     ? Math.min(100, Math.round((wordsSeenCount / totalSessionWords) * 100)) 
@@ -1102,7 +1412,8 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'space-between',
-        touchAction: 'pan-y'
+        touchAction: 'pan-y',
+        position: 'relative'
       }}
     >
       
@@ -1298,8 +1609,33 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
           )}
         </div>
 
-        {/* Top Right: Add to List Star Button & Audio Replay Button */}
+        {/* Top Right: Delete Icon, Star Button & Audio Replay Button */}
         <div style={{ position: 'absolute', top: '16px', right: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          
+          {/* DELETE BUTTON (Never show in future sessions, 10s undo timer) */}
+          <button
+            type="button"
+            className="sound-btn ankii-delete-btn"
+            onClick={handleDeleteWord}
+            title="Never show this word in any future Anki Speaking session [Del]"
+            style={{
+              fontSize: '15px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+          >
+            🗑️
+          </button>
+
           {/* Add to List Star Button */}
           {onToggleMyList && !isAnonymous && (
             <button
@@ -1494,11 +1830,98 @@ export default function AnkiiSpeaking({ vocabData, myList = [], onToggleMyList, 
             </div>
           ) : (
             <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[S]</code> Star
+              Desktop: <code>[Space]</code> Know It • <code>[N]</code> English • <code>[M]</code> Context • <code>[Del]</code> Delete
             </div>
           )}
         </div>
       </div>
+
+      {/* 10-SECOND UNDO TOAST NOTIFICATION */}
+      {undoToast && (
+        <div
+          className="animate-fade-in"
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'calc(100% - 32px)',
+            maxWidth: '520px',
+            background: 'rgba(18, 20, 30, 0.95)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(239, 68, 68, 0.45)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.6), 0 0 20px rgba(239, 68, 68, 0.25)',
+            borderRadius: '16px',
+            padding: '14px 18px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            zIndex: 9999
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <span style={{ fontSize: '20px' }}>🗑️</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                "{undoToast.word}" deleted from future sessions
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                Will never appear again in Ankii Speaking
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={handleUndoDelete}
+              style={{
+                background: 'linear-gradient(135deg, #10b981, #059669)',
+                border: 'none',
+                color: '#fff',
+                fontWeight: '800',
+                fontSize: '12px',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
+                transition: 'transform 0.15s ease'
+              }}
+            >
+              <span>↩ Undo</span>
+              <span style={{
+                background: 'rgba(0,0,0,0.25)',
+                padding: '1px 6px',
+                borderRadius: '8px',
+                fontSize: '11px'
+              }}>
+                {undoToast.secondsLeft}s
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setUndoToast(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: '16px',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+              title="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* BOTTOM TRIAGE CONTROLS (OPTIMIZED FOR TOUCH & KEYBOARD) */}
       <div style={{ width: '100%', marginTop: '16px' }}>
