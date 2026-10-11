@@ -19,6 +19,10 @@ export function getWorkplaceExample(card) {
   return match || card.examples[0];
 }
 
+const SpeechRecognition = typeof window !== 'undefined'
+  ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
+  : null;
+
 export default function AnkiiSpeaking({
   vocabData,
   myList = [],
@@ -86,6 +90,12 @@ export default function AnkiiSpeaking({
   const touchStartRef = useRef(null);
   const isDraggingRef = useRef(false);
 
+  // Voice Instruction State & Continuous Recognition Engine
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [voiceFeedbackMsg, setVoiceFeedbackMsg] = useState(null);
+  const voiceFeedbackTimeoutRef = useRef(null);
+  const recognitionRef = useRef(null);
+
   // Filter for completed summary list: 'all' | 'mastered' | 'english' | 'context'
   const [summaryFilter, setSummaryFilter] = useState('all');
 
@@ -103,6 +113,10 @@ export default function AnkiiSpeaking({
       clearAdvanceTimers();
       if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch (e) {}
+      }
     };
   }, []);
 
@@ -616,6 +630,145 @@ export default function AnkiiSpeaking({
     }
   }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman, onRestoreWord]);
 
+  // ----------------------------------------------------
+  // Voice Command Trigger & Continuous Speech Recognition
+  // Supports 4 Voice Instructions throughout the session:
+  // 1. Next (Space press)
+  // 2. Translate (N press)
+  // 3. More (M press)
+  // 4. Delete (D press)
+  // ----------------------------------------------------
+  const triggerVoiceFeedback = useCallback((cmdName) => {
+    if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
+    setVoiceFeedbackMsg(cmdName);
+    voiceFeedbackTimeoutRef.current = setTimeout(() => {
+      setVoiceFeedbackMsg(null);
+    }, 1800);
+  }, []);
+
+  const handleVoiceCommand = useCallback((rawText) => {
+    if (!rawText) return;
+    const text = rawText.toLowerCase().trim();
+
+    // 1. Delete (D press / Delete card with 10s undo)
+    if (/\b(delete|remove|trash|löschen|loeschen)\b/i.test(text)) {
+      triggerVoiceFeedback('Delete [D]');
+      handleDeleteWord();
+      return;
+    }
+
+    // 2. Translate (N press / Reveal English meaning)
+    if (/\b(translate|translation|english|bedeutung|übersetz|uebersetz)\b/i.test(text)) {
+      triggerVoiceFeedback('Translate [N]');
+      handleForgotEnglish();
+      return;
+    }
+
+    // 3. More (M press / Reveal English + Workplace Example)
+    if (/\b(more|context|example|beispiel|mehr)\b/i.test(text)) {
+      triggerVoiceFeedback('More [M]');
+      handleMoreContext();
+      return;
+    }
+
+    // 4. Next (Space press / Mastered or advance next card)
+    if (/\b(next|continue|skip|forward|space|weiter)\b/i.test(text)) {
+      triggerVoiceFeedback('Next [Space]');
+      if (revealedState === 'none') {
+        handleMastered();
+      } else {
+        handleAdvanceNext();
+      }
+      return;
+    }
+  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, triggerVoiceFeedback]);
+
+  // Keep a stable ref to handleVoiceCommand to avoid re-initializing recognition on state updates
+  const handleVoiceCommandRef = useRef(handleVoiceCommand);
+  useEffect(() => {
+    handleVoiceCommandRef.current = handleVoiceCommand;
+  }, [handleVoiceCommand]);
+
+  // Continuous SpeechRecognition lifecycle: once started, lasts the entire duration of the session
+  useEffect(() => {
+    if (!SpeechRecognition) return;
+
+    if (!isVoiceActive || !sessionActive || sessionFinished) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+        recognitionRef.current = null;
+      }
+      return;
+    }
+
+    let isStoppingManually = false;
+    let recognition = null;
+
+    const startRecognition = () => {
+      if (isStoppingManually || !isMountedRef.current) return;
+      try {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              const transcript = event.results[i][0].transcript.trim();
+              if (handleVoiceCommandRef.current) {
+                handleVoiceCommandRef.current(transcript);
+              }
+            }
+          }
+        };
+
+        recognition.onerror = (event) => {
+          // Normal timeouts or silence trigger onend; handle real permission errors
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            isStoppingManually = true;
+            setIsVoiceActive(false);
+            alert('Microphone permission was denied. Please allow microphone access to use Voice Control.');
+          }
+        };
+
+        recognition.onend = () => {
+          // Keep listening for the full duration of the session
+          if (!isStoppingManually && isMountedRef.current) {
+            setTimeout(() => {
+              if (!isStoppingManually && isMountedRef.current) {
+                startRecognition();
+              }
+            }, 150);
+          }
+        };
+
+        recognition.start();
+        recognitionRef.current = recognition;
+      } catch (err) {
+        setTimeout(() => {
+          if (!isStoppingManually && isMountedRef.current) {
+            startRecognition();
+          }
+        }, 500);
+      }
+    };
+
+    startRecognition();
+
+    return () => {
+      isStoppingManually = true;
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch (e) {}
+      }
+      recognitionRef.current = null;
+    };
+  }, [isVoiceActive, sessionActive, sessionFinished]);
+
   // Restore a word from the Deleted Words Manager Modal
   const handleRestoreWordFromModal = useCallback((wordToRestore) => {
     if (onRestoreWord) {
@@ -812,6 +965,7 @@ export default function AnkiiSpeaking({
       else setTouchFeedback(null);
     } else {
       if (diffY < -40) setTouchFeedback('context');
+      else if (diffY > 40) setTouchFeedback('delete');
       else setTouchFeedback(null);
     }
   };
@@ -854,6 +1008,8 @@ export default function AnkiiSpeaking({
       // Vertical Swipes (Anywhere on screen)
       if (diffY < -SWIPE_THRESHOLD) {
         handleMoreContext();
+      } else if (diffY > SWIPE_THRESHOLD) {
+        handleDeleteWord();
       }
     }
 
@@ -1347,6 +1503,68 @@ export default function AnkiiSpeaking({
             </div>
           </div>
 
+          {/* Hands-Free Voice Control Option */}
+          <div
+            onClick={() => {
+              if (!SpeechRecognition) {
+                alert("Speech recognition is not supported in this browser. Try Google Chrome, Microsoft Edge, or Apple Safari.");
+                return;
+              }
+              setIsVoiceActive(prev => !prev);
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 18px',
+              borderRadius: '16px',
+              background: isVoiceActive ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+              border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid var(--border-color)',
+              cursor: 'pointer',
+              marginBottom: '16px',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: isVoiceActive ? '0 4px 16px rgba(16, 185, 129, 0.15)' : 'none'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+              <span style={{ fontSize: '22px' }}>🎙️</span>
+              <div style={{ textAlign: 'left', minWidth: 0 }}>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>Voice Control Instructions</span>
+                  {isVoiceActive && (
+                    <span style={{ fontSize: '10px', background: '#10b981', color: '#fff', padding: '1px 6px', borderRadius: '6px' }}>
+                      ACTIVE
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Say "Next", "Translate", "More", or "Delete" (lasts whole session)
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              width: '42px',
+              height: '24px',
+              borderRadius: '12px',
+              background: isVoiceActive ? '#10b981' : 'rgba(255, 255, 255, 0.15)',
+              position: 'relative',
+              transition: 'background 0.2s ease',
+              flexShrink: 0
+            }}>
+              <div style={{
+                width: '18px',
+                height: '18px',
+                borderRadius: '50%',
+                background: '#fff',
+                position: 'absolute',
+                top: '3px',
+                left: isVoiceActive ? '21px' : '3px',
+                transition: 'left 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              }} />
+            </div>
+          </div>
+
           {/* Prominent Start Session Button */}
           <button
             type="button"
@@ -1586,7 +1804,7 @@ export default function AnkiiSpeaking({
       style={{
         maxWidth: '640px',
         margin: '16px auto',
-        padding: '0 16px',
+        padding: '0 16px 64px 16px',
         minHeight: 'calc(100dvh - 120px)',
         display: 'flex',
         flexDirection: 'column',
@@ -1643,8 +1861,47 @@ export default function AnkiiSpeaking({
             </span>
           </div>
 
-          {/* Quick Actions (Exit / Sound Replay) */}
+          {/* Quick Actions (Exit / Voice / Sound Replay) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Continuous Voice Control Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!SpeechRecognition) {
+                  alert("Speech recognition is not supported in this browser. Try Google Chrome, Microsoft Edge, or Apple Safari.");
+                  return;
+                }
+                setIsVoiceActive(prev => !prev);
+              }}
+              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Voice Control ('Next', 'Translate', 'More', 'Delete')"}
+              style={{
+                background: isVoiceActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255,255,255,0.06)',
+                border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color)',
+                borderRadius: '8px',
+                color: isVoiceActive ? '#10b981' : 'var(--text-muted)',
+                padding: '5px 10px',
+                fontSize: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontWeight: '700',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <span style={{ fontSize: '13px' }}>🎙️</span>
+              <span>{isVoiceActive ? 'Voice: ON' : 'Voice: OFF'}</span>
+              {isVoiceActive && (
+                <span className="pulse-indicator" style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: '#10b981',
+                  display: 'inline-block'
+                }} />
+              )}
+            </button>
+
             <button
               type="button"
               onClick={replayGerman}
@@ -1709,6 +1966,41 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
+      {/* Voice Control Floating Indicator */}
+      {isVoiceActive && (
+        <div style={{
+          position: 'fixed',
+          top: '12px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9990,
+          background: 'rgba(15, 23, 42, 0.88)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          border: '1px solid rgba(16, 185, 129, 0.45)',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          borderRadius: '20px',
+          padding: '4px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          fontSize: '11px',
+          color: '#fff',
+          pointerEvents: 'none'
+        }}>
+          <span style={{ fontSize: '12px' }}>🎙️</span>
+          {voiceFeedbackMsg ? (
+            <span style={{ color: '#10b981', fontWeight: '800' }}>
+              Command: "{voiceFeedbackMsg}"
+            </span>
+          ) : (
+            <span style={{ color: 'var(--text-secondary)' }}>
+              Voice: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Swipe Feedback Badge (Mobile Drag across entire screen) */}
       <div style={{
         height: '24px',
@@ -1721,17 +2013,22 @@ export default function AnkiiSpeaking({
       }}>
         {touchFeedback === 'mastered' && (
           <span style={{ fontSize: '12px', fontWeight: '800', color: '#22c55e', textTransform: 'uppercase', letterSpacing: '1px' }}>
-            👉 Release to Master [Know It]
+            👉 Release to Master [Next]
           </span>
         )}
         {touchFeedback === 'english' && (
           <span style={{ fontSize: '12px', fontWeight: '800', color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '1px' }}>
-            👈 Release for English Meaning
+            👈 Release for English Translation
           </span>
         )}
         {touchFeedback === 'context' && (
           <span style={{ fontSize: '12px', fontWeight: '800', color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '1px' }}>
             👆 Release for Context & Workplace Example
+          </span>
+        )}
+        {touchFeedback === 'delete' && (
+          <span style={{ fontSize: '12px', fontWeight: '800', color: '#ef4444', textTransform: 'uppercase', letterSpacing: '1px' }}>
+            👇 Release to Delete Word
           </span>
         )}
       </div>
@@ -1759,6 +2056,7 @@ export default function AnkiiSpeaking({
           borderColor: touchFeedback === 'mastered' ? 'rgba(34, 197, 94, 0.8)' :
                        touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.8)' :
                        touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.8)' :
+                       touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.8)' :
                        isSpeaking ? 'rgba(139, 92, 246, 0.7)' : 'rgba(255, 255, 255, 0.12)',
           boxShadow: isSpeaking 
             ? '0 12px 40px rgba(139, 92, 246, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.2)' 
@@ -1998,44 +2296,176 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
-      {/* 10-SECOND UNDO TOAST NOTIFICATION */}
+      {/* 4 SCREEN BORDER VISUAL LAYOUT CUES FOR PHONE (Blurred Backgrounds) */}
+      <div className="ankii-phone-border-cues">
+        {/* Left Screen Border: Translate */}
+        <button
+          type="button"
+          onClick={handleForgotEnglish}
+          className={`ankii-phone-cue ankii-cue-left ${touchFeedback === 'english' ? 'active-cue' : ''}`}
+          style={{
+            position: 'fixed',
+            left: '6px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            background: touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(15, 23, 42, 0.78)',
+            border: '1px solid rgba(245, 158, 11, 0.5)',
+            color: 'var(--color-adj)',
+            padding: '10px 12px',
+            borderRadius: '16px',
+            fontSize: '12px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            zIndex: 90,
+            cursor: 'pointer'
+          }}
+          title="Translate (Swipe Left / Voice: 'Translate')"
+        >
+          <span style={{ fontSize: '13px' }}>‹</span>
+          <span>Translate</span>
+        </button>
+
+        {/* Right Screen Border: Next */}
+        <button
+          type="button"
+          onClick={revealedState === 'none' ? handleMastered : handleAdvanceNext}
+          className={`ankii-phone-cue ankii-cue-right ${touchFeedback === 'mastered' ? 'active-cue' : ''}`}
+          style={{
+            position: 'fixed',
+            right: '6px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            background: touchFeedback === 'mastered' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(15, 23, 42, 0.78)',
+            border: '1px solid rgba(16, 185, 129, 0.5)',
+            color: '#22c55e',
+            padding: '10px 12px',
+            borderRadius: '16px',
+            fontSize: '12px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            zIndex: 90,
+            cursor: 'pointer'
+          }}
+          title="Next (Swipe Right / Voice: 'Next')"
+        >
+          <span>Next</span>
+          <span style={{ fontSize: '13px' }}>›</span>
+        </button>
+
+        {/* Up / Top Screen Border: More */}
+        <button
+          type="button"
+          onClick={handleMoreContext}
+          className={`ankii-phone-cue ankii-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
+          style={{
+            position: 'fixed',
+            top: '56px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(15, 23, 42, 0.78)',
+            border: '1px solid rgba(59, 130, 246, 0.5)',
+            color: 'var(--color-verb)',
+            padding: '6px 16px',
+            borderRadius: '16px',
+            fontSize: '12px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            zIndex: 90,
+            cursor: 'pointer'
+          }}
+          title="More Context (Swipe Up / Voice: 'More')"
+        >
+          <span style={{ fontSize: '9px' }}>▲</span>
+          <span>More</span>
+        </button>
+
+        {/* Down / Bottom Screen Border: Delete */}
+        <button
+          type="button"
+          onClick={handleDeleteWord}
+          className={`ankii-phone-cue ankii-cue-bottom ${touchFeedback === 'delete' ? 'active-cue' : ''}`}
+          style={{
+            position: 'fixed',
+            bottom: '12px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            background: touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.35)' : 'rgba(15, 23, 42, 0.78)',
+            border: '1px solid rgba(239, 68, 68, 0.5)',
+            color: '#ef4444',
+            padding: '6px 16px',
+            borderRadius: '16px',
+            fontSize: '12px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+            zIndex: 90,
+            cursor: 'pointer'
+          }}
+          title="Delete Word (Swipe Down / Voice: 'Delete')"
+        >
+          <span style={{ fontSize: '9px' }}>▼</span>
+          <span>Delete</span>
+        </button>
+      </div>
+
+      {/* 10-SECOND UNDO TOAST NOTIFICATION (RESPONSIVE FOR PHONE) */}
       {undoToast && (
         <div
           className="animate-fade-in"
           style={{
             position: 'fixed',
-            bottom: '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            width: 'calc(100% - 32px)',
-            maxWidth: '520px',
-            background: 'rgba(18, 20, 30, 0.95)',
+            bottom: '18px',
+            left: '12px',
+            right: '12px',
+            maxWidth: '460px',
+            margin: '0 auto',
+            boxSizing: 'border-box',
+            background: 'rgba(18, 20, 30, 0.96)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(239, 68, 68, 0.45)',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.6), 0 0 20px rgba(239, 68, 68, 0.25)',
-            borderRadius: '16px',
-            padding: '14px 18px',
+            border: '1px solid rgba(239, 68, 68, 0.5)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.65), 0 0 20px rgba(239, 68, 68, 0.25)',
+            borderRadius: '14px',
+            padding: '10px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px',
+            gap: '10px',
             zIndex: 9999
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-            <span style={{ fontSize: '20px' }}>🗑️</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                "{undoToast.word}" deleted from future sessions
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: '1 1 auto' }}>
+            <span style={{ fontSize: '18px', flexShrink: 0 }}>🗑️</span>
+            <div style={{ minWidth: 0, flex: '1 1 auto' }}>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                "{undoToast.word}" deleted
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                Will never appear again in Ankii Speaking
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Removed from future sessions
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
             <button
               type="button"
               onClick={handleUndoDelete}
@@ -2044,23 +2474,24 @@ export default function AnkiiSpeaking({
                 border: 'none',
                 color: '#fff',
                 fontWeight: '800',
-                fontSize: '12px',
-                padding: '8px 14px',
-                borderRadius: '10px',
+                fontSize: '11px',
+                padding: '7px 11px',
+                borderRadius: '8px',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)',
-                transition: 'transform 0.15s ease'
+                gap: '5px',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+                whiteSpace: 'nowrap',
+                flexShrink: 0
               }}
             >
               <span>↩ Undo</span>
               <span style={{
                 background: 'rgba(0,0,0,0.25)',
-                padding: '1px 6px',
-                borderRadius: '8px',
-                fontSize: '11px'
+                padding: '1px 5px',
+                borderRadius: '6px',
+                fontSize: '10px'
               }}>
                 {undoToast.secondsLeft}s
               </span>
@@ -2073,9 +2504,10 @@ export default function AnkiiSpeaking({
                 background: 'none',
                 border: 'none',
                 color: 'var(--text-muted)',
-                fontSize: '16px',
+                fontSize: '15px',
                 cursor: 'pointer',
-                padding: '4px'
+                padding: '4px',
+                flexShrink: 0
               }}
               title="Dismiss"
             >
