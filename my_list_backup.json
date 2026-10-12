@@ -36,7 +36,7 @@
       },
       {
         "de": "Ich kann bestätigen, dass mein Sohn den ganzen Vormittag zu Hause war.",
-        "en": "Ich can confirm that my son was at home all morning."
+        "en": "I can confirm that my son was at home all morning."
       }
     ],
     "isCustom": false
@@ -147,6 +147,36 @@
       {
         "de": "Wir haben uns sehr gut über den Film unterhalten.",
         "en": "We had a great talk about the movie."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "zwar",
+    "meaning": "to be sure, indeed",
+    "category": "connectors",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "These shoes are expensive but good.",
+        "de": "Diese Schuhe sind zwar teuer, aber gut."
+      },
+      {
+        "en": "I'm going to get a week off now, next month.",
+        "de": "Ich kriege jetzt doch eine Woche Urlaub, und zwar nächsten Monat."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "vorhaben",
+    "meaning": "to intend",
+    "category": "verbs",
+    "conjugation": "vorhaben, hat vor, hatte vor, hat vorgehabt",
+    "examples": [
+      {
+        "en": "Do you have plans for tomorrow night?",
+        "de": "Haben Sie morgen Abend schon etwas vor?"
       }
     ],
     "isCustom": false
