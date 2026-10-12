@@ -34,6 +34,8 @@ export default function AnkiiSpeaking({
   onRestoreAllDeleted,
   onImportDeletedWords,
   syncCode,
+  setSyncCode,
+  onSyncDeletedNow,
   onReview,
   isAnonymous
 }) {
@@ -41,6 +43,66 @@ export default function AnkiiSpeaking({
   const [priorityFilters, setPriorityFilters] = useState([1, 2, 3]); // High (1), Med (2), Low (3)
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [queueLimit, setQueueLimit] = useState('50');
+
+  // Cloud sync status and manual sync triggers
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState(null);
+  const [isEditingSyncCode, setIsEditingSyncCode] = useState(false);
+  const [inputSyncCode, setInputSyncCode] = useState(syncCode || '');
+
+  useEffect(() => {
+    setInputSyncCode(syncCode || '');
+  }, [syncCode]);
+
+  const handleTriggerSync = async () => {
+    if (!onSyncDeletedNow) return;
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const res = await onSyncDeletedNow(syncCode);
+      if (res && res.success) {
+        setSyncFeedback(`✅ Synced! (${res.count ?? deletedWords.length} words active)`);
+      } else {
+        setSyncFeedback(`⚠️ Sync failed: ${res?.error || 'Check internet'}`);
+      }
+    } catch (e) {
+      setSyncFeedback(`⚠️ ${e.message}`);
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncFeedback(null), 4000);
+    }
+  };
+
+  const handleSaveSyncCode = async (codeToSave) => {
+    const clean = (codeToSave || '').trim();
+    if (clean.length < 3) {
+      alert("Sync code must be at least 3 characters.");
+      return;
+    }
+    if (setSyncCode) {
+      setSyncCode(clean);
+    }
+    setIsEditingSyncCode(false);
+    setIsSyncing(true);
+    setSyncFeedback(null);
+    if (onSyncDeletedNow) {
+      try {
+        const res = await onSyncDeletedNow(clean);
+        if (res && res.success) {
+          setSyncFeedback(`✅ Connected & Synced! (${res.count ?? deletedWords.length} words active)`);
+        } else {
+          setSyncFeedback(`⚠️ ${res?.error || 'Connected, but initial sync had issues'}`);
+        }
+      } catch (e) {
+        setSyncFeedback(`⚠️ ${e.message}`);
+      } finally {
+        setIsSyncing(false);
+        setTimeout(() => setSyncFeedback(null), 4000);
+      }
+    } else {
+      setIsSyncing(false);
+    }
+  };
 
   // Persistent Deleted Words (words that will never appear in any future Ankii Speaking sessions)
   const [localDeletedWords, setLocalDeletedWords] = useState(() => {
@@ -122,7 +184,7 @@ export default function AnkiiSpeaking({
       if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
       if (recognitionRef.current) {
-        try { recognitionRef.current.abort(); } catch (e) {}
+        try { recognitionRef.current.abort(); } catch (e) { }
       }
     };
   }, []);
@@ -254,7 +316,7 @@ export default function AnkiiSpeaking({
 
     const voices = window.speechSynthesis.getVoices();
     const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-                    voices.find(v => v.lang.startsWith('de'));
+      voices.find(v => v.lang.startsWith('de'));
     if (deVoice) utterance.voice = deVoice;
     utterance.rate = 1.0;
 
@@ -290,7 +352,7 @@ export default function AnkiiSpeaking({
 
     const voices = window.speechSynthesis.getVoices();
     const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-                    voices.find(v => v.lang.startsWith('en'));
+      voices.find(v => v.lang.startsWith('en'));
     if (enVoice) utterance.voice = enVoice;
     utterance.rate = 1.0;
 
@@ -324,9 +386,9 @@ export default function AnkiiSpeaking({
 
     const voices = window.speechSynthesis.getVoices();
     const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-                    voices.find(v => v.lang.startsWith('en'));
+      voices.find(v => v.lang.startsWith('en'));
     const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-                    voices.find(v => v.lang.startsWith('de'));
+      voices.find(v => v.lang.startsWith('de'));
 
     setIsSpeaking(true);
     setSpeakingPhase('en');
@@ -718,7 +780,7 @@ export default function AnkiiSpeaking({
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
-        } catch (e) {}
+        } catch (e) { }
         recognitionRef.current = null;
       }
       return;
@@ -784,7 +846,7 @@ export default function AnkiiSpeaking({
       if (recognition) {
         try {
           recognition.abort();
-        } catch (e) {}
+        } catch (e) { }
       }
       recognitionRef.current = null;
     };
@@ -952,7 +1014,7 @@ export default function AnkiiSpeaking({
       setTimeout(() => setIsWiggling(false), 450);
 
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        try { navigator.vibrate(50); } catch (err) {}
+        try { navigator.vibrate(50); } catch (err) { }
       }
     }, 1000);
   };
@@ -1274,65 +1336,160 @@ export default function AnkiiSpeaking({
     return (
       <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '680px', margin: '20px auto', padding: '0 16px' }}>
         <div className="glass-card" style={{ padding: '32px 24px', width: '100%' }}>
-          
+
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(139, 92, 246, 0.12)', border: '1px solid rgba(139, 92, 246, 0.25)', padding: '6px 14px', borderRadius: '20px', marginBottom: '12px' }}>
-              <span style={{ fontSize: '14px' }}>🗣️</span>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--color-conn)', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                Single-Pass Audio Triage
-              </span>
-            </div>
             <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#fff', letterSpacing: '-0.5px', margin: '4px 0' }}>
               Ankii Speaking
             </h2>
-            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', maxWidth: '460px', margin: '8px auto 0', lineHeight: '1.5' }}>
-              Audio-first flashcards. Words play immediately via German TTS. Each word is seen once per session with zero cycling.
-            </p>
           </div>
 
-          {/* Deleted Words Notice (If any words were permanently deleted) */}
-          {deletedWords.length > 0 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '10px 16px',
-              borderRadius: '12px',
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              marginBottom: '20px',
-              flexWrap: 'wrap',
-              gap: '10px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#ef4444', fontWeight: '600', flexWrap: 'wrap' }}>
+          {/* Deleted Words & Cross-Device Cloud Sync Status Bar */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            padding: '12px 16px',
+            borderRadius: '14px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            marginBottom: '20px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#ef4444', fontWeight: '700' }}>
                 <span>🗑️</span>
-                <span>{deletedWords.length} word{deletedWords.length > 1 ? 's' : ''} deleted from future sessions</span>
-                {syncCode && (
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '400' }}>
-                    (Cloud Sync: <code style={{ color: '#60a5fa' }}>{syncCode}</code>)
-                  </span>
-                )}
+                <span>{deletedWords.length} word{deletedWords.length !== 1 ? 's' : ''} deleted from future sessions</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowDeletedModal(true)}
                 style={{
                   background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
                   color: '#fff',
                   borderRadius: '8px',
-                  padding: '4px 10px',
+                  padding: '5px 12px',
                   fontSize: '11px',
                   fontWeight: '700',
-                  cursor: 'pointer',
-                  flexShrink: 0
+                  cursor: 'pointer'
                 }}
               >
                 Manage / Restore
               </button>
             </div>
-          )}
+
+            {/* Cloud Sync Status & Actions Row */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingTop: '8px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.07)',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              {syncCode && !isEditingSyncCode ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                    <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }}></span>
+                    Cloud Sync:
+                  </span>
+                  <code style={{ color: '#60a5fa', fontWeight: '700', background: 'rgba(59, 130, 246, 0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+                    {syncCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputSyncCode(syncCode);
+                      setIsEditingSyncCode(true);
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap', width: '100%' }}>
+                  <span style={{ color: '#f59e0b', fontWeight: '600' }}>⚠️ Cloud Sync Not Connected (Local Only)</span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      placeholder="Enter sync code (e.g. secret123)"
+                      value={inputSyncCode}
+                      onChange={(e) => setInputSyncCode(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSyncCode(inputSyncCode); }}
+                      style={{
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid var(--border-color)',
+                        color: '#fff',
+                        fontSize: '11px',
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        width: '180px'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSyncCode(inputSyncCode)}
+                      style={{
+                        background: 'rgba(59, 130, 246, 0.25)',
+                        border: '1px solid rgba(59, 130, 246, 0.4)',
+                        color: '#60a5fa',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Connect & Sync
+                    </button>
+                    {isEditingSyncCode && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingSyncCode(false)}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {syncCode && !isEditingSyncCode && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                  {syncFeedback && (
+                    <span style={{ fontSize: '11px', color: syncFeedback.startsWith('✅') ? '#10b981' : '#f59e0b', fontWeight: '600' }}>
+                      {syncFeedback}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleTriggerSync}
+                    disabled={isSyncing}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px solid rgba(59, 130, 246, 0.35)',
+                      color: '#60a5fa',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: isSyncing ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      opacity: isSyncing ? 0.6 : 1
+                    }}
+                  >
+                    <span>🔄</span>
+                    <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* 1. Priority Filters */}
           <div style={{ marginBottom: '24px' }}>
@@ -1496,8 +1653,8 @@ export default function AnkiiSpeaking({
               padding: '18px 24px',
               borderRadius: '16px',
               border: 'none',
-              background: allFilteredPool.length > 0 
-                ? 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)' 
+              background: allFilteredPool.length > 0
+                ? 'linear-gradient(135deg, #10b981 0%, #3b82f6 100%)'
                 : 'rgba(255,255,255,0.05)',
               color: '#fff',
               fontSize: '17px',
@@ -1517,7 +1674,7 @@ export default function AnkiiSpeaking({
               Start Session ({queueLimit === 'all' ? allFilteredPool.length : Math.min(allFilteredPool.length, parseInt(queueLimit, 10))} Words)
             </span>
           </button>
-          
+
           <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
             💡 Words play automatically in German. Each word is seen once.
           </div>
@@ -1558,17 +1715,124 @@ export default function AnkiiSpeaking({
                 </button>
               </div>
 
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: '1.4' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.4' }}>
                 These words will never appear in any future Ankii Speaking sessions. Click <b>Restore</b> on any word to add it back to your deck.
-                {syncCode && (
-                  <span style={{ display: 'block', marginTop: '6px', fontSize: '11px', color: '#60a5fa' }}>
-                    ☁️ Synced across your devices with code: <b>{syncCode}</b>
-                  </span>
-                )}
-                <span style={{ display: 'block', marginTop: '4px', fontSize: '11px', color: '#10b981' }}>
-                  💾 Real-time file backup auto-saved to <code>deleted_words_backup.json</code>
-                </span>
               </p>
+
+              {/* Cloud Sync Status & Actions inside Modal */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border-color)',
+                marginBottom: '16px',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                {syncCode && !isEditingSyncCode ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                      <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }}></span>
+                      Cloud Sync:
+                    </span>
+                    <code style={{ color: '#60a5fa', fontWeight: '700', background: 'rgba(59, 130, 246, 0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+                      {syncCode}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInputSyncCode(syncCode);
+                        setIsEditingSyncCode(true);
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap', width: '100%' }}>
+                    <span style={{ color: '#f59e0b', fontWeight: '600' }}>⚠️ Cloud Sync Not Connected</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="Enter sync code"
+                        value={inputSyncCode}
+                        onChange={(e) => setInputSyncCode(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSyncCode(inputSyncCode); }}
+                        style={{
+                          background: 'rgba(0,0,0,0.3)',
+                          border: '1px solid var(--border-color)',
+                          color: '#fff',
+                          fontSize: '11px',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          width: '160px'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSyncCode(inputSyncCode)}
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.25)',
+                          border: '1px solid rgba(59, 130, 246, 0.4)',
+                          color: '#60a5fa',
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Connect & Sync
+                      </button>
+                      {isEditingSyncCode && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingSyncCode(false)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {syncCode && !isEditingSyncCode && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                    {syncFeedback && (
+                      <span style={{ fontSize: '11px', color: syncFeedback.startsWith('✅') ? '#10b981' : '#f59e0b', fontWeight: '600' }}>
+                        {syncFeedback}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleTriggerSync}
+                      disabled={isSyncing}
+                      style={{
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        color: '#60a5fa',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: isSyncing ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        opacity: isSyncing ? 0.6 : 1
+                      }}
+                    >
+                      <span>🔄</span>
+                      <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', paddingRight: '4px' }}>
                 {deletedWords.length === 0 ? (
@@ -1729,8 +1993,8 @@ export default function AnkiiSpeaking({
   // With Full-Screen Smartphone Swipe Support!
   // Shows Words Seen Counter & Delete with 10s Undo Timer
   // ----------------------------------------------------
-  const progressPercent = totalSessionWords > 0 
-    ? Math.min(100, Math.round((wordsSeenCount / totalSessionWords) * 100)) 
+  const progressPercent = totalSessionWords > 0
+    ? Math.min(100, Math.round((wordsSeenCount / totalSessionWords) * 100))
     : 0;
 
   return (
@@ -1747,11 +2011,11 @@ export default function AnkiiSpeaking({
         position: 'relative'
       }}
     >
-      
+
       {/* Top Header & Words Seen Counter */}
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          
+
           {/* Words Seen & Triage Counters */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{
@@ -1809,8 +2073,8 @@ export default function AnkiiSpeaking({
               }}
               title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
               style={{
-                background: isVoiceActive 
-                  ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))' 
+                background: isVoiceActive
+                  ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))'
                   : 'rgba(255, 255, 255, 0.08)',
                 border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.65)' : '1px solid rgba(255, 255, 255, 0.2)',
                 borderRadius: '12px',
@@ -1993,21 +2257,21 @@ export default function AnkiiSpeaking({
           userSelect: 'none',
           WebkitUserSelect: 'none',
           touchAction: isGestureMode ? 'none' : 'pan-y',
-          transform: isWiggling 
-            ? undefined 
+          transform: isWiggling
+            ? undefined
             : `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0) rotate(${dragOffset.x * 0.05}deg)`,
           transition: isDraggingRef.current ? 'none' : 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s ease, box-shadow 0.2s ease',
           borderColor: touchFeedback === 'mastered' ? 'rgba(34, 197, 94, 0.8)' :
-                       touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.8)' :
-                       touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.8)' :
-                       touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.8)' :
-                       isGestureMode ? 'rgba(59, 130, 246, 0.85)' :
-                       isSpeaking ? 'rgba(139, 92, 246, 0.7)' : 'rgba(255, 255, 255, 0.12)',
+            touchFeedback === 'english' ? 'rgba(245, 158, 11, 0.8)' :
+              touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.8)' :
+                touchFeedback === 'delete' ? 'rgba(239, 68, 68, 0.8)' :
+                  isGestureMode ? 'rgba(59, 130, 246, 0.85)' :
+                    isSpeaking ? 'rgba(139, 92, 246, 0.7)' : 'rgba(255, 255, 255, 0.12)',
           boxShadow: isGestureMode
             ? '0 0 28px rgba(59, 130, 246, 0.35), var(--shadow-premium)'
-            : isSpeaking 
-            ? '0 12px 40px rgba(139, 92, 246, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.2)' 
-            : 'var(--shadow-premium), var(--shadow-inset)'
+            : isSpeaking
+              ? '0 12px 40px rgba(139, 92, 246, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.2)'
+              : 'var(--shadow-premium), var(--shadow-inset)'
         }}
       >
         {/* TOP CARD CUE: More (Positioned directly at top edge of card to prevent overlapping with viewport) */}
@@ -2093,11 +2357,11 @@ export default function AnkiiSpeaking({
               padding: '3px 8px',
               borderRadius: '12px',
               background: currentCard.priority === 1 ? 'rgba(34, 197, 94, 0.15)' :
-                          currentCard.priority === 2 ? 'rgba(234, 179, 8, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                currentCard.priority === 2 ? 'rgba(234, 179, 8, 0.15)' : 'rgba(239, 68, 68, 0.15)',
               color: currentCard.priority === 1 ? '#22c55e' :
-                     currentCard.priority === 2 ? '#eab308' : '#ef4444',
+                currentCard.priority === 2 ? '#eab308' : '#ef4444',
               border: `1px solid ${currentCard.priority === 1 ? 'rgba(34, 197, 94, 0.25)' :
-                                   currentCard.priority === 2 ? 'rgba(234, 179, 8, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`
+                currentCard.priority === 2 ? 'rgba(234, 179, 8, 0.25)' : 'rgba(239, 68, 68, 0.25)'}`
             }}>
               ⚡ P{currentCard.priority}
             </span>
@@ -2106,7 +2370,7 @@ export default function AnkiiSpeaking({
 
         {/* Top Right: Delete Icon, Star Button & Audio Replay Button */}
         <div style={{ position: 'absolute', top: '16px', right: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          
+
           {/* DELETE BUTTON (Never show in future sessions, 10s undo timer) */}
           <button
             type="button"
@@ -2570,7 +2834,7 @@ export default function AnkiiSpeaking({
 
       {/* BOTTOM TRIAGE CONTROLS (OPTIMIZED FOR TOUCH & KEYBOARD) */}
       <div style={{ width: '100%', marginTop: '16px' }}>
-        
+
         {/* If card is revealed, show an additional quick "Next Card" bar */}
         {revealedState !== 'none' && (
           <button

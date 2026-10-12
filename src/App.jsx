@@ -218,47 +218,65 @@ function App() {
     }
   });
 
+  const deletedWordsRef = useRef(deletedWords);
+  useEffect(() => {
+    deletedWordsRef.current = deletedWords;
+  }, [deletedWords]);
+
   const skipNextDeletedUploadRef = useRef(false);
   const isDeletedMountedRef = useRef(false);
 
   const syncDeletedWithCloud = async (codeVal, forceList) => {
-    if (!codeVal || codeVal.trim().length < 3) return;
+    if (!codeVal || codeVal.trim().length < 3) return { success: false, error: 'Sync code must be at least 3 characters.' };
     try {
       const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       const res = await fetch(`/api/sync?code=${cleanCode}&type=ankii_deleted&t=${Date.now()}`, {
         cache: 'no-store'
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        return { success: false, error: `Cloud fetch failed: ${res.status}` };
+      }
       const cloudList = await res.json();
       const validCloudList = Array.isArray(cloudList) ? cloudList : [];
 
-      let localItems = Array.isArray(forceList) ? forceList : (Array.isArray(deletedWords) ? deletedWords : []);
-      if (localItems.length === 0) {
-        try {
-          const stored = localStorage.getItem('b1_anki_speaking_deleted_words');
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed) && parsed.length > 0) localItems = parsed;
-          }
-        } catch (e) {}
-      }
+      // Collect local candidates from all available sources: forceList, in-memory ref, and localStorage
+      const localCandidates = [];
+      if (Array.isArray(forceList)) localCandidates.push(...forceList);
+      if (Array.isArray(deletedWordsRef.current)) localCandidates.push(...deletedWordsRef.current);
+      try {
+        const stored = localStorage.getItem('b1_anki_speaking_deleted_words');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localCandidates.push(...parsed);
+        }
+        const backupStored = localStorage.getItem('b1_anki_speaking_deleted_words_backup');
+        if (backupStored) {
+          const parsedBackup = JSON.parse(backupStored);
+          if (Array.isArray(parsedBackup)) localCandidates.push(...parsedBackup);
+        }
+      } catch (e) {}
 
       // Two-way merge: combine both cloud and local deleted words so no deletion is lost across devices
       const mergedMap = new Map();
       const addWord = (w) => {
         const str = typeof w === 'string' ? w : (w && typeof w.word === 'string' ? w.word : null);
-        if (str) mergedMap.set(str.toLowerCase(), str);
+        if (str && str.trim()) mergedMap.set(str.trim().toLowerCase(), str.trim());
       };
       validCloudList.forEach(addWord);
-      localItems.forEach(addWord);
+      localCandidates.forEach(addWord);
       const finalConfiguredList = Array.from(mergedMap.values());
 
       if (finalConfiguredList.length > 0) {
         skipNextDeletedUploadRef.current = true;
         setDeletedWords(finalConfiguredList);
         localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(finalConfiguredList));
+        localStorage.setItem('b1_anki_speaking_deleted_words_backup', JSON.stringify(finalConfiguredList));
+        tryAutoSyncToDirectory('deleted_words_backup.json', finalConfiguredList);
 
-        if (finalConfiguredList.length > validCloudList.length || forceList) {
+        const cloudSet = new Set(validCloudList.map(w => typeof w === 'string' ? w.toLowerCase() : (w?.word?.toLowerCase() || '')));
+        const hasNewItemsForCloud = finalConfiguredList.some(w => !cloudSet.has(w.toLowerCase()));
+
+        if (hasNewItemsForCloud || finalConfiguredList.length > validCloudList.length || forceList) {
           try {
             await fetch(`/api/sync?code=${cleanCode}&type=ankii_deleted`, {
               method: 'POST',
@@ -271,8 +289,10 @@ function App() {
           }
         }
       }
+      return { success: true, count: finalConfiguredList.length, cloudCount: validCloudList.length };
     } catch (err) {
       console.warn("Cloud deleted words sync error:", err);
+      return { success: false, error: err.message };
     }
   };
 
@@ -288,6 +308,7 @@ function App() {
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         if (Array.isArray(data) && data.length > 0) {
+          skipNextDeletedUploadRef.current = true;
           setDeletedWords(prev => {
             if (prev.length === 0) return data;
             const mergedMap = new Map();
@@ -309,6 +330,41 @@ function App() {
       })
       .catch(() => {});
   }, []);
+
+  // Auto-sync when tab gains focus or becomes visible (e.g. switching between phone & desktop)
+  useEffect(() => {
+    if (!syncCode || syncCode.trim().length < 3) return;
+
+    const handleWindowFocusOrVisible = () => {
+      if (document.visibilityState === 'visible') {
+        syncWithCloud(syncCode);
+        syncDeletedWithCloud(syncCode);
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocusOrVisible);
+    document.addEventListener('visibilitychange', handleWindowFocusOrVisible);
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        syncWithCloud(syncCode);
+        syncDeletedWithCloud(syncCode);
+      }
+    }, 45000);
+
+    return () => {
+      window.removeEventListener('focus', handleWindowFocusOrVisible);
+      document.removeEventListener('visibilitychange', handleWindowFocusOrVisible);
+      clearInterval(interval);
+    };
+  }, [syncCode]);
+
+  // Auto-sync when switching active tab to Ankii Speaking
+  useEffect(() => {
+    if (activeTab === 'ankii-speaking' && syncCode && syncCode.trim().length >= 3) {
+      syncDeletedWithCloud(syncCode);
+    }
+  }, [activeTab, syncCode]);
 
   // Save deleted words locally, update real-time file copy in project directory, and auto-upload to cloud if syncCode is set
   useEffect(() => {
@@ -1546,6 +1602,26 @@ function App() {
             onRestoreAllDeleted={handleRestoreAllAnkiiDeleted}
             onImportDeletedWords={handleImportDeletedWords}
             syncCode={syncCode}
+            setSyncCode={(code) => {
+              const clean = (code || '').trim();
+              setSyncCode(clean);
+              if (clean) {
+                localStorage.setItem('b1_sync_code', clean);
+                syncWithCloud(clean);
+                syncDeletedWithCloud(clean);
+              } else {
+                localStorage.removeItem('b1_sync_code');
+              }
+            }}
+            onSyncDeletedNow={async (code) => {
+              const codeToUse = (code || syncCode || '').trim();
+              if (!codeToUse || codeToUse.length < 3) return { success: false, error: 'Code too short' };
+              const [delRes] = await Promise.all([
+                syncDeletedWithCloud(codeToUse),
+                syncWithCloud(codeToUse)
+              ]);
+              return delRes;
+            }}
             onReview={handleReviewWord}
             isAnonymous={isAnonymous}
           />
