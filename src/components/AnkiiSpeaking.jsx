@@ -2079,7 +2079,7 @@ export default function AnkiiSpeaking({
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 
-          {/* Words Seen & Triage Counters */}
+          {/* Words Seen & Deleted Counters */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{
               fontSize: '13px',
@@ -2087,42 +2087,30 @@ export default function AnkiiSpeaking({
               color: '#fff',
               background: 'rgba(59, 130, 246, 0.2)',
               border: '1px solid rgba(59, 130, 246, 0.4)',
-              padding: '3px 10px',
+              padding: '4px 10px',
               borderRadius: '12px'
             }}>
-              👁️ Words Seen: {wordsSeenCount} / {totalSessionWords}
+              👁️ {wordsSeenCount} / {totalSessionWords}
             </span>
 
             <span style={{
               fontSize: '11px',
               padding: '3px 8px',
               borderRadius: '12px',
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: 'var(--color-noun)',
+              background: 'rgba(239, 68, 68, 0.12)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              color: '#ef4444',
               fontWeight: '700'
             }}>
-              ✓ {masteredCount} Mastered
+              🗑️ {deletedWords.length} Deleted
             </span>
-
-            {(englishCount > 0 || contextCount > 0) && (
-              <span style={{
-                fontSize: '11px',
-                padding: '3px 8px',
-                borderRadius: '12px',
-                background: 'rgba(245, 158, 11, 0.15)',
-                color: 'var(--color-adj)',
-                fontWeight: '700'
-              }}>
-                📖 {englishCount + contextCount} Assisted
-              </span>
-            )}
 
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
               ({remainingCount} left)
             </span>
           </div>
 
-          {/* Quick Actions (Voice / Keep Awake / Sound Replay / Exit) */}
+          {/* Quick Actions (Voice / Keep Awake / Exit) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {/* Prominent Continuous Voice Control Button */}
             <button
@@ -2212,28 +2200,6 @@ export default function AnkiiSpeaking({
 
             <button
               type="button"
-              onClick={replayGerman}
-              title="Replay German Audio [R]"
-              style={{
-                background: isSpeaking ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255,255,255,0.06)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                color: isSpeaking ? 'var(--color-verb)' : 'var(--text-primary)',
-                padding: '5px 10px',
-                fontSize: '12px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontWeight: '600'
-              }}
-            >
-              <span style={{ fontSize: '14px' }}>🔊</span>
-              <span>Replay</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => {
                 clearAdvanceTimers();
                 if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -2274,18 +2240,18 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
-      {/* Voice Control Floating Indicator */}
-      {isVoiceActive && (
+      {/* Voice Control Floating Command Indicator (Only shown when a command is recognized) */}
+      {isVoiceActive && voiceFeedbackMsg && (
         <div style={{
           position: 'fixed',
           top: '12px',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 9990,
-          background: 'rgba(15, 23, 42, 0.65)',
+          background: 'rgba(15, 23, 42, 0.75)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(16, 185, 129, 0.4)',
+          border: '1px solid rgba(16, 185, 129, 0.5)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
           borderRadius: '24px',
           padding: '6px 16px',
@@ -2293,19 +2259,12 @@ export default function AnkiiSpeaking({
           alignItems: 'center',
           gap: '8px',
           fontSize: '12px',
-          color: '#fff',
+          color: '#10b981',
+          fontWeight: '800',
           pointerEvents: 'none'
         }}>
           <span className="pulse-indicator" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-          {voiceFeedbackMsg ? (
-            <span style={{ color: '#10b981', fontWeight: '800' }}>
-              Command: "{voiceFeedbackMsg}"
-            </span>
-          ) : (
-            <span style={{ color: 'rgba(255,255,255,0.88)' }}>
-              🎙️ Say: <b>Next</b> • <b>Translate</b> • <b>More</b> • <b>Delete</b> • <b>Repeat</b> • <b>Favorite</b>
-            </span>
-          )}
+          <span>Command: "{voiceFeedbackMsg}"</span>
         </div>
       )}
 
