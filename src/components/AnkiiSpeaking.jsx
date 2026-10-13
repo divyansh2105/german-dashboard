@@ -41,7 +41,7 @@ export default function AnkiiSpeaking({
   isAnonymous
 }) {
   // Pre-session filter state
-  const [priorityFilters, setPriorityFilters] = useState([1, 2, 3]); // High (1), Med (2), Low (3)
+  const [priorityFilters, setPriorityFilters] = useState([1]); // Only High (1) by default
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [queueLimit, setQueueLimit] = useState('50');
 
