@@ -13,6 +13,22 @@ export function getAudioGermanWord(word) {
     .trim();
 }
 
+// Clean word extractor specifically for spelling:
+// Strips brackets (...), plural suffixes like ", -s", and leading articles (der/die/das/sich)
+export function extractWordForSpelling(rawWord) {
+  if (!rawWord) return '';
+  let clean = rawWord
+    .replace(/\([^)]*\)/g, '')   // remove anything in round brackets (...)
+    .replace(/\[[^\]]*\]/g, '')  // remove anything in square brackets [...]
+    .replace(/,.*$/, '')         // remove plural/inflection suffixes like ", -s", ", -e"
+    .trim();
+
+  // Strip leading German definite articles (der, die, das, dem, den, des) and reflexives (sich)
+  clean = clean.replace(/^((der|die|das|dem|den|des)(\s*\/\s*(der|die|das|dem|den|des))?|sich)\s+/i, '').trim();
+
+  return clean;
+}
+
 export function getWorkplaceExample(card) {
   if (!card || !card.examples || card.examples.length === 0) return null;
   // Look for workplace/office/business related example first
@@ -190,6 +206,7 @@ export default function AnkiiSpeaking({
   const recognitionRef = useRef(null);
   const cardAppearedTimeRef = useRef(Date.now());
   const lastExecutedCommandTimeRef = useRef(0);
+  const lastProcessedResultIndexRef = useRef(-1);
   const [sessionDeletedCount, setSessionDeletedCount] = useState(0);
   const [spellingDisplay, setSpellingDisplay] = useState(null);
 
@@ -231,13 +248,13 @@ export default function AnkiiSpeaking({
     };
   }, [sessionActive, sessionFinished, sessionStartTime]);
 
-  // Cooldown timer: Voice commands armed after 1.2s of the word appearing
+  // Cooldown timer: Voice commands armed after 1.5s of the word appearing
   useEffect(() => {
     setIsVoiceReady(false);
     cardAppearedTimeRef.current = Date.now();
     const timer = setTimeout(() => {
       setIsVoiceReady(true);
-    }, 1200);
+    }, 1500);
     return () => clearTimeout(timer);
   }, [currentIndex, sessionActive]);
 
@@ -492,11 +509,14 @@ export default function AnkiiSpeaking({
 
   // English spelling breakdown helper for German words (including ä, ö, ü, ß)
   const formatSpellBreakdown = (text) => {
-    if (!text) return { spoken: '', display: '' };
+    if (!text) return { cleanWord: '', spoken: '', display: '' };
+    const cleanWord = extractWordForSpelling(text);
+    if (!cleanWord) return { cleanWord: '', spoken: '', display: '' };
+
     const spokenTokens = [];
     const displayTokens = [];
 
-    for (const char of text) {
+    for (const char of cleanWord) {
       const lower = char.toLowerCase();
       if (lower === 'ä') {
         spokenTokens.push('A umlaut');
@@ -523,6 +543,7 @@ export default function AnkiiSpeaking({
     }
 
     return {
+      cleanWord,
       spoken: spokenTokens.join(', ') + '.',
       display: displayTokens.join(' • ')
     };
@@ -862,14 +883,14 @@ export default function AnkiiSpeaking({
   const handleVoiceCommand = useCallback((rawText) => {
     if (!rawText) return false;
 
-    // Discard any voice command received within 1.2s of the word appearing (prevents trailing bleedover)
+    // Discard any voice command received within 1.5s of the word appearing (prevents trailing bleedover)
     const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-    if (timeSinceCardAppeared < 1200) {
+    if (timeSinceCardAppeared < 1500) {
       return false;
     }
 
-    // Debounce rapid successive commands (1000ms)
-    if (Date.now() - lastExecutedCommandTimeRef.current < 1000) {
+    // Debounce rapid successive commands (1800ms)
+    if (Date.now() - lastExecutedCommandTimeRef.current < 1800) {
       return false;
     }
 
@@ -964,6 +985,7 @@ export default function AnkiiSpeaking({
     const startRecognition = () => {
       if (isStoppingManually || !isMountedRef.current) return;
       try {
+        lastProcessedResultIndexRef.current = -1;
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -972,15 +994,25 @@ export default function AnkiiSpeaking({
 
         recognition.onresult = (event) => {
           const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-          if (timeSinceCardAppeared < 1200) {
+          if (timeSinceCardAppeared < 1500) {
             return;
           }
           for (let i = event.resultIndex; i < event.results.length; i++) {
+            // Guard: If this utterance index was already consumed, skip it!
+            // Prevents the browser's final result (~1s later) from re-triggering the command.
+            if (i <= lastProcessedResultIndexRef.current) {
+              continue;
+            }
+
             for (let j = 0; j < event.results[i].length; j++) {
               const transcript = event.results[i][j].transcript.trim();
               if (handleVoiceCommandRef.current && transcript) {
                 const matched = handleVoiceCommandRef.current(transcript);
-                if (matched) return;
+                if (matched) {
+                  // Mark current and all preceding result indices as processed
+                  lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, event.results.length - 1);
+                  return;
+                }
               }
             }
           }
