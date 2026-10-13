@@ -184,9 +184,12 @@ export default function AnkiiSpeaking({
 
   // Voice Instruction State & Continuous Recognition Engine
   const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [isVoiceReady, setIsVoiceReady] = useState(false);
   const [voiceFeedbackMsg, setVoiceFeedbackMsg] = useState(null);
   const voiceFeedbackTimeoutRef = useRef(null);
   const recognitionRef = useRef(null);
+  const cardAppearedTimeRef = useRef(Date.now());
+  const lastExecutedCommandTimeRef = useRef(0);
 
   // Filter for completed summary list: 'all' | 'mastered' | 'english' | 'context'
   const [summaryFilter, setSummaryFilter] = useState('all');
@@ -225,6 +228,16 @@ export default function AnkiiSpeaking({
       if (interval) clearInterval(interval);
     };
   }, [sessionActive, sessionFinished, sessionStartTime]);
+
+  // Cooldown timer: Voice commands only listen / accept after 2 seconds of the word appearing
+  useEffect(() => {
+    setIsVoiceReady(false);
+    cardAppearedTimeRef.current = Date.now();
+    const timer = setTimeout(() => {
+      setIsVoiceReady(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [currentIndex, sessionActive]);
 
   const clearAdvanceTimers = () => {
     if (audioEndTimeoutRef.current) {
@@ -507,6 +520,8 @@ export default function AnkiiSpeaking({
 
     if (initialList.length === 0) return;
 
+    cardAppearedTimeRef.current = Date.now();
+    lastExecutedCommandTimeRef.current = Date.now();
     setSessionCards(initialList);
     setCurrentIndex(0);
     setSessionResults([]);
@@ -529,6 +544,8 @@ export default function AnkiiSpeaking({
   // Helper to advance to the next card in line (no cycling)
   const advanceToNextWord = useCallback(() => {
     clearAdvanceTimers();
+    cardAppearedTimeRef.current = Date.now();
+    lastExecutedCommandTimeRef.current = Date.now();
     const nextIdx = currentIndex + 1;
     if (nextIdx >= sessionCards.length) {
       setSessionFinished(true);
@@ -647,6 +664,8 @@ export default function AnkiiSpeaking({
     }
 
     // 2. Advance to the next card immediately
+    cardAppearedTimeRef.current = Date.now();
+    lastExecutedCommandTimeRef.current = Date.now();
     const nextIdx = currentIndex + 1;
     if (nextIdx >= sessionCards.length) {
       setSessionFinished(true);
@@ -715,6 +734,8 @@ export default function AnkiiSpeaking({
 
     // 3. Put card back into session queue right at current position so user can study it
     if (sessionActive && !sessionFinished) {
+      cardAppearedTimeRef.current = Date.now();
+      lastExecutedCommandTimeRef.current = Date.now();
       setSessionCards(prev => {
         const next = [...prev];
         next.splice(currentIndex, 0, restoredCard);
@@ -745,10 +766,23 @@ export default function AnkiiSpeaking({
 
   const handleVoiceCommand = useCallback((rawText) => {
     if (!rawText) return;
+
+    // Discard any voice command received within 2 seconds of the word appearing
+    const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
+    if (timeSinceCardAppeared < 2000) {
+      return;
+    }
+
+    // Debounce rapid successive commands
+    if (Date.now() - lastExecutedCommandTimeRef.current < 1200) {
+      return;
+    }
+
     const text = rawText.toLowerCase().trim();
 
     // 1. Delete (D press / Delete card with 10s undo)
     if (/\b(delete|remove|trash|löschen|loeschen)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Delete [D]');
       handleDeleteWord();
       return;
@@ -756,6 +790,7 @@ export default function AnkiiSpeaking({
 
     // 2. Translate (N press / Reveal English meaning)
     if (/\b(translate|translation|english|bedeutung|übersetz|uebersetz)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Translate [N]');
       handleForgotEnglish();
       return;
@@ -763,6 +798,7 @@ export default function AnkiiSpeaking({
 
     // 3. More (M press / Reveal English + Workplace Example)
     if (/\b(more|context|example|beispiel|mehr)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('More [M]');
       handleMoreContext();
       return;
@@ -770,6 +806,7 @@ export default function AnkiiSpeaking({
 
     // 4. Next (Space press / Mastered or advance next card)
     if (/\b(next|continue|skip|forward|space|weiter)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Next [Space]');
       if (revealedState === 'none') {
         handleMastered();
@@ -781,6 +818,7 @@ export default function AnkiiSpeaking({
 
     // 5. Repeat (R press / Replay German word pronunciation)
     if (/\b(repeat|replay|again|nochmal|wiederholen|wiederhole)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Repeat [R]');
       replayGerman();
       return;
@@ -788,6 +826,7 @@ export default function AnkiiSpeaking({
 
     // 6. Favorite (S/F press / Add word to My List)
     if (/\b(favorite|favourite|favorit|star|starred|stern|favoriten|favorisieren)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback(isStarred ? 'Unfavorited' : 'Favorited [★]');
       handleToggleStar();
       return;
@@ -826,6 +865,10 @@ export default function AnkiiSpeaking({
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
+          const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
+          if (timeSinceCardAppeared < 2000) {
+            return;
+          }
           for (let i = event.resultIndex; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
               const transcript = event.results[i][0].transcript.trim();
@@ -2130,7 +2173,7 @@ export default function AnkiiSpeaking({
                   } catch (e) {}
                 }
               }}
-              title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
+              title={isVoiceActive ? (isVoiceReady ? "Voice Control Active (Listening). Click to turn off" : "Voice Control Cooldown (Ready in 2s)") : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
               style={{
                 background: isVoiceActive
                   ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))'
@@ -2156,8 +2199,10 @@ export default function AnkiiSpeaking({
                   width: '7px',
                   height: '7px',
                   borderRadius: '50%',
-                  background: '#10b981',
-                  display: 'inline-block'
+                  background: isVoiceReady ? '#10b981' : '#f59e0b',
+                  display: 'inline-block',
+                  opacity: isVoiceReady ? 1 : 0.6,
+                  transition: 'all 0.3s ease'
                 }} />
               )}
             </button>
