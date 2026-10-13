@@ -180,5 +180,154 @@
       }
     ],
     "isCustom": false
+  },
+  {
+    "word": "die Höhe, -n",
+    "meaning": "hight",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Mein Tisch hat die Maße: Länge: 1,20 m, Breite: 0,60 m, Höhe: 0,80 m.",
+        "en": "My table has the dimensions: Length: 1.20 m, width: 0.60 m, height: 0.80 m."
+      },
+      {
+        "de": "Wir fliegen jetzt in 6000 m Höhe.",
+        "en": "We now fly at 6000 m altitude."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "außer",
+    "meaning": "except for",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Nobody else applied for the job except Lisa.",
+        "de": "Außer Lisa hat sich niemand um die Stelle beworben."
+      },
+      {
+        "en": "The elevator is out of service.",
+        "de": "Der Aufzug ist außer Betrieb."
+      },
+      {
+        "de": "Wir haben täglich außer Samstag geöffnet.",
+        "en": "We are open every day except Saturday."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "das Abgas, -e",
+    "meaning": "exhaust, waste gas",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Exhaust gases from industry and households pollute the air.",
+        "de": "Abgase aus Industrie und Haushalten verschmutzen die Luft."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "der Erfolg, -e",
+    "meaning": "success",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Der Film war ein großer Erfolg.",
+        "en": "The movie was a great success."
+      },
+      {
+        "en": "I wish you success in the exam.",
+        "de": "Ich wünsche Ihnen viel Erfolg bei der Prüfung."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "eilig",
+    "meaning": "hasty, hurry",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Hast du es eilig?",
+        "en": "Are you in a hurry?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "ärgern",
+    "meaning": "to annoy",
+    "category": "verbs",
+    "conjugation": "ärgern, ärgert, ärgerte, hat geärgert",
+    "examples": [
+      {
+        "de": "Ärgern Sie sich nicht.",
+        "en": "Do not fret."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "worauf",
+    "meaning": "whereupon, what ... on (relative/interrogative)",
+    "category": "connectors",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Das ist der Tisch, worauf das Buch liegt.",
+        "en": "That is the table on which the book is lying."
+      },
+      {
+        "en": "What are you waiting for?",
+        "de": "Worauf wartest du?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "still",
+    "meaning": "still, quiet",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Be still for a moment!",
+        "de": "Sei doch mal einen Moment still!"
+      },
+      {
+        "de": "Maria kann nicht still sitzen.",
+        "en": "Maria can not sit still."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "drin, drinnen",
+    "meaning": "indoor, inside",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Wo wollt ihr sitzen? Draußen oder drinnen?",
+        "en": "Where do you want to sit? Outside or inside?"
+      },
+      {
+        "en": "In the heat it is much more pleasant indoors.",
+        "de": "Bei der Hitze ist es drinnen viel angenehmer."
+      },
+      {
+        "de": "In der Packung ist nichts mehr drin.",
+        "en": "There is nothing left in the pack."
+      }
+    ],
+    "isCustom": false
   }
 ]

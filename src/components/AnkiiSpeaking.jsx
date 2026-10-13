@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { exportBackupFile, chooseBackupDirectory } from '../utils/backupStorage';
+import { wakeLockManager } from '../utils/wakeLockManager';
 
 // Helpers for clean TTS text extraction
 export function getAudioGermanWord(word) {
@@ -49,6 +50,29 @@ export default function AnkiiSpeaking({
   const [syncFeedback, setSyncFeedback] = useState(null);
   const [isEditingSyncCode, setIsEditingSyncCode] = useState(false);
   const [inputSyncCode, setInputSyncCode] = useState(syncCode || '');
+
+  // Screen Keep-Awake state (disables iPhone auto-lock so voice mic & audio never sleep)
+  const [isKeepAwake, setIsKeepAwake] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      wakeLockManager.disable();
+    };
+  }, []);
+
+  const handleToggleKeepAwake = async () => {
+    if (isKeepAwake) {
+      wakeLockManager.disable();
+      setIsKeepAwake(false);
+    } else {
+      try {
+        await wakeLockManager.enable();
+        setIsKeepAwake(true);
+      } catch (err) {
+        console.warn("Could not enable wake lock:", err);
+      }
+    }
+  };
 
   useEffect(() => {
     setInputSyncCode(syncCode || '');
@@ -491,6 +515,10 @@ export default function AnkiiSpeaking({
     setRevealedState('none');
     setSessionFinished(false);
     setSessionActive(true);
+
+    if (isKeepAwake) {
+      wakeLockManager.enable().catch(() => {});
+    }
 
     const firstWord = getAudioGermanWord(initialList[0].word);
     setTimeout(() => {
@@ -1679,6 +1707,41 @@ export default function AnkiiSpeaking({
             💡 Words play automatically in German. Each word is seen once.
           </div>
 
+          {/* Keep Screen Awake Toggle for iPhone & Mobile */}
+          <div
+            onClick={handleToggleKeepAwake}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              marginTop: '12px',
+              padding: '8px 14px',
+              borderRadius: '12px',
+              background: isKeepAwake ? 'rgba(245, 158, 11, 0.14)' : 'rgba(255, 255, 255, 0.04)',
+              border: isKeepAwake ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid var(--border-color)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              maxWidth: '380px',
+              margin: '12px auto 0'
+            }}
+            title="Prevents iPhone from locking the screen during practice so the microphone stays on"
+          >
+            <span style={{ fontSize: '15px' }}>{isKeepAwake ? '☀️' : '🌙'}</span>
+            <span style={{ fontSize: '12px', fontWeight: '700', color: isKeepAwake ? '#f59e0b' : 'var(--text-secondary)' }}>
+              {isKeepAwake ? 'Screen Lock Disabled (Awake: ON)' : 'Keep Screen Awake (Prevents iPhone Auto-Lock)'}
+            </span>
+            {isKeepAwake && (
+              <span className="pulse-indicator" style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                background: '#f59e0b',
+                display: 'inline-block'
+              }} />
+            )}
+          </div>
+
         </div>
 
         {/* MODAL: Manage / Restore Deleted Words */}
@@ -2059,17 +2122,25 @@ export default function AnkiiSpeaking({
             </span>
           </div>
 
-          {/* Quick Actions (Voice / Sound Replay / Exit) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Quick Actions (Voice / Keep Awake / Sound Replay / Exit) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             {/* Prominent Continuous Voice Control Button */}
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (!SpeechRecognition) {
                   alert("Speech recognition is not supported in this browser. Try Google Chrome, Microsoft Edge, or Apple Safari.");
                   return;
                 }
-                setIsVoiceActive(prev => !prev);
+                const nextVoice = !isVoiceActive;
+                setIsVoiceActive(nextVoice);
+                // When activating hands-free voice control on iPhone/mobile, automatically keep screen awake!
+                if (nextVoice && !isKeepAwake) {
+                  try {
+                    await wakeLockManager.enable();
+                    setIsKeepAwake(true);
+                  } catch (e) {}
+                }
               }}
               title={isVoiceActive ? "Voice Control Active (Listening). Click to turn off" : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
               style={{
@@ -2079,7 +2150,7 @@ export default function AnkiiSpeaking({
                 border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.65)' : '1px solid rgba(255, 255, 255, 0.2)',
                 borderRadius: '12px',
                 color: isVoiceActive ? '#10b981' : '#fff',
-                padding: '6px 14px',
+                padding: '6px 13px',
                 fontSize: '12px',
                 fontWeight: '800',
                 cursor: 'pointer',
@@ -2098,6 +2169,42 @@ export default function AnkiiSpeaking({
                   height: '7px',
                   borderRadius: '50%',
                   background: '#10b981',
+                  display: 'inline-block'
+                }} />
+              )}
+            </button>
+
+            {/* Screen Keep-Awake Button (Disables iPhone Auto-Lock so Voice Mic Stays Active) */}
+            <button
+              type="button"
+              onClick={handleToggleKeepAwake}
+              title={isKeepAwake ? "Screen Lock Disabled (Screen stays awake, mic won't sleep). Click to turn off" : "Keep Screen Awake (Disables iPhone screen auto-lock so voice mic stays on)"}
+              style={{
+                background: isKeepAwake
+                  ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(234, 179, 8, 0.28))'
+                  : 'rgba(255, 255, 255, 0.08)',
+                border: isKeepAwake ? '1px solid rgba(245, 158, 11, 0.65)' : '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: '12px',
+                color: isKeepAwake ? '#f59e0b' : '#fff',
+                padding: '6px 12px',
+                fontSize: '12px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: isKeepAwake ? '0 0 16px rgba(245, 158, 11, 0.35)' : '0 2px 8px rgba(0,0,0,0.15)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+            >
+              <span style={{ fontSize: '13px' }}>{isKeepAwake ? '☀️' : '🌙'}</span>
+              <span>{isKeepAwake ? 'Awake: ON' : 'Keep Awake'}</span>
+              {isKeepAwake && (
+                <span className="pulse-indicator" style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: '#f59e0b',
                   display: 'inline-block'
                 }} />
               )}
