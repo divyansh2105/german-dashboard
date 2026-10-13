@@ -190,6 +190,8 @@ export default function AnkiiSpeaking({
   const recognitionRef = useRef(null);
   const cardAppearedTimeRef = useRef(Date.now());
   const lastExecutedCommandTimeRef = useRef(0);
+  const [sessionDeletedCount, setSessionDeletedCount] = useState(0);
+  const [spellingDisplay, setSpellingDisplay] = useState(null);
 
   // Filter for completed summary list: 'all' | 'mastered' | 'english' | 'context'
   const [summaryFilter, setSummaryFilter] = useState('all');
@@ -229,13 +231,13 @@ export default function AnkiiSpeaking({
     };
   }, [sessionActive, sessionFinished, sessionStartTime]);
 
-  // Cooldown timer: Voice commands only listen / accept after 2 seconds of the word appearing
+  // Cooldown timer: Voice commands armed after 1.2s of the word appearing
   useEffect(() => {
     setIsVoiceReady(false);
     cardAppearedTimeRef.current = Date.now();
     const timer = setTimeout(() => {
       setIsVoiceReady(true);
-    }, 2000);
+    }, 1200);
     return () => clearTimeout(timer);
   }, [currentIndex, sessionActive]);
 
@@ -488,6 +490,93 @@ export default function AnkiiSpeaking({
     speakGerman(deWord);
   }, [currentCard, speakGerman]);
 
+  // English spelling breakdown helper for German words (including ä, ö, ü, ß)
+  const formatSpellBreakdown = (text) => {
+    if (!text) return { spoken: '', display: '' };
+    const spokenTokens = [];
+    const displayTokens = [];
+
+    for (const char of text) {
+      const lower = char.toLowerCase();
+      if (lower === 'ä') {
+        spokenTokens.push('A umlaut');
+        displayTokens.push('Ä (A-umlaut)');
+      } else if (lower === 'ö') {
+        spokenTokens.push('O umlaut');
+        displayTokens.push('Ö (O-umlaut)');
+      } else if (lower === 'ü') {
+        spokenTokens.push('U umlaut');
+        displayTokens.push('Ü (U-umlaut)');
+      } else if (lower === 'ß') {
+        spokenTokens.push('sharp S');
+        displayTokens.push('ß (sharp S)');
+      } else if (lower === ' ') {
+        spokenTokens.push('space');
+        displayTokens.push('␣');
+      } else if (lower === '-') {
+        spokenTokens.push('hyphen');
+        displayTokens.push('-');
+      } else if (/[a-z]/i.test(char)) {
+        spokenTokens.push(char.toUpperCase());
+        displayTokens.push(char.toUpperCase());
+      }
+    }
+
+    return {
+      spoken: spokenTokens.join(', ') + '.',
+      display: displayTokens.join(' • ')
+    };
+  };
+
+  const speakSpelling = useCallback((wordToSpell, onEnd) => {
+    if (!('speechSynthesis' in window) || !wordToSpell) {
+      if (onEnd) onEnd();
+      return;
+    }
+    window.speechSynthesis.cancel();
+
+    const { spoken } = formatSpellBreakdown(wordToSpell);
+    if (!spoken) {
+      if (onEnd) onEnd();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(spoken);
+    utterance.lang = 'en-US';
+
+    const voices = window.speechSynthesis.getVoices();
+    const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
+      voices.find(v => v.lang.startsWith('en'));
+    if (enVoice) utterance.voice = enVoice;
+    utterance.rate = 0.85; // Measured, clear cadence for spelling
+
+    setIsSpeaking(true);
+    setSpeakingPhase('spell');
+
+    utterance.onend = () => {
+      if (!isMountedRef.current) return;
+      setIsSpeaking(false);
+      setSpeakingPhase(null);
+      if (onEnd) onEnd();
+    };
+
+    utterance.onerror = () => {
+      if (!isMountedRef.current) return;
+      setIsSpeaking(false);
+      setSpeakingPhase(null);
+      if (onEnd) onEnd();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const handleSpellWord = useCallback(() => {
+    if (!currentCard) return;
+    const { display } = formatSpellBreakdown(currentCard.word);
+    setSpellingDisplay(display);
+    speakSpelling(currentCard.word);
+  }, [currentCard, speakSpelling]);
+
   // ----------------------------------------------------
   // Session Initiation & Audio Unlock
   // Each word is seen exactly once! Zero cycling.
@@ -525,6 +614,8 @@ export default function AnkiiSpeaking({
     setSessionCards(initialList);
     setCurrentIndex(0);
     setSessionResults([]);
+    setSessionDeletedCount(0);
+    setSpellingDisplay(null);
     setSessionStartTime(Date.now());
     setElapsedTime(0);
     setRevealedState('none');
@@ -546,6 +637,7 @@ export default function AnkiiSpeaking({
     clearAdvanceTimers();
     cardAppearedTimeRef.current = Date.now();
     lastExecutedCommandTimeRef.current = Date.now();
+    setSpellingDisplay(null);
     const nextIdx = currentIndex + 1;
     if (nextIdx >= sessionCards.length) {
       setSessionFinished(true);
@@ -666,6 +758,8 @@ export default function AnkiiSpeaking({
     // 2. Advance to the next card immediately
     cardAppearedTimeRef.current = Date.now();
     lastExecutedCommandTimeRef.current = Date.now();
+    setSessionDeletedCount(prev => prev + 1);
+    setSpellingDisplay(null);
     const nextIdx = currentIndex + 1;
     if (nextIdx >= sessionCards.length) {
       setSessionFinished(true);
@@ -731,6 +825,7 @@ export default function AnkiiSpeaking({
     if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     setUndoToast(null);
+    setSessionDeletedCount(prev => Math.max(0, prev - 1));
 
     // 3. Put card back into session queue right at current position so user can study it
     if (sessionActive && !sessionFinished) {
@@ -765,47 +860,47 @@ export default function AnkiiSpeaking({
   }, []);
 
   const handleVoiceCommand = useCallback((rawText) => {
-    if (!rawText) return;
+    if (!rawText) return false;
 
-    // Discard any voice command received within 2 seconds of the word appearing
+    // Discard any voice command received within 1.2s of the word appearing (prevents trailing bleedover)
     const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-    if (timeSinceCardAppeared < 2000) {
-      return;
+    if (timeSinceCardAppeared < 1200) {
+      return false;
     }
 
-    // Debounce rapid successive commands
-    if (Date.now() - lastExecutedCommandTimeRef.current < 1200) {
-      return;
+    // Debounce rapid successive commands (1000ms)
+    if (Date.now() - lastExecutedCommandTimeRef.current < 1000) {
+      return false;
     }
 
     const text = rawText.toLowerCase().trim();
 
     // 1. Delete (D press / Delete card with 10s undo)
-    if (/\b(delete|remove|trash|löschen|loeschen)\b/i.test(text)) {
+    if (/\b(delete|remove|trash|löschen|loeschen|drop)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Delete [D]');
       handleDeleteWord();
-      return;
+      return true;
     }
 
     // 2. Translate (N press / Reveal English meaning)
-    if (/\b(translate|translation|english|bedeutung|übersetz|uebersetz)\b/i.test(text)) {
+    if (/\b(translate|translation|english|bedeutung|übersetz|uebersetz|meaning)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Translate [N]');
       handleForgotEnglish();
-      return;
+      return true;
     }
 
     // 3. More (M press / Reveal English + Workplace Example)
-    if (/\b(more|context|example|beispiel|mehr)\b/i.test(text)) {
+    if (/\b(more|context|example|beispiel|mehr|sentence|moor)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('More [M]');
       handleMoreContext();
-      return;
+      return true;
     }
 
     // 4. Next (Space press / Mastered or advance next card)
-    if (/\b(next|continue|skip|forward|space|weiter)\b/i.test(text)) {
+    if (/\b(next|continue|skip|forward|space|weiter|necks|nest|nex)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Next [Space]');
       if (revealedState === 'none') {
@@ -813,25 +908,35 @@ export default function AnkiiSpeaking({
       } else {
         handleAdvanceNext();
       }
-      return;
+      return true;
     }
 
     // 5. Repeat (R press / Replay German word pronunciation)
-    if (/\b(repeat|replay|again|nochmal|wiederholen|wiederhole)\b/i.test(text)) {
+    if (/\b(repeat|replay|again|nochmal|wiederholen|wiederhole|play)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Repeat [R]');
       replayGerman();
-      return;
+      return true;
     }
 
-    // 6. Favorite (S/F press / Add word to My List)
-    if (/\b(favorite|favourite|favorit|star|starred|stern|favoriten|favorisieren)\b/i.test(text)) {
+    // 6. Spell (P press / Spell German word letter-by-letter in English)
+    if (/\b(spell|spelling|spell it|buchstabieren|buchstabiere|letters|alphabet)\b/i.test(text)) {
+      lastExecutedCommandTimeRef.current = Date.now();
+      triggerVoiceFeedback('Spell [P]');
+      handleSpellWord();
+      return true;
+    }
+
+    // 7. Favorite (S/F press / Add word to My List)
+    if (/\b(favorite|favourite|favorit|star|starred|stern|save|favoriten|favorisieren)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback(isStarred ? 'Unfavorited' : 'Favorited [★]');
       handleToggleStar();
-      return;
+      return true;
     }
-  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, handleToggleStar, isStarred, triggerVoiceFeedback]);
+
+    return false;
+  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, handleSpellWord, handleToggleStar, isStarred, triggerVoiceFeedback]);
 
   // Keep a stable ref to handleVoiceCommand to avoid re-initializing recognition on state updates
   const handleVoiceCommandRef = useRef(handleVoiceCommand);
@@ -861,19 +966,21 @@ export default function AnkiiSpeaking({
       try {
         recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = false;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 3;
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
           const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-          if (timeSinceCardAppeared < 2000) {
+          if (timeSinceCardAppeared < 1200) {
             return;
           }
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            if (event.results[i].isFinal) {
-              const transcript = event.results[i][0].transcript.trim();
-              if (handleVoiceCommandRef.current) {
-                handleVoiceCommandRef.current(transcript);
+            for (let j = 0; j < event.results[i].length; j++) {
+              const transcript = event.results[i][j].transcript.trim();
+              if (handleVoiceCommandRef.current && transcript) {
+                const matched = handleVoiceCommandRef.current(transcript);
+                if (matched) return;
               }
             }
           }
@@ -1018,6 +1125,9 @@ export default function AnkiiSpeaking({
       } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         replayGerman();
+      } else if (e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        handleSpellWord();
       } else if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D' || e.code === 'Delete' || e.code === 'Backspace') {
         e.preventDefault();
         handleDeleteWord();
@@ -1048,7 +1158,7 @@ export default function AnkiiSpeaking({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast]);
+  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleSpellWord, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast]);
 
   // ----------------------------------------------------
   // Full-Screen Mobile Touch Gestures & Swipe Physics
@@ -2144,8 +2254,10 @@ export default function AnkiiSpeaking({
               border: '1px solid rgba(239, 68, 68, 0.25)',
               color: '#ef4444',
               fontWeight: '700'
-            }}>
-              🗑️ {deletedWords.length} Deleted
+            }}
+            title="Words deleted during this session"
+            >
+              🗑️ {sessionDeletedCount} Deleted
             </span>
 
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -2584,6 +2696,28 @@ export default function AnkiiSpeaking({
             {currentCard.word}
           </div>
 
+          {/* Spell Mode Display Badge */}
+          {spellingDisplay && (
+            <div style={{
+              marginTop: '10px',
+              padding: '6px 14px',
+              borderRadius: '12px',
+              background: 'rgba(168, 85, 247, 0.16)',
+              border: '1px solid rgba(168, 85, 247, 0.4)',
+              color: '#d8b4fe',
+              fontSize: '13px',
+              fontWeight: '700',
+              letterSpacing: '0.8px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 0 14px rgba(168, 85, 247, 0.25)'
+            }}>
+              <span>🔤</span>
+              <span>{spellingDisplay}</span>
+            </div>
+          )}
+
           {currentCard.conjugation && (
             <div style={{
               fontSize: '14px',
@@ -2595,8 +2729,8 @@ export default function AnkiiSpeaking({
             </div>
           )}
 
-          {/* CENTER LAYOUT CUE: Repeat (Desktop & Phone) */}
-          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center' }}>
+          {/* CENTER LAYOUT CUES: Repeat & Spell (Desktop & Phone) */}
+          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <button
               type="button"
               onClick={(e) => {
@@ -2608,13 +2742,13 @@ export default function AnkiiSpeaking({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px',
-                padding: '6px 16px',
+                padding: '6px 14px',
                 borderRadius: '20px',
-                background: isSpeaking ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                background: isSpeaking && speakingPhase === 'de' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
-                border: isSpeaking ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(255, 255, 255, 0.14)',
-                color: isSpeaking ? 'var(--color-verb)' : 'rgba(255, 255, 255, 0.85)',
+                border: isSpeaking && speakingPhase === 'de' ? '1px solid rgba(59, 130, 246, 0.45)' : '1px solid rgba(255, 255, 255, 0.14)',
+                color: isSpeaking && speakingPhase === 'de' ? 'var(--color-verb)' : 'rgba(255, 255, 255, 0.85)',
                 fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -2623,7 +2757,7 @@ export default function AnkiiSpeaking({
               }}
               title="Repeat German Pronunciation [R / Voice: 'Repeat']"
             >
-              <span style={{ fontSize: '13px' }}>{isSpeaking ? '🔊' : '⟳'}</span>
+              <span style={{ fontSize: '13px' }}>{isSpeaking && speakingPhase === 'de' ? '🔊' : '⟳'}</span>
               <span>Repeat</span>
               <kbd style={{
                 fontSize: '9px',
@@ -2633,6 +2767,46 @@ export default function AnkiiSpeaking({
                 color: 'rgba(255,255,255,0.6)'
               }}>
                 [R]
+              </kbd>
+            </button>
+
+            {/* Spell Button (Spells letters in English with clear pronunciation of ä, ö, ü, ß) */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSpellWord();
+              }}
+              className="ankii-layout-cue ankii-cue-center"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                background: isSpeaking && speakingPhase === 'spell' ? 'rgba(168, 85, 247, 0.28)' : 'rgba(255, 255, 255, 0.06)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                border: isSpeaking && speakingPhase === 'spell' ? '1px solid rgba(168, 85, 247, 0.55)' : '1px solid rgba(255, 255, 255, 0.14)',
+                color: isSpeaking && speakingPhase === 'spell' ? '#c084fc' : 'rgba(255, 255, 255, 0.85)',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.15)'
+              }}
+              title="Spell Word letter-by-letter in English [P / Voice: 'Spell']"
+            >
+              <span style={{ fontSize: '13px' }}>{isSpeaking && speakingPhase === 'spell' ? '🔊' : '🔤'}</span>
+              <span>Spell</span>
+              <kbd style={{
+                fontSize: '9px',
+                background: 'rgba(255,255,255,0.1)',
+                padding: '1px 5px',
+                borderRadius: '4px',
+                color: 'rgba(255,255,255,0.6)'
+              }}>
+                [P]
               </kbd>
             </button>
           </div>
