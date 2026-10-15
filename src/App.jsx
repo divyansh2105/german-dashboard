@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import AnkiiSpeaking from './components/AnkiiSpeaking';
+import LiveTranslation from './components/LiveTranslation';
 import ClozePractice from './components/ClozePractice';
 import ReorderPractice from './components/ReorderPractice';
 import SentenceCreator from './components/SentenceCreator';
@@ -1532,6 +1533,12 @@ function App() {
             🗣️ Ankii Speaking
           </button>
           <button
+            className={`nav-button ${activeTab === 'live-translation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('live-translation')}
+          >
+            🎙️ Live Translation
+          </button>
+          <button
             className={`nav-button ${activeTab === 'cloze' ? 'active' : ''}`}
             onClick={() => setActiveTab('cloze')}
           >
@@ -1623,6 +1630,14 @@ function App() {
               return delRes;
             }}
             onReview={handleReviewWord}
+            isAnonymous={isAnonymous}
+          />
+        )}
+        {activeTab === 'live-translation' && (
+          <LiveTranslation
+            vocabData={vocabData}
+            myList={myList}
+            onToggleMyList={handleToggleMyList}
             isAnonymous={isAnonymous}
           />
         )}
