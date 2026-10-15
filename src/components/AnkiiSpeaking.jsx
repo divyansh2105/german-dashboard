@@ -202,6 +202,7 @@ export default function AnkiiSpeaking({
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [isVoiceReady, setIsVoiceReady] = useState(false);
   const [voiceFeedbackMsg, setVoiceFeedbackMsg] = useState(null);
+  const [lastHeardVoice, setLastHeardVoice] = useState('');
   const voiceFeedbackTimeoutRef = useRef(null);
   const recognitionRef = useRef(null);
   const cardAppearedTimeRef = useRef(Date.now());
@@ -883,45 +884,24 @@ export default function AnkiiSpeaking({
   const handleVoiceCommand = useCallback((rawText) => {
     if (!rawText) return false;
 
-    // Discard any voice command received within 1.5s of the word appearing (prevents trailing bleedover)
-    const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-    if (timeSinceCardAppeared < 1500) {
-      return false;
-    }
-
-    // Debounce rapid successive commands (1800ms)
-    if (Date.now() - lastExecutedCommandTimeRef.current < 1800) {
-      return false;
-    }
-
     const text = rawText.toLowerCase().trim();
+    const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
+    const timeSinceLastCommand = Date.now() - lastExecutedCommandTimeRef.current;
 
-    // 1. Delete (D press / Delete card with 10s undo)
-    if (/\b(delete|remove|trash|löschen|loeschen|drop)\b/i.test(text)) {
+    // 1. Delete (D press / Delete card with 10s undo) - 1.2s card appearance guard to prevent cascading
+    if (/\b(delete|deleted|remove|trash|löschen|loeschen|drop|del)\b/i.test(text)) {
+      if (timeSinceCardAppeared < 1200) return false;
+      if (timeSinceLastCommand < 1200) return false;
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Delete [D]');
       handleDeleteWord();
       return true;
     }
 
-    // 2. Translate (N press / Reveal English meaning)
-    if (/\b(translate|translation|english|bedeutung|übersetz|uebersetz|meaning)\b/i.test(text)) {
-      lastExecutedCommandTimeRef.current = Date.now();
-      triggerVoiceFeedback('Translate [N]');
-      handleForgotEnglish();
-      return true;
-    }
-
-    // 3. More (M press / Reveal English + Workplace Example)
-    if (/\b(more|context|example|beispiel|mehr|sentence|moor)\b/i.test(text)) {
-      lastExecutedCommandTimeRef.current = Date.now();
-      triggerVoiceFeedback('More [M]');
-      handleMoreContext();
-      return true;
-    }
-
-    // 4. Next (Space press / Mastered or advance next card)
-    if (/\b(next|continue|skip|forward|space|weiter|necks|nest|nex)\b/i.test(text)) {
+    // 2. Next (Space press / Mastered or advance next card) - 1.2s card appearance guard to prevent skipping
+    if (/\b(next|continue|skip|forward|space|weiter|necks|nest|nex|next one|go)\b/i.test(text)) {
+      if (timeSinceCardAppeared < 1200) return false;
+      if (timeSinceLastCommand < 1200) return false;
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Next [Space]');
       if (revealedState === 'none') {
@@ -929,6 +909,43 @@ export default function AnkiiSpeaking({
       } else {
         handleAdvanceNext();
       }
+      return true;
+    }
+
+    // Informational commands (Translate, More, Repeat, Spell, Favorite):
+    // Zero card appearance delay so user can ask for meaning/context immediately without waiting!
+    if (timeSinceLastCommand < 250) return false;
+
+    const compactText = text.replace(/[\s\-_]+/g, '');
+
+    // 3. Translate (N press / Reveal English meaning) - Highly tolerant phonetic pattern
+    if (
+      /\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer|trans|late|relate|english|bedeutung|übersetz|uebersetz|meaning|meanings|means|mean|define|definition|explanation|explain)\b/i.test(text) ||
+      compactText.includes('translate') ||
+      compactText.includes('meaning') ||
+      compactText.includes('english') ||
+      compactText.includes('übersetz') ||
+      compactText.includes('uebersetz')
+    ) {
+      lastExecutedCommandTimeRef.current = Date.now();
+      triggerVoiceFeedback('Translate [N]');
+      handleForgotEnglish();
+      return true;
+    }
+
+    // 4. More (M press / Reveal English + Workplace Example) - Highly tolerant phonetic pattern
+    if (
+      /\b(more|moore|mor|mow|mode|moor|context|contexts|contacts|content|example|examples|sample|beispiel|mehr|sentence|sentences|details|workplace|usage)\b/i.test(text) ||
+      text.includes('more') ||
+      text.includes('context') ||
+      text.includes('example') ||
+      text.includes('sentence') ||
+      text.includes('beispiel') ||
+      text.includes('mehr')
+    ) {
+      lastExecutedCommandTimeRef.current = Date.now();
+      triggerVoiceFeedback('More [M]');
+      handleMoreContext();
       return true;
     }
 
@@ -993,23 +1010,20 @@ export default function AnkiiSpeaking({
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
-          const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
-          if (timeSinceCardAppeared < 1500) {
-            return;
-          }
           for (let i = event.resultIndex; i < event.results.length; i++) {
             // Guard: If this utterance index was already consumed, skip it!
-            // Prevents the browser's final result (~1s later) from re-triggering the command.
             if (i <= lastProcessedResultIndexRef.current) {
               continue;
             }
 
             for (let j = 0; j < event.results[i].length; j++) {
               const transcript = event.results[i][j].transcript.trim();
+              if (transcript) {
+                setLastHeardVoice(transcript);
+              }
               if (handleVoiceCommandRef.current && transcript) {
                 const matched = handleVoiceCommandRef.current(transcript);
                 if (matched) {
-                  // Mark current and all preceding result indices as processed
                   lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, event.results.length - 1);
                   return;
                 }
@@ -2429,18 +2443,18 @@ export default function AnkiiSpeaking({
         </div>
       </div>
 
-      {/* Voice Control Floating Command Indicator (Only shown when a command is recognized) */}
-      {isVoiceActive && voiceFeedbackMsg && (
+      {/* Voice Control Floating Command Indicator */}
+      {isVoiceActive && (voiceFeedbackMsg || lastHeardVoice) && (
         <div style={{
           position: 'fixed',
           top: '12px',
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 9990,
-          background: 'rgba(15, 23, 42, 0.75)',
+          background: 'rgba(15, 23, 42, 0.85)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          border: '1px solid rgba(16, 185, 129, 0.5)',
+          border: voiceFeedbackMsg ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid rgba(148, 163, 184, 0.25)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
           borderRadius: '24px',
           padding: '6px 16px',
@@ -2448,12 +2462,21 @@ export default function AnkiiSpeaking({
           alignItems: 'center',
           gap: '8px',
           fontSize: '12px',
-          color: '#10b981',
-          fontWeight: '800',
-          pointerEvents: 'none'
+          color: voiceFeedbackMsg ? '#10b981' : '#cbd5e1',
+          fontWeight: '700',
+          pointerEvents: 'none',
+          transition: 'all 0.2s ease'
         }}>
-          <span className="pulse-indicator" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-          <span>Command: "{voiceFeedbackMsg}"</span>
+          <span className="pulse-indicator" style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: voiceFeedbackMsg ? '#10b981' : '#38bdf8',
+            display: 'inline-block'
+          }} />
+          <span>
+            {voiceFeedbackMsg ? `Command: "${voiceFeedbackMsg}"` : `🎙️ Heard: "${lastHeardVoice}"`}
+          </span>
         </div>
       )}
 

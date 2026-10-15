@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { wakeLockManager } from '../utils/wakeLockManager';
-import { queryGemini, getStoredGeminiKey, setStoredGeminiKey } from '../utils/geminiApi';
+import {
+  queryGemini,
+  getStoredGeminiKey,
+  setStoredGeminiKey,
+  getStoredGeminiModel,
+  getStoredAvailableModels,
+  fetchAvailableModels,
+  DEFAULT_GEMINI_MODELS
+} from '../utils/geminiApi';
 
 const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
@@ -24,6 +32,9 @@ export default function LiveTranslation({
   const [currentResult, setCurrentResult] = useState(null);
   const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_example' | 'acknowledgment'
   const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“, um zu starten.');
+  const [lastHeardLive, setLastHeardLive] = useState('');
+  const [fallbackNotice, setFallbackNotice] = useState('');
+  const [availableModels, setAvailableModels] = useState(() => getStoredAvailableModels());
 
   // Translation history (persisted in localStorage)
   const [history, setHistory] = useState(() => {
@@ -51,6 +62,8 @@ export default function LiveTranslation({
 
   // Audio & speech synthesis refs
   const isSpeakingTtsRef = useRef(false);
+  const ttsSafetyTimerRef = useRef(null);
+  const silenceTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const recognitionRef = useRef(null);
   const recordedChunksRef = useRef([]);
@@ -61,12 +74,29 @@ export default function LiveTranslation({
     phaseRef.current = phase;
   }, [phase]);
 
+  // Query live available models on mount / key change
+  useEffect(() => {
+    const key = getStoredGeminiKey();
+    if (key) {
+      fetchAvailableModels(key).then(models => {
+        if (models && models.length > 0) {
+          setAvailableModels(models);
+          try {
+            localStorage.setItem('b1_gemini_available_models', JSON.stringify(models));
+          } catch (e) {}
+        }
+      });
+    }
+  }, []);
+
   // Clean-up on unmount
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       wakeLockManager.disable();
+      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -96,6 +126,7 @@ export default function LiveTranslation({
 
     // Cancel ongoing speech
     window.speechSynthesis.cancel();
+    if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
@@ -115,16 +146,24 @@ export default function LiveTranslation({
 
     isSpeakingTtsRef.current = true;
 
+    // Safety timeout: prevents microphone from getting permanently locked if onend drops on mobile/Safari
+    const maxTtsDuration = Math.max(2500, text.length * 85);
+    ttsSafetyTimerRef.current = setTimeout(() => {
+      isSpeakingTtsRef.current = false;
+    }, maxTtsDuration);
+
     utterance.onend = () => {
+      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
       if (!isMountedRef.current) return;
       // Brief buffer to ensure microphone doesn't capture speaker echo
       setTimeout(() => {
         isSpeakingTtsRef.current = false;
         if (onEnd) onEnd();
-      }, 350);
+      }, 300);
     };
 
     utterance.onerror = () => {
+      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
       if (!isMountedRef.current) return;
       isSpeakingTtsRef.current = false;
       if (onEnd) onEnd();
@@ -156,8 +195,10 @@ export default function LiveTranslation({
   const cleanSpokenPhrase = (rawText) => {
     if (!rawText) return '';
     return rawText
-      .replace(/\b(übersetze|übersetzen|übersetz|translate)\b/gi, '')
-      .replace(/\b(halt|stopp|stop)\b/gi, '')
+      .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
+      .replace(/\b(translate|translation)\b/gi, '')
+      .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
+      .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
   };
@@ -186,9 +227,11 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Gemini AI Translation & Sentence Generator
+  // Gemini AI Translation & Sentence Generator with Model Fallback
+  // Cascades 3.6-flash -> 3.7-flash -> 3.5-flash -> 2.0-flash -> 1.5-flash
   // ----------------------------------------------------
   const translateWithGemini = async (phraseToTranslate) => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     const cleanInput = cleanSpokenPhrase(phraseToTranslate);
     if (!cleanInput) {
       speakText('Kein deutsches Wort erkannt.', 'de-DE', () => {
@@ -218,30 +261,46 @@ Always return a clean JSON object with this exact schema:
 ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.meaning}', Category='${localMatch.category || ''}')` : ''}`;
 
     let parsed = null;
+    let usedModelName = getStoredGeminiModel();
+    let fallbackTriggered = false;
 
     try {
       const response = await queryGemini({
         prompt: promptText,
         systemInstruction,
         jsonMode: true,
+        preferredModel: getStoredGeminiModel(),
+        availableModels: availableModels && availableModels.length > 0 ? availableModels : getStoredAvailableModels(),
         generationConfig: {
           temperature: 0.2,
           maxOutputTokens: 600
+        },
+        onFallback: ({ failedModel, nextModel }) => {
+          setFallbackNotice(`⚡ Modell ${failedModel} überlastet. Wechsle zu ${nextModel}...`);
         }
       });
 
-      if (response && response.parsedJson) {
-        parsed = response.parsedJson;
-      } else if (response && response.text) {
-        try {
-          const cleanedText = response.text
-            .replace(/^```json\s*/i, '')
-            .replace(/^```\s*/i, '')
-            .replace(/```\s*$/i, '')
-            .trim();
-          parsed = JSON.parse(cleanedText);
-        } catch (e) {
-          console.warn('[LiveTranslation] Fallback JSON parse failed:', e);
+      if (response) {
+        if (response.usedModel) usedModelName = response.usedModel;
+        if (response.wasFallback) {
+          fallbackTriggered = true;
+          setFallbackNotice(`⚡ Übersetzt mit Backup-Modell: ${response.usedModel}`);
+          setTimeout(() => setFallbackNotice(''), 7000);
+        }
+
+        if (response.parsedJson) {
+          parsed = response.parsedJson;
+        } else if (response.text) {
+          try {
+            const cleanedText = response.text
+              .replace(/^```json\s*/i, '')
+              .replace(/^```\s*/i, '')
+              .replace(/```\s*$/i, '')
+              .trim();
+            parsed = JSON.parse(cleanedText);
+          } catch (e) {
+            console.warn('[LiveTranslation] Fallback JSON parse failed:', e);
+          }
         }
       }
     } catch (err) {
@@ -290,6 +349,8 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
       germanExample: parsed.germanExample || '',
       englishExample: parsed.englishExample || '',
       notes: parsed.notes || '',
+      usedModel: usedModelName,
+      wasFallback: fallbackTriggered,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
@@ -332,15 +393,33 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
     if (!rawTranscript || isSpeakingTtsRef.current) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
+    const compact = lower.replace(/\s+/g, '');
+
+    // Ignore phone's own speaker acknowledgment if picked up
+    if (compact.includes('inbearbeitung') || lower.includes('in bearbeitung')) {
+      return;
+    }
+
+    // Flexible trigger detection ("Übersetze", "Über setze", "Übersetzen", "Translate", "Übersetzung")
+    const hasTrigger =
+      /\b(über\s*setz(e|en|t|ung|er)?|translate|translation)\b/i.test(lower) ||
+      compact.includes('übersetz') ||
+      compact.includes('uebersetz') ||
+      lower.includes('translate');
+
+    // Flexible stop detection ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug")
+    const hasStop =
+      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower) ||
+      lower.includes('halt') ||
+      lower.includes('stopp') ||
+      lower.includes('fertig');
 
     // ----------------------------------------------------
     // State 1: IDLE (Waiting for trigger word "Übersetze")
     // ----------------------------------------------------
     if (phaseRef.current === 'idle') {
-      const hasTrigger = /\b(übersetze|übersetzen|übersetz|translate)\b/i.test(lower);
       if (hasTrigger) {
-        // Check if user said the entire instruction in one shot: "Übersetze [word] Halt"
-        const hasStop = /\b(halt|stopp|stop)\b/i.test(lower);
+        // Check if user spoke entire command in one single breath: "Übersetze [word] Halt"
         if (hasStop) {
           const phrase = cleanSpokenPhrase(text);
           if (phrase) {
@@ -369,17 +448,28 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word until "Halt" is heard)
+    // State 2: RECORDING (Capturing word until "Halt" is heard or silence)
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
-      setLiveTranscript(text);
+      const currentClean = cleanSpokenPhrase(text);
+      if (currentClean) {
+        setLiveTranscript(currentClean);
+        setCurrentRecordingText(currentClean);
 
-      const hasStop = /\b(halt|stopp|stop)\b/i.test(lower);
-      if (hasStop) {
-        const fullRecorded = cleanSpokenPhrase(text);
-        setLiveTranscript('');
-        setCurrentRecordingText(fullRecorded);
-        translateWithGemini(fullRecorded);
+        // Clear existing silence timer
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+        if (hasStop) {
+          setLiveTranscript('');
+          translateWithGemini(currentClean);
+        } else {
+          // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
+          silenceTimerRef.current = setTimeout(() => {
+            if (phaseRef.current === 'recording') {
+              translateWithGemini(currentClean);
+            }
+          }, 3800);
+        }
       }
     }
   }, [speakText]);
@@ -412,15 +502,35 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = 'de-DE'; // Strictly German for podcast listening!
+        recognition.lang = 'de-DE'; // German speech recognition engine
 
         recognition.onresult = (event) => {
           if (isSpeakingTtsRef.current) return; // Prevent mic from hearing phone's own speaker
 
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript.trim();
-            if (processGermanSpeechRef.current && transcript) {
-              processGermanSpeechRef.current(transcript);
+            // Check all alternatives and prioritize trigger/stop words
+            let bestTranscript = '';
+            for (let j = 0; j < event.results[i].length; j++) {
+              const candidate = event.results[i][j].transcript.trim();
+              if (!bestTranscript) bestTranscript = candidate;
+              const candLower = candidate.toLowerCase();
+              if (
+                candLower.includes('übersetz') ||
+                candLower.includes('uebersetz') ||
+                candLower.includes('halt') ||
+                candLower.includes('stopp') ||
+                candLower.includes('translate')
+              ) {
+                bestTranscript = candidate;
+                break;
+              }
+            }
+
+            if (bestTranscript) {
+              setLastHeardLive(bestTranscript);
+              if (processGermanSpeechRef.current) {
+                processGermanSpeechRef.current(bestTranscript);
+              }
             }
           }
         };
@@ -455,7 +565,7 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
     return () => {
       isStoppingManually = true;
       if (recognition) {
-        try { recognition.abort(); } catch (e) {}
+        try { recognitionRef.current.abort(); } catch (e) {}
       }
     };
   }, [isVoiceActive]);
@@ -463,7 +573,17 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
   // ----------------------------------------------------
   // Manual Actions & Triggers
   // ----------------------------------------------------
-  const handleStartRecordingManual = () => {
+  const handleStartRecordingManual = async () => {
+    // If voice listening is not yet active, turn it on!
+    if (!isVoiceActive) {
+      setIsVoiceActive(true);
+      if (!isKeepAwake) {
+        try {
+          await wakeLockManager.enable();
+          setIsKeepAwake(true);
+        } catch (e) {}
+      }
+    }
     setPhase('recording');
     setCurrentRecordingText('');
     setLiveTranscript('');
@@ -906,6 +1026,47 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
           {statusMessage}
         </h3>
 
+        {/* Fallback Notice Toast */}
+        {fallbackNotice && (
+          <div style={{
+            maxWidth: '520px',
+            margin: '0 auto 16px',
+            padding: '10px 16px',
+            borderRadius: '12px',
+            background: 'rgba(245, 158, 11, 0.15)',
+            border: '1px solid rgba(245, 158, 11, 0.35)',
+            color: '#fcd34d',
+            fontSize: '13px',
+            fontWeight: '700',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px'
+          }}>
+            <span>⚡</span>
+            <span>{fallbackNotice}</span>
+          </div>
+        )}
+
+        {/* Real-time speech preview badge (confirms microphone is picking up user's voice) */}
+        {isVoiceActive && lastHeardLive && phase !== 'recording' && (
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            color: '#94a3b8',
+            background: 'rgba(255, 255, 255, 0.06)',
+            padding: '5px 14px',
+            borderRadius: '20px',
+            margin: '0 auto 16px auto',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            <span>🎙️</span>
+            <span>Zuletzt gehört: <strong style={{ color: '#e2e8f0' }}>„{lastHeardLive}“</strong></span>
+          </div>
+        )}
+
         {/* Live Transcript Preview during recording */}
         {phase === 'recording' && (
           <div style={{
@@ -1039,9 +1200,24 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '800' }}>
                 Deutsches Wort / Phrase
               </div>
-              <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#fff', margin: '6px 0 0', letterSpacing: '-0.5px' }}>
-                {currentResult.german}
-              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#fff', margin: 0, letterSpacing: '-0.5px' }}>
+                  {currentResult.german}
+                </h2>
+                {currentResult.usedModel && (
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '3px 8px',
+                    borderRadius: '8px',
+                    background: currentResult.wasFallback ? 'rgba(245, 158, 11, 0.2)' : 'rgba(168, 85, 247, 0.2)',
+                    color: currentResult.wasFallback ? '#fcd34d' : '#c084fc',
+                    border: currentResult.wasFallback ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid rgba(168, 85, 247, 0.4)'
+                  }}>
+                    ✨ {currentResult.usedModel} {currentResult.wasFallback ? '(Backup)' : ''}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1349,8 +1525,15 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
                   </div>
                 )}
 
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 'auto', textAlign: 'right' }}>
-                  {item.timestamp}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '4px' }}>
+                  {item.usedModel ? (
+                    <span style={{ fontSize: '10px', color: item.wasFallback ? '#f59e0b' : '#a78bfa', fontWeight: '600' }}>
+                      ✨ {item.usedModel}
+                    </span>
+                  ) : <span />}
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                    {item.timestamp}
+                  </span>
                 </div>
               </div>
             ))}
