@@ -311,13 +311,11 @@ export default function LiveTranslation({
   // ----------------------------------------------------
   const unlockAudio = useCallback(() => {
     if ('speechSynthesis' in window) {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
       try {
-        const dummy = new SpeechSynthesisUtterance('');
-        dummy.volume = 0;
-        window.speechSynthesis.speak(dummy);
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        window.speechSynthesis.cancel();
       } catch (e) {}
     }
     if (window.AudioContext || window.webkitAudioContext) {
@@ -353,10 +351,13 @@ export default function LiveTranslation({
 
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
 
-    // Resume speech synthesis engine if paused (critical on iOS WebKit / Chrome)
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
+    // Cancel pending/stalled speech before starting new utterance (critical on iOS WebKit)
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch (e) {}
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
@@ -394,7 +395,7 @@ export default function LiveTranslation({
         if (!isMountedRef.current) return;
         isSpeakingTtsRef.current = false;
         if (onEnd) onEnd();
-      }, 250);
+      }, 150);
     };
 
     utterance.onend = finish;
@@ -405,7 +406,7 @@ export default function LiveTranslation({
 
     // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
     const wordCount = (text || '').trim().split(/\s+/).length;
-    const estDuration = Math.max(1800, wordCount * 550 + 1000);
+    const estDuration = Math.max(1600, wordCount * 500 + 800);
     ttsSafetyTimerRef.current = setTimeout(() => {
       finish();
     }, estDuration);
@@ -418,15 +419,10 @@ export default function LiveTranslation({
     }
   }, []);
 
-  // Switch speech recognition language seamlessly (de-DE <-> en-US)
+  // Switch speech recognition language seamlessly (de-DE <-> en-US) without aborting microphone
   const switchRecognitionLang = useCallback((targetLang) => {
     if (recognitionLangRef.current === targetLang) return;
     recognitionLangRef.current = targetLang;
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {}
-    }
   }, []);
 
   // ----------------------------------------------------
@@ -609,15 +605,17 @@ export default function LiveTranslation({
   const extractGermanPhrase = (rawText) => {
     if (!rawText) return '';
     let t = rawText.trim();
-    // 1. Remove ANY trigger words: "Übersetze", "Übersetzen", "Bitte übersetzen", "Translate", etc.
-    t = t.replace(/\b(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)\b/gi, '');
+    // 1. Remove ANY trigger words (including ubersetz, uber setzen, etc.)
+    t = t.replace(/\b(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?|translate|translation)\b/gi, '');
     // 2. Remove TTS acknowledgments if picked up by microphone
     t = t.replace(/\b(in bearbeitung|bearbeitung|in process|in progress)\b/gi, '');
     // 3. Remove repeat command
     t = t.replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '');
-    // 4. Remove stop commands anywhere
-    t = t.replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '');
+    // 4. Remove stop commands (standalone words or compound suffixes)
+    t = t.replace(/\b(halt|halte|stopp|stop|stoppen|stopped|hold|holt|pause|fertig|ende|end|done|genug)\b/gi, '');
+    t = t.replace(/(halt|halte|stopp|stop|stoppen|hold|fertig|ende)$/gi, '');
     // 5. Remove conversational fillers
+    t = t.replace(/\b(auf englisch|in english)\b/gi, '');
     t = t.replace(/\b(das wort|das|die|der)?\s*(wort|bedeutung|ähm|äh)\b/gi, '');
     t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -635,14 +633,15 @@ export default function LiveTranslation({
   const extractEnglishPhrase = (rawText) => {
     if (!rawText) return '';
     let t = rawText.trim();
-    // 1. Remove ANY trigger words: "Translate", "Please translate", "Übersetze", etc.
-    t = t.replace(/\b(please\s+)?(translate|translation|über\s*setz(e|en|t)?)\b/gi, '');
+    // 1. Remove ANY trigger words
+    t = t.replace(/\b(please\s+)?(translate|translation|translating|über\s*setz(e|en|t)?|uber\s*setz(e|en|t)?)\b/gi, '');
     // 2. Remove TTS acknowledgments if picked up by microphone
     t = t.replace(/\b(in process|in progress|in bearbeitung|bearbeitung)\b/gi, '');
     // 3. Remove repeat command
     t = t.replace(/\b(repeat|say again|nochmal)\b/gi, '');
-    // 4. Remove stop commands
-    t = t.replace(/\b(stop|halt|finished|done|finish|end)\b/gi, '');
+    // 4. Remove stop commands (standalone or compound suffix)
+    t = t.replace(/\b(stop|halt|finished|done|finish|end|hold|enough)\b/gi, '');
+    t = t.replace(/(stop|halt|finished|done|finish|end)$/gi, '');
     // 5. Remove conversational fillers
     t = t.replace(/\b(the phrase is|phrase is|the phrase|the word is|the word|in german|auf deutsch|uh|um|erm|ah)\b/gi, '');
     t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1177,21 +1176,42 @@ Always return a clean JSON object with this exact schema:
       return;
     }
 
-    // 2. TRIGGER WORDS
+    // 2. TRIGGER WORDS (Phonetically tolerant for German & English)
     const hasGermanTrigger =
-      /\b(über\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
+      /\b(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
       compact.includes('übersetz') ||
-      compact.includes('uebersetz');
+      compact.includes('uebersetz') ||
+      compact.includes('ubersetz') ||
+      (compact.includes('uber') && compact.includes('setz')) ||
+      (compact.includes('ueber') && compact.includes('setz'));
 
     const hasEnglishTrigger =
-      (/\b(translate|translation)\b/i.test(lower) || compact.includes('translate')) &&
+      (/\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer)\b/i.test(lower) ||
+      compact.includes('translate') ||
+      compact.includes('transit') ||
+      compact.includes('translation')) &&
       !hasGermanTrigger;
 
     const hasGermanStop =
-      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower);
+      /\b(halt|halte|stopp|stop|stoppen|stopped|hold|holt|pause|fertig|ende|end|done|finish|finished|genug|enough)\b/i.test(lower) ||
+      compact.includes('halt') ||
+      compact.includes('stop') ||
+      compact.includes('stopp') ||
+      compact.includes('hold') ||
+      compact.includes('fertig') ||
+      compact.includes('ende') ||
+      compact.endsWith('halt') ||
+      compact.endsWith('stop');
 
     const hasEnglishStop =
-      /\b(stop|halt|finished|done|finish|end)\b/i.test(lower);
+      /\b(stop|halt|finished|done|finish|end|pause|hold|enough)\b/i.test(lower) ||
+      compact.includes('stop') ||
+      compact.includes('halt') ||
+      compact.includes('finish') ||
+      compact.includes('done') ||
+      compact.includes('hold') ||
+      compact.endsWith('stop') ||
+      compact.endsWith('halt');
 
     // ----------------------------------------------------
     // State 1: IDLE or SPEAKING (Trigger starts new session)
@@ -1284,7 +1304,7 @@ Always return a clean JSON object with this exact schema:
       const isEn = activeDir === 'en_de';
 
       // Ignore utterance if it contains only residual trigger words
-      const isOnlyTrigger = /^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)[.?!]?$/i.test(text.trim());
+      const isOnlyTrigger = /^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?|translate|translation|transit)[.?!]?$/i.test(text.trim());
       if (isOnlyTrigger) {
         return;
       }
@@ -1368,12 +1388,18 @@ Always return a clean JSON object with this exact schema:
               if (
                 candLower.includes('übersetz') ||
                 candLower.includes('uebersetz') ||
+                candLower.includes('ubersetz') ||
+                (candLower.includes('uber') && candLower.includes('setz')) ||
+                candLower.includes('translate') ||
+                candLower.includes('transit') ||
                 candLower.includes('halt') ||
                 candLower.includes('stopp') ||
-                candLower.includes('translate') ||
+                candLower.includes('stop') ||
+                candLower.includes('hold') ||
                 candLower.includes('wiederhol') ||
                 candLower.includes('repeat') ||
-                candLower.includes('stop')
+                candLower.includes('fertig') ||
+                candLower.includes('done')
               ) {
                 bestTranscript = candidate;
                 break;
@@ -1390,6 +1416,7 @@ Always return a clean JSON object with this exact schema:
         };
 
         recognition.onerror = (event) => {
+          console.warn('SpeechRecognition error:', event.error);
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             isStoppingManually = true;
             setIsVoiceActive(false);
@@ -1403,7 +1430,7 @@ Always return a clean JSON object with this exact schema:
               if (!isStoppingManually && isMountedRef.current) {
                 startRecognition();
               }
-            }, 180);
+            }, 150);
           }
         };
 
@@ -1411,6 +1438,11 @@ Always return a clean JSON object with this exact schema:
         recognitionRef.current = recognition;
       } catch (err) {
         console.warn('SpeechRecognition start error:', err);
+        setTimeout(() => {
+          if (!isStoppingManually && isMountedRef.current) {
+            startRecognition();
+          }
+        }, 300);
       }
     };
 
