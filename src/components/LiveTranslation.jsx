@@ -14,6 +14,181 @@ const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
   : null;
 
+// Curated dictionary of common German dual-usage words (homographs with both verb & noun usages)
+const KNOWN_DUAL_USAGES = {
+  'ansehen': {
+    german: 'ansehen / das Ansehen',
+    english: 'to look at / reputation',
+    notes: 'Verb (ansehen) & Nomen (das Ansehen)',
+    verb: {
+      german: 'ansehen',
+      english: 'to look at, to view, to watch',
+      germanExample: 'Darf ich eure Urlaubsfotos ansehen?',
+      englishExample: 'May I look at your vacation photos?',
+      notes: 'ansehen, sieht an, sah an, hat angesehen (Verb)'
+    },
+    noun: {
+      german: 'das Ansehen',
+      english: 'reputation, prestige, standing',
+      germanExample: 'Das Unternehmen genießt in Deutschland ein hohes Ansehen.',
+      englishExample: 'The company enjoys a high reputation in Germany.',
+      notes: 'das Ansehen (Sg., Nomen)'
+    }
+  },
+  'treffen': {
+    german: 'treffen / das Treffen',
+    english: 'to meet / meeting',
+    notes: 'Verb (treffen) & Nomen (das Treffen)',
+    verb: {
+      german: 'treffen',
+      english: 'to meet, to encounter',
+      germanExample: 'Wir treffen uns heute Abend um acht Uhr im Café.',
+      englishExample: 'We are meeting tonight at eight o\'clock in the café.',
+      notes: 'treffen, trifft, traf, hat getroffen (Verb)'
+    },
+    noun: {
+      german: 'das Treffen',
+      english: 'meeting, gathering, encounter',
+      germanExample: 'Das Treffen mit den Kunden war sehr erfolgreich.',
+      englishExample: 'The meeting with the clients was very successful.',
+      notes: 'das Treffen, - (Nomen)'
+    }
+  },
+  'essen': {
+    german: 'essen / das Essen',
+    english: 'to eat / food, meal',
+    notes: 'Verb (essen) & Nomen (das Essen)',
+    verb: {
+      german: 'essen',
+      english: 'to eat',
+      germanExample: 'Was möchtest du heute zu Mittag essen?',
+      englishExample: 'What would you like to eat for lunch today?',
+      notes: 'essen, isst, aß, hat gegessen (Verb)'
+    },
+    noun: {
+      german: 'das Essen',
+      english: 'food, meal, dish',
+      germanExample: 'Das Essen in diesem Restaurant schmeckt hervorragend.',
+      englishExample: 'The food in this restaurant tastes excellent.',
+      notes: 'das Essen, - (Nomen)'
+    }
+  },
+  'leben': {
+    german: 'leben / das Leben',
+    english: 'to live / life',
+    notes: 'Verb (leben) & Nomen (das Leben)',
+    verb: {
+      german: 'leben',
+      english: 'to live',
+      germanExample: 'Meine Familie lebt seit zehn Jahren in Berlin.',
+      englishExample: 'My family has been living in Berlin for ten years.',
+      notes: 'leben, lebte, hat gelebt (Verb)'
+    },
+    noun: {
+      german: 'das Leben',
+      english: 'life',
+      germanExample: 'Das Leben in einer Großstadt bietet viele Möglichkeiten.',
+      englishExample: 'Life in a big city offers many opportunities.',
+      notes: 'das Leben, - (Nomen)'
+    }
+  },
+  'schreiben': {
+    german: 'schreiben / das Schreiben',
+    english: 'to write / official letter',
+    notes: 'Verb (schreiben) & Nomen (das Schreiben)',
+    verb: {
+      german: 'schreiben',
+      english: 'to write',
+      germanExample: 'Ich muss heute noch eine wichtige E-Mail schreiben.',
+      englishExample: 'I still have to write an important email today.',
+      notes: 'schreiben, schrieb, hat geschrieben (Verb)'
+    },
+    noun: {
+      german: 'das Schreiben',
+      english: 'official letter, formal notice',
+      germanExample: 'Haben Sie das offizielle Schreiben der Behörde erhalten?',
+      englishExample: 'Did you receive the official letter from the authority?',
+      notes: 'das Schreiben, - (Nomen)'
+    }
+  },
+  'versprechen': {
+    german: 'versprechen / das Versprechen',
+    english: 'to promise / promise',
+    notes: 'Verb (versprechen) & Nomen (das Versprechen)',
+    verb: {
+      german: 'versprechen',
+      english: 'to promise (or sich versprechen: to misspeak)',
+      germanExample: 'Ich verspreche dir, dass ich morgen pünktlich bin.',
+      englishExample: 'I promise you that I will be on time tomorrow.',
+      notes: 'versprechen, verspricht, versprach, hat versprochen (Verb)'
+    },
+    noun: {
+      german: 'das Versprechen',
+      english: 'promise, pledge',
+      germanExample: 'Er hat sein Versprechen gehalten und uns geholfen.',
+      englishExample: 'He kept his promise and helped us.',
+      notes: 'das Versprechen, - (Nomen)'
+    }
+  },
+  'wissen': {
+    german: 'wissen / das Wissen',
+    english: 'to know / knowledge',
+    notes: 'Verb (wissen) & Nomen (das Wissen)',
+    verb: {
+      german: 'wissen',
+      english: 'to know (a fact)',
+      germanExample: 'Weißt du, wann der nächste Zug nach München abfährt?',
+      englishExample: 'Do you know when the next train to Munich departs?',
+      notes: 'wissen, weiß, wusste, hat gewusst (Verb)'
+    },
+    noun: {
+      german: 'das Wissen',
+      english: 'knowledge, expertise',
+      germanExample: 'Sein Fachwissen über deutsche Grammatik ist beeindruckend.',
+      englishExample: 'His expertise in German grammar is impressive.',
+      notes: 'das Wissen (Sg., Nomen)'
+    }
+  },
+  'hoffen': {
+    german: 'hoffen / die Hoffnung',
+    english: 'to hope / hope',
+    notes: 'Verb (hoffen) & Nomen (die Hoffnung)',
+    verb: {
+      german: 'hoffen',
+      english: 'to hope',
+      germanExample: 'Wir hoffen auf gutes Wetter am Wochenende.',
+      englishExample: 'We are hoping for good weather this weekend.',
+      notes: 'hoffen, hoffte, hat gehofft (Verb)'
+    },
+    noun: {
+      german: 'die Hoffnung',
+      english: 'hope',
+      germanExample: 'Ich habe die Hoffnung noch lange nicht aufgegeben.',
+      englishExample: 'I haven\'t given up hope by a long shot.',
+      notes: 'die Hoffnung, -en (Nomen)'
+    }
+  },
+  'arbeiten': {
+    german: 'arbeiten / die Arbeit',
+    english: 'to work / work, job',
+    notes: 'Verb (arbeiten) & Nomen (die Arbeit)',
+    verb: {
+      german: 'arbeiten',
+      english: 'to work',
+      germanExample: 'Er arbeitet als Software-Entwickler in München.',
+      englishExample: 'He works as a software developer in Munich.',
+      notes: 'arbeiten, arbeitete, hat gearbeitet (Verb)'
+    },
+    noun: {
+      german: 'die Arbeit',
+      english: 'work, job, employment',
+      germanExample: 'Die Arbeit macht mir wirklich großen Spaß.',
+      englishExample: 'I really enjoy the work.',
+      notes: 'die Arbeit, -en (Nomen)'
+    }
+  }
+};
+
 export default function LiveTranslation({
   vocabData = [],
   myList = [],
@@ -25,16 +200,26 @@ export default function LiveTranslation({
   const [isKeepAwake, setIsKeepAwake] = useState(false);
   const [isPocketMode, setIsPocketMode] = useState(false);
 
+  // Direction: 'de_en' (German -> English) or 'en_de' (English -> German)
+  const [direction, setDirection] = useState('de_en');
+  const directionRef = useRef('de_en');
+
   // Core recognition phase: 'idle' | 'recording' | 'processing' | 'speaking'
   const [phase, setPhase] = useState('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [currentRecordingText, setCurrentRecordingText] = useState('');
   const [currentResult, setCurrentResult] = useState(null);
-  const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_example' | 'acknowledgment'
-  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“, um zu starten.');
+  const currentResultRef = useRef(null);
+  const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_example' | 'dual_verb' | 'dual_noun' | 'de_word'
+  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
   const [lastHeardLive, setLastHeardLive] = useState('');
   const [fallbackNotice, setFallbackNotice] = useState('');
   const [availableModels, setAvailableModels] = useState(() => getStoredAvailableModels());
+
+  // Keep currentResultRef in sync with state
+  useEffect(() => {
+    currentResultRef.current = currentResult;
+  }, [currentResult]);
 
   // Translation history (persisted in localStorage)
   const [history, setHistory] = useState(() => {
@@ -70,6 +255,7 @@ export default function LiveTranslation({
   const silenceTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const recognitionRef = useRef(null);
+  const recognitionLangRef = useRef('de-DE');
   const recordedChunksRef = useRef([]);
   const phaseRef = useRef('idle');
 
@@ -232,41 +418,171 @@ export default function LiveTranslation({
     }
   }, []);
 
-  // Sequential speaker for translation results (English meaning -> brief pause -> German example)
-  const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
-    if (!enMeaning && !deSentence) {
+  // Switch speech recognition language seamlessly (de-DE <-> en-US)
+  const switchRecognitionLang = useCallback((targetLang) => {
+    if (recognitionLangRef.current === targetLang) return;
+    recognitionLangRef.current = targetLang;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+  }, []);
+
+  // ----------------------------------------------------
+  // Sequential Speaker for Translation Results
+  // Handles: Dual usages (verb + noun) AND bidirectional DE <-> EN
+  // ----------------------------------------------------
+  const speakResult = useCallback((res, onComplete) => {
+    if (!res) {
       if (onComplete) onComplete();
       return;
     }
 
-    setPhase('speaking');
-    setSpeakingSubPhase('en');
-    setStatusMessage(`Lese Übersetzung vor: „${enMeaning}“`);
+    if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
 
-    speakText(enMeaning, 'en-US', () => {
-      if (!isMountedRef.current) return;
-      if (deSentence) {
+    setPhase('speaking');
+
+    // CASE 1: Dual Usages (Verb + Noun)
+    if (res.hasBothUsages && res.verbUsage && res.nounUsage) {
+      setStatusMessage('Lese beide Verwendungen vor: Verb & Nomen');
+      setSpeakingSubPhase('dual_verb');
+
+      // 1a. Announce Verb in English
+      const verbAnnounce = `Verb: ${res.verbUsage.english}`;
+      speakText(verbAnnounce, 'en-US', () => {
+        if (!isMountedRef.current) return;
+        // 1b. German verb example sentence
         setTimeout(() => {
           if (!isMountedRef.current) return;
-          setSpeakingSubPhase('de_example');
-          setStatusMessage(`Lese Beispielsatz vor: „${deSentence}“`);
-
-          speakText(deSentence, 'de-DE', () => {
+          speakText(res.verbUsage.germanExample || res.verbUsage.german, 'de-DE', () => {
             if (!isMountedRef.current) return;
-            setSpeakingSubPhase(null);
-            setPhase('idle');
-            setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-            if (onComplete) onComplete();
+            // 2. Pause 420ms -> Announce Noun in English
+            setTimeout(() => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase('dual_noun');
+              const nounAnnounce = `Noun: ${res.nounUsage.german}, ${res.nounUsage.english}`;
+              speakText(nounAnnounce, 'en-US', () => {
+                if (!isMountedRef.current) return;
+                // 2b. German noun example sentence
+                setTimeout(() => {
+                  if (!isMountedRef.current) return;
+                  speakText(res.nounUsage.germanExample || res.nounUsage.german, 'de-DE', () => {
+                    if (!isMountedRef.current) return;
+                    setSpeakingSubPhase(null);
+                    setPhase('idle');
+                    setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+                    switchRecognitionLang('de-DE');
+                    if (onComplete) onComplete();
+                  });
+                }, 300);
+              });
+            }, 420);
           });
-        }, 320);
-      } else {
-        setSpeakingSubPhase(null);
-        setPhase('idle');
-        setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-        if (onComplete) onComplete();
-      }
-    });
-  }, [speakText]);
+        }, 300);
+      });
+      return;
+    }
+
+    // CASE 2: Single Usage
+    const dir = res.direction || 'de_en';
+    if (dir === 'en_de') {
+      // English -> German: Speak German word -> German example -> English meaning
+      setStatusMessage(`Lese deutsche Übersetzung vor: „${res.german}“`);
+      setSpeakingSubPhase('de_word');
+      speakText(res.german, 'de-DE', () => {
+        if (!isMountedRef.current) return;
+        if (res.germanExample) {
+          setTimeout(() => {
+            if (!isMountedRef.current) return;
+            setSpeakingSubPhase('de_example');
+            speakText(res.germanExample, 'de-DE', () => {
+              if (!isMountedRef.current) return;
+              setTimeout(() => {
+                if (!isMountedRef.current) return;
+                setSpeakingSubPhase('en');
+                speakText(res.english, 'en-US', () => {
+                  if (!isMountedRef.current) return;
+                  setSpeakingSubPhase(null);
+                  setPhase('idle');
+                  setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+                  switchRecognitionLang('de-DE');
+                  if (onComplete) onComplete();
+                });
+              }, 300);
+            });
+          }, 300);
+        } else {
+          setTimeout(() => {
+            if (!isMountedRef.current) return;
+            setSpeakingSubPhase('en');
+            speakText(res.english, 'en-US', () => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase(null);
+              setPhase('idle');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              switchRecognitionLang('de-DE');
+              if (onComplete) onComplete();
+            });
+          }, 300);
+        }
+      });
+    } else {
+      // German -> English: Speak English meaning -> German example
+      setStatusMessage(`Lese Übersetzung vor: „${res.english}“`);
+      setSpeakingSubPhase('en');
+      speakText(res.english, 'en-US', () => {
+        if (!isMountedRef.current) return;
+        if (res.germanExample) {
+          setTimeout(() => {
+            if (!isMountedRef.current) return;
+            setSpeakingSubPhase('de_example');
+            setStatusMessage(`Lese Beispielsatz vor: „${res.germanExample}“`);
+            speakText(res.germanExample, 'de-DE', () => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase(null);
+              setPhase('idle');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              switchRecognitionLang('de-DE');
+              if (onComplete) onComplete();
+            });
+          }, 320);
+        } else {
+          setSpeakingSubPhase(null);
+          setPhase('idle');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          switchRecognitionLang('de-DE');
+          if (onComplete) onComplete();
+        }
+      });
+    }
+  }, [speakText, switchRecognitionLang]);
+
+  // Backward-compatibility alias
+  const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
+    speakResult({
+      hasBothUsages: false,
+      german: '',
+      english: enMeaning,
+      germanExample: deSentence,
+      direction: 'de_en'
+    }, onComplete);
+  }, [speakResult]);
+
+  // ----------------------------------------------------
+  // "Wiederholen" / "Repeat" Action Handler
+  // ----------------------------------------------------
+  const handleRepeat = useCallback(() => {
+    unlockAudio();
+    if (currentResultRef.current) {
+      speakResult(currentResultRef.current);
+    } else {
+      speakText('Keine vorherige Übersetzung vorhanden.', 'de-DE');
+    }
+  }, [unlockAudio, speakResult, speakText]);
 
   // ----------------------------------------------------
   // Keep-Awake Toggle (Prevents iPhone Auto-Lock in Pocket)
@@ -286,46 +602,48 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Clean German Text Extraction & Spoken POS Recognition
+  // Spoken Phrase Extractors (German & English)
   // ----------------------------------------------------
-  const extractSpokenPhraseAndPos = (rawText) => {
-    if (!rawText) return { cleanText: '', detectedPos: null };
-    let detectedPos = null;
-    let text = rawText;
-
-    // Check for spoken POS qualifiers (e.g. "Verb ansehen", "ansehen als Verb", "Nomen ansehen", "Substantiv")
-    if (/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/i.test(text)) {
-      detectedPos = 'verb';
-      text = text.replace(/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/gi, '');
-    } else if (/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/i.test(text)) {
-      detectedPos = 'noun';
-      text = text.replace(/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/gi, '');
-    }
-
-    const cleanText = text
+  const extractGermanPhrase = (rawText) => {
+    if (!rawText) return '';
+    return rawText
       .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
       .replace(/\b(translate|translation)\b/gi, '')
       .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
+      .replace(/\b(in process|in progress)\b/gi, '')
       .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
+      .replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
-
-    return { cleanText, detectedPos };
   };
 
-  const cleanSpokenPhrase = (rawText) => {
-    return extractSpokenPhraseAndPos(rawText).cleanText;
+  const extractEnglishPhrase = (rawText) => {
+    if (!rawText) return '';
+    return rawText
+      .replace(/\b(translate|translation)\b/gi, '')
+      .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
+      .replace(/\b(in process|in progress|process)\b/gi, '')
+      .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
+      .replace(/\b(stop|halt|finished|done|finish|end)\b/gi, '')
+      .replace(/\b(repeat|say again)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const extractSpokenPhraseAndPos = (rawText) => {
+    const cleanText = extractGermanPhrase(rawText);
+    return { cleanText, detectedPos: null };
   };
 
   // ----------------------------------------------------
-  // Local B1 Vocabulary Search (Checks verbs, nouns, conjugations)
+  // Local B1 Vocabulary Search (Checks verbs, nouns, conjugations, and meanings)
   // ----------------------------------------------------
-  const searchLocalVocab = useCallback((query, targetPos = 'auto') => {
+  const searchLocalVocab = useCallback((query, targetPos = 'auto', dir = 'de_en') => {
     if (!query || !vocabData) return null;
     const cleanQ = query.toLowerCase().trim();
     if (!cleanQ) return null;
 
-    const normalizeWord = (w) => {
+    const normalizeGerman = (w) => {
       return (w || '')
         .toLowerCase()
         .replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
@@ -334,23 +652,6 @@ export default function LiveTranslation({
         .trim();
     };
 
-    // Determine category search order based on targetPos
-    // Categories available in vocabData: nouns, verbs, adjectives, connectors, reflexive
-    let categoriesToSearch = [];
-    if (targetPos === 'verb') {
-      categoriesToSearch = ['verbs', 'reflexive'];
-    } else if (targetPos === 'noun') {
-      categoriesToSearch = ['nouns'];
-    } else {
-      // 'auto': prioritize verbs if input looks like an infinitive / lowercase;
-      // prioritize nouns if input has definite article
-      if (/^(der|die|das|ein|eine)\s+/i.test(cleanQ)) {
-        categoriesToSearch = ['nouns', 'verbs', 'adjectives', 'connectors', 'reflexive'];
-      } else {
-        categoriesToSearch = ['verbs', 'nouns', 'reflexive', 'adjectives', 'connectors'];
-      }
-    }
-
     const getItemsForCategory = (cat) => {
       if (Array.isArray(vocabData)) {
         return vocabData.filter(item => (item.category || '').toLowerCase() === cat);
@@ -358,149 +659,305 @@ export default function LiveTranslation({
       return Array.isArray(vocabData[cat]) ? vocabData[cat] : [];
     };
 
-    // Pass 1: Exact match on normalized word or raw word
-    for (const cat of categoriesToSearch) {
-      const items = getItemsForCategory(cat);
-      const match = items.find(item => {
-        const itemRaw = (item.word || '').toLowerCase().trim();
-        const itemNorm = normalizeWord(item.word);
-        const queryNorm = normalizeWord(cleanQ);
-        return itemRaw === cleanQ || itemNorm === queryNorm;
-      });
-      if (match) return { ...match, category: cat };
-    }
+    // --------------------------------------------------
+    // Direction 1: English -> German lookup (by meaning)
+    // --------------------------------------------------
+    if (dir === 'en_de') {
+      const cleanEnglish = cleanQ.replace(/^to\s+/i, '').trim();
 
-    // Pass 2: Conjugation or plural match (e.g. "sieht an", "sah an", "hat angesehen" -> "ansehen")
-    for (const cat of categoriesToSearch) {
-      const items = getItemsForCategory(cat);
-      const match = items.find(item => {
-        if (item.conjugation) {
-          const conjParts = item.conjugation
-            .toLowerCase()
-            .replace(/[^a-zäöüß\s]/g, ' ')
-            .split(/\s+/);
-          if (conjParts.includes(cleanQ)) return true;
-          if (item.conjugation.toLowerCase().includes(cleanQ)) return true;
+      // Check KNOWN_DUAL_USAGES first for English match
+      for (const [key, dual] of Object.entries(KNOWN_DUAL_USAGES)) {
+        const verbEn = dual.verb.english.toLowerCase();
+        const nounEn = dual.noun.english.toLowerCase();
+        if (
+          verbEn.includes(cleanEnglish) ||
+          nounEn.includes(cleanEnglish) ||
+          cleanEnglish.includes(key)
+        ) {
+          return {
+            hasBothUsages: true,
+            german: dual.german,
+            english: dual.english,
+            germanExample: dual.verb.germanExample,
+            englishExample: dual.verb.englishExample,
+            notes: dual.notes,
+            verbUsage: dual.verb,
+            nounUsage: dual.noun,
+            pos: 'verb & noun',
+            isFromB1List: true,
+            direction: 'en_de'
+          };
         }
-        if (item.plural) {
-          if (item.plural.toLowerCase().includes(cleanQ)) return true;
-        }
-        return false;
-      });
-      if (match) return { ...match, category: cat };
-    }
+      }
 
-    // Pass 3: If targetPos was 'auto', check remaining categories as fallback
-    if (targetPos === 'auto') {
-      const remainingCats = ['verbs', 'nouns', 'adjectives', 'connectors', 'reflexive']
-        .filter(c => !categoriesToSearch.includes(c));
-      for (const cat of remainingCats) {
+      // Check all categories in vocabData by meaning
+      const allCategories = ['verbs', 'nouns', 'reflexive', 'adjectives', 'connectors'];
+      for (const cat of allCategories) {
         const items = getItemsForCategory(cat);
         const match = items.find(item => {
-          const itemNorm = normalizeWord(item.word);
-          const queryNorm = normalizeWord(cleanQ);
-          return itemNorm === queryNorm;
+          const m = (item.meaning || '').toLowerCase();
+          if (m === cleanQ || m === cleanEnglish) return true;
+          const chunks = m.split(/[,;/]+/).map(s => s.trim().replace(/^to\s+/i, ''));
+          if (chunks.includes(cleanEnglish) || chunks.includes(cleanQ)) return true;
+          const wordRegex = new RegExp(`\\b${cleanEnglish.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+          return wordRegex.test(m);
         });
+
+        if (match) {
+          const normMatchWord = normalizeGerman(match.word);
+          // Check if this matched word has a known dual companion
+          if (KNOWN_DUAL_USAGES[normMatchWord]) {
+            const dual = KNOWN_DUAL_USAGES[normMatchWord];
+            return {
+              hasBothUsages: true,
+              german: dual.german,
+              english: dual.english,
+              germanExample: dual.verb.germanExample,
+              englishExample: dual.verb.englishExample,
+              notes: dual.notes,
+              verbUsage: dual.verb,
+              nounUsage: dual.noun,
+              pos: 'verb & noun',
+              isFromB1List: true,
+              direction: 'en_de'
+            };
+          }
+
+          const primaryExample = match.examples?.[0];
+          return {
+            hasBothUsages: false,
+            german: match.word,
+            english: match.meaning,
+            germanExample: primaryExample?.de || `Beispielsatz: „${match.word}“ ist ein wichtiges Wort.`,
+            englishExample: primaryExample?.en || '',
+            notes: match.conjugation || match.plural || (match.category ? `B1 Wortschatz (${match.category})` : 'B1 Wortschatz'),
+            category: match.category || cat,
+            pos: cat === 'nouns' ? 'noun' : (cat === 'verbs' || cat === 'reflexive' ? 'verb' : 'other'),
+            isFromB1List: true,
+            direction: 'en_de'
+          };
+        }
+      }
+
+      return null;
+    }
+
+    // --------------------------------------------------
+    // Direction 2: German -> English lookup
+    // --------------------------------------------------
+    const normQ = normalizeGerman(cleanQ);
+
+    // Step A: Check KNOWN_DUAL_USAGES immediately (e.g. "ansehen" -> returns both verb and noun!)
+    if (KNOWN_DUAL_USAGES[normQ]) {
+      const dual = KNOWN_DUAL_USAGES[normQ];
+      return {
+        hasBothUsages: true,
+        german: dual.german,
+        english: dual.english,
+        germanExample: dual.verb.germanExample,
+        englishExample: dual.verb.englishExample,
+        notes: dual.notes,
+        verbUsage: dual.verb,
+        nounUsage: dual.noun,
+        pos: 'verb & noun',
+        isFromB1List: true,
+        direction: 'de_en'
+      };
+    }
+
+    // Also check if user spoke a noun like "das Ansehen"
+    for (const [key, dual] of Object.entries(KNOWN_DUAL_USAGES)) {
+      if (normalizeGerman(dual.noun.german) === normQ || dual.noun.german.toLowerCase() === cleanQ) {
+        return {
+          hasBothUsages: true,
+          german: dual.german,
+          english: dual.english,
+          germanExample: dual.verb.germanExample,
+          englishExample: dual.verb.englishExample,
+          notes: dual.notes,
+          verbUsage: dual.verb,
+          nounUsage: dual.noun,
+          pos: 'verb & noun',
+          isFromB1List: true,
+          direction: 'de_en'
+        };
+      }
+    }
+
+    // Step B: Check vocabData for both verb and noun matches
+    const verbItems = [...getItemsForCategory('verbs'), ...getItemsForCategory('reflexive')];
+    const nounItems = getItemsForCategory('nouns');
+
+    const matchedVerb = verbItems.find(item => {
+      const itemNorm = normalizeGerman(item.word);
+      return itemNorm === normQ || (item.word || '').toLowerCase() === cleanQ;
+    });
+
+    const matchedNoun = nounItems.find(item => {
+      const itemNorm = normalizeGerman(item.word);
+      return itemNorm === normQ || (item.word || '').toLowerCase() === cleanQ;
+    });
+
+    // If both exist in B1 dataset, return dual usage!
+    if (matchedVerb && matchedNoun) {
+      const verbEx = matchedVerb.examples?.[0];
+      const nounEx = matchedNoun.examples?.[0];
+      return {
+        hasBothUsages: true,
+        german: `${matchedVerb.word} / ${matchedNoun.word}`,
+        english: `${matchedVerb.meaning} / ${matchedNoun.meaning}`,
+        germanExample: verbEx?.de || nounEx?.de || '',
+        englishExample: verbEx?.en || nounEx?.en || '',
+        notes: `Verb & Nomen im B1 Wortschatz`,
+        verbUsage: {
+          german: matchedVerb.word,
+          english: matchedVerb.meaning,
+          germanExample: verbEx?.de || `Beispielsatz: „${matchedVerb.word}“.`,
+          englishExample: verbEx?.en || '',
+          notes: matchedVerb.conjugation || 'Verb'
+        },
+        nounUsage: {
+          german: matchedNoun.word,
+          english: matchedNoun.meaning,
+          germanExample: nounEx?.de || `Beispielsatz: „${matchedNoun.word}“.`,
+          englishExample: nounEx?.en || '',
+          notes: matchedNoun.plural || 'Nomen'
+        },
+        pos: 'verb & noun',
+        isFromB1List: true,
+        direction: 'de_en'
+      };
+    }
+
+    // Step C: Single match in vocabData
+    const singleMatch = matchedVerb || matchedNoun || (() => {
+      for (const cat of ['adjectives', 'connectors']) {
+        const match = getItemsForCategory(cat).find(item => normalizeGerman(item.word) === normQ);
         if (match) return { ...match, category: cat };
       }
+      return null;
+    })();
+
+    if (singleMatch) {
+      const ex = singleMatch.examples?.[0];
+      const isV = singleMatch.category === 'verbs' || singleMatch.category === 'reflexive' || !!singleMatch.conjugation;
+      const isN = singleMatch.category === 'nouns';
+      return {
+        hasBothUsages: false,
+        german: singleMatch.word,
+        english: singleMatch.meaning || 'Bedeutung im B1-Wortschatz',
+        germanExample: ex?.de || `Beispielsatz: „${singleMatch.word}“ ist ein wichtiges B1-Wort.`,
+        englishExample: ex?.en || '',
+        notes: singleMatch.conjugation || singleMatch.plural || (singleMatch.category ? `B1 Wortschatz (${singleMatch.category})` : 'B1 Wortschatz'),
+        category: singleMatch.category,
+        pos: isN ? 'noun' : (isV ? 'verb' : 'other'),
+        isFromB1List: true,
+        direction: 'de_en'
+      };
     }
 
     return null;
   }, [vocabData]);
 
   // ----------------------------------------------------
-  // Translation Handler:
+  // Translation Handler (Dual Usages + Bidirectional DE <-> EN)
   // 1. Checks B1 Wordlist FIRST -> If present, returns immediately without Gemini query!
-  // 2. Otherwise calls Gemini with explicit POS constraints & fallback models
+  // 2. Otherwise calls Gemini with dual usage instructions & fallback models
   // ----------------------------------------------------
-  const translateWithGemini = async (phraseToTranslate, posOverride = null) => {
+  const translateWithDirection = async (phraseToTranslate, dir = 'de_en') => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    const { cleanText: cleanInput, detectedPos: spokenPos } = extractSpokenPhraseAndPos(phraseToTranslate);
-    const effectivePos = posOverride || spokenPos || posFilter;
+    const cleanInput = dir === 'en_de' ? extractEnglishPhrase(phraseToTranslate) : extractGermanPhrase(phraseToTranslate);
 
     if (!cleanInput) {
-      speakText('Kein deutsches Wort erkannt.', 'de-DE', () => {
+      const msg = dir === 'en_de' ? 'No English word detected.' : 'Kein deutsches Wort erkannt.';
+      const lang = dir === 'en_de' ? 'en-US' : 'de-DE';
+      speakText(msg, lang, () => {
         setPhase('idle');
-        setStatusMessage('Bereit. Sage „Übersetze“, um zu starten.');
+        setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+        switchRecognitionLang('de-DE');
       });
       return;
     }
 
-    // If spoken POS detected, update filter state for UI visibility
-    if (spokenPos) {
-      setPosFilter(spokenPos);
-    }
-
     // ----------------------------------------------------
-    // STEP 1: FAST PATH - CHECK B1 WORDLIST FIRST (NO GEMINI CALL)
+    // STEP 1: FAST PATH - CHECK B1 WORDLIST & KNOWN DUAL USAGES FIRST (NO GEMINI CALL)
     // ----------------------------------------------------
-    const localMatch = searchLocalVocab(cleanInput, effectivePos);
+    const localMatch = searchLocalVocab(cleanInput, 'auto', dir);
     if (localMatch) {
-      const primaryExample = localMatch.examples?.[0];
-      const germanEx = primaryExample?.de || `Beispielsatz: „${localMatch.word}“ ist ein wichtiges B1-Wort.`;
-      const englishEx = primaryExample?.en || '';
-      const isVerb = localMatch.category === 'verbs' || localMatch.category === 'reflexive';
-      const isNoun = localMatch.category === 'nouns';
-
       const b1Result = {
         id: Date.now(),
-        german: localMatch.word,
-        english: localMatch.meaning || 'Bedeutung im B1-Wortschatz',
-        germanExample: germanEx,
-        englishExample: englishEx,
-        notes: localMatch.conjugation || localMatch.plural || (localMatch.category ? `B1 Wortschatz (${localMatch.category})` : 'B1 Wortschatz'),
+        german: localMatch.german,
+        english: localMatch.english,
+        germanExample: localMatch.germanExample,
+        englishExample: localMatch.englishExample,
+        notes: localMatch.notes,
         category: localMatch.category,
-        pos: isNoun ? 'noun' : (isVerb ? 'verb' : 'other'),
+        pos: localMatch.pos,
+        hasBothUsages: !!localMatch.hasBothUsages,
+        verbUsage: localMatch.verbUsage || null,
+        nounUsage: localMatch.nounUsage || null,
         usedModel: 'B1 Wortschatz (Lokal)',
         isFromB1List: true,
         wasFallback: false,
+        direction: dir,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setCurrentResult(b1Result);
       setHistory(prev => [b1Result, ...prev]);
 
-      // Speak Aloud: English translation first, then German example sentence
-      speakSequentialTranslation(b1Result.english, b1Result.germanExample);
-      return; // EXIT EARLY! Zero Gemini API calls required!
+      // Speak both usages or single usage aloud
+      speakResult(b1Result);
+      return; // EXIT EARLY! Zero Gemini calls required!
     }
 
     // ----------------------------------------------------
-    // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI WITH POS CONSTRAINTS
+    // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI WITH DUAL USAGE INSTRUCTIONS
     // ----------------------------------------------------
     setPhase('processing');
-    const posHintGerman = effectivePos === 'verb' ? ' (als Verb)' : effectivePos === 'noun' ? ' (als Nomen)' : '';
-    setStatusMessage(`Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“${posHintGerman}...`);
+    const isEn = dir === 'en_de';
+    setStatusMessage(
+      isEn
+        ? `Nicht im B1-Wortschatz. Gemini übersetzt: "${cleanInput}"...`
+        : `Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“...`
+    );
 
-    let posInstruction = '';
-    if (effectivePos === 'verb') {
-      posInstruction = `
-CRITICAL POS SPECIFICATION:
-The user explicitly specified this is a VERB.
-Translate and output the word in its base infinitive verb form (lowercase, e.g. "ansehen" = "to look at / to watch").
-Do NOT translate it as the noun "das Ansehen" (reputation/prestige).`;
-    } else if (effectivePos === 'noun') {
-      posInstruction = `
-CRITICAL POS SPECIFICATION:
-The user explicitly specified this is a NOUN.
-Translate and output the word as a NOUN with its German definite article (der/die/das) capitalized (e.g. "das Ansehen" = "reputation / prestige / standing").
-Do NOT translate it as a verb.`;
-    }
+    const systemInstruction = `You are a native German language expert and Goethe B1/B2 curriculum language coach.
+Your job is to translate words or phrases between German and English.
 
-    const systemInstruction = `You are a native German language expert and B1/B2 language coach.
-Your job is to translate spoken German words or phrases heard during podcasts into clear English and provide a practical German example sentence.
+CRITICAL DUAL USAGE REQUIREMENT:
+You MUST check if the word or concept functions as BOTH a verb and a noun in German (e.g. "ansehen" = to look at / "das Ansehen" = reputation, prestige; "treffen" = to meet / "das Treffen" = meeting; "essen" = to eat / "das Essen" = food, meal; "leben" = to live / "das Leben" = life; "schreiben" = to write / "das Schreiben" = official letter; "versprechen" = to promise / "das Versprechen" = promise; "hoffen" = to hope / "die Hoffnung" = hope).
+If BOTH usages exist in German, you MUST set "hasBothUsages": true, and provide both complete usages under "verbUsage" and "nounUsage".
+If only one usage exists, set "hasBothUsages": false, and leave "verbUsage" and "nounUsage" as null.
+
 Always return a clean JSON object with this exact schema:
 {
-  "german": "The correctly spelled German word/phrase (with article 'der/die/das' if it is a noun, e.g. 'die Herausforderung')",
+  "german": "Correct German word (with article 'der/die/das' if noun, or 'verb / der/die/das Nomen' if both)",
   "english": "Concise English translation / meaning",
-  "germanExample": "A realistic B1/B2 German sentence using this word in workplace, business, or daily life context",
+  "germanExample": "A realistic B1/B2 German sentence in workplace, daily life or podcast context",
   "englishExample": "English translation of the German example sentence",
-  "notes": "Optional short grammar note (e.g., preposition used with verb, plural form, or formality)",
-  "pos": "verb | noun | adjective | other"
-}${posInstruction}`;
+  "notes": "Short grammar note (gender, plural, prepositions, or forms)",
+  "pos": "verb | noun | adjective | other",
+  "hasBothUsages": boolean,
+  "verbUsage": {
+    "german": "infinitive verb (e.g. 'ansehen')",
+    "english": "English meaning as verb",
+    "germanExample": "A realistic B1/B2 German sentence using the verb",
+    "englishExample": "English translation of the verb sentence",
+    "notes": "conjugation note"
+  },
+  "nounUsage": {
+    "german": "German noun with article (e.g. 'das Ansehen')",
+    "english": "English meaning as noun",
+    "germanExample": "A realistic B1/B2 German sentence using the noun",
+    "englishExample": "English translation of the noun sentence",
+    "notes": "plural / gender note"
+  }
+}`;
 
-    const promptText = `German input captured from speech: "${cleanInput}"
-${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}`;
+    const promptText = isEn
+      ? `English input captured from speech: "${cleanInput}". Translate to German. Check for both verb and noun usages.`
+      : `German input captured from speech: "${cleanInput}". Translate to English. Check for both verb and noun usages.`;
 
     let parsed = null;
     let usedModelName = getStoredGeminiModel();
@@ -515,7 +972,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         availableModels: availableModels && availableModels.length > 0 ? availableModels : getStoredAvailableModels(),
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 600
+          maxOutputTokens: 750
         },
         onFallback: ({ failedModel, nextModel }) => {
           setFallbackNotice(`⚡ Modell ${failedModel} überlastet. Wechsle zu ${nextModel}...`);
@@ -550,154 +1007,243 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     }
 
     // High quality fallback if Gemini fails or is offline
-    if (!parsed || !parsed.english) {
-      // Fallback to free public translation API
+    if (!parsed || (!parsed.english && !parsed.german)) {
       try {
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=de|en`);
+        const langpair = isEn ? 'en|de' : 'de|en';
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=${langpair}`);
         const data = await res.json();
         const translation = data?.responseData?.translatedText || cleanInput;
         parsed = {
-          german: cleanInput,
-          english: translation,
-          germanExample: `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
-          englishExample: `In the podcast the word "${translation}" was used.`,
+          german: isEn ? translation : cleanInput,
+          english: isEn ? cleanInput : translation,
+          germanExample: isEn ? `Im Satz: „${translation}“ ist nützlich.` : `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
+          englishExample: isEn ? `In sentence: "${translation}" is useful.` : `In the podcast the word "${translation}" was used.`,
           notes: 'Automatische Schnellübersetzung',
-          pos: effectivePos !== 'auto' ? effectivePos : 'other'
+          pos: 'other',
+          hasBothUsages: false
         };
       } catch (e) {
         parsed = {
-          german: cleanInput,
-          english: 'Translation unavailable',
-          germanExample: `Können Sie „${cleanInput}“ bitte wiederholen?`,
-          englishExample: `Could you please repeat "${cleanInput}"?`,
+          german: isEn ? 'Übersetzung nicht verfügbar' : cleanInput,
+          english: isEn ? cleanInput : 'Translation unavailable',
+          germanExample: `Können Sie das bitte wiederholen?`,
+          englishExample: `Could you please repeat that?`,
           notes: 'Bitte Netzwerkverbindung prüfen',
-          pos: effectivePos !== 'auto' ? effectivePos : 'other'
+          pos: 'other',
+          hasBothUsages: false
         };
       }
     }
 
-    const determinedPos = parsed.pos || (effectivePos !== 'auto' ? effectivePos : (/^(der|die|das)\s+/i.test(parsed.german) ? 'noun' : (parsed.german.endsWith('en') ? 'verb' : 'other')));
+    const hasBoth = !!(parsed.hasBothUsages && parsed.verbUsage && parsed.nounUsage);
 
     const newResult = {
       id: Date.now(),
-      german: parsed.german || cleanInput,
-      english: parsed.english || 'Unbekannt',
+      german: parsed.german || (isEn ? 'Unbekannt' : cleanInput),
+      english: parsed.english || (isEn ? cleanInput : 'Unbekannt'),
       germanExample: parsed.germanExample || '',
       englishExample: parsed.englishExample || '',
       notes: parsed.notes || '',
-      pos: determinedPos,
+      pos: parsed.pos || (hasBoth ? 'verb & noun' : 'other'),
+      hasBothUsages: hasBoth,
+      verbUsage: hasBoth ? parsed.verbUsage : null,
+      nounUsage: hasBoth ? parsed.nounUsage : null,
       usedModel: usedModelName,
       isFromB1List: false,
       wasFallback: fallbackTriggered,
+      direction: dir,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setCurrentResult(newResult);
     setHistory(prev => [newResult, ...prev]);
 
-    // Speak Aloud: English translation first, then German example sentence
-    speakSequentialTranslation(newResult.english, newResult.germanExample);
+    // Speak out loud (both usages if present)
+    speakResult(newResult);
+  };
+
+  // Backward-compatibility wrapper
+  const translateWithGemini = (phrase, pos = null) => {
+    translateWithDirection(phrase, directionRef.current || 'de_en');
   };
 
   // ----------------------------------------------------
-  // Speech Recognition Event Engine
+  // Speech Recognition Event Engine (German & English & Wiederholen)
   // ----------------------------------------------------
-  const processGermanSpeech = useCallback((rawTranscript) => {
+  const processLiveSpeech = useCallback((rawTranscript) => {
     if (!rawTranscript) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
 
     // Ignore phone's own speaker acknowledgment if picked up
-    if (compact.includes('inbearbeitung') || lower.includes('in bearbeitung')) {
+    if (
+      compact.includes('inbearbeitung') ||
+      lower.includes('in bearbeitung') ||
+      compact.includes('inprocess') ||
+      lower.includes('in process')
+    ) {
       return;
     }
 
-    // Flexible trigger detection ("Übersetze", "Über setze", "Übersetzen", "Translate", "Übersetzung")
-    const hasTrigger =
-      /\b(über\s*setz(e|en|t|ung|er)?|translate|translation)\b/i.test(lower) ||
-      compact.includes('übersetz') ||
-      compact.includes('uebersetz') ||
-      lower.includes('translate');
+    // 1. REPEAT TRIGGER ("Wiederholen", "Wiederhole", "Repeat", "Nochmal")
+    const isRepeat =
+      /\b(wiederhol(e|en|t)?|repeat|nochmal|say\s*again)\b/i.test(lower) ||
+      compact.includes('wiederhol');
 
-    // Flexible stop detection ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug")
-    const hasStop =
-      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower) ||
-      lower.includes('halt') ||
-      lower.includes('stopp') ||
-      lower.includes('fertig');
+    if (isRepeat && (phaseRef.current === 'idle' || phaseRef.current === 'speaking')) {
+      handleRepeat();
+      return;
+    }
+
+    // 2. TRIGGER WORDS
+    const hasGermanTrigger =
+      /\b(über\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
+      compact.includes('übersetz') ||
+      compact.includes('uebersetz');
+
+    const hasEnglishTrigger =
+      (/\b(translate|translation)\b/i.test(lower) || compact.includes('translate')) &&
+      !hasGermanTrigger;
+
+    const hasGermanStop =
+      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower);
+
+    const hasEnglishStop =
+      /\b(stop|halt|finished|done|finish|end)\b/i.test(lower);
 
     // ----------------------------------------------------
-    // State 1: IDLE or SPEAKING (Trigger word "Übersetze" starts new session)
-    // Works reliably whether idle OR recovering from speech!
+    // State 1: IDLE or SPEAKING (Trigger starts new session)
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
-      if (hasTrigger) {
-        // Cancel any previous TTS immediately
+      // Branch A: English -> German ("Translate")
+      if (hasEnglishTrigger) {
         if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
         isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        // Check if user spoke entire command in one single breath: "Übersetze [word] Halt"
-        if (hasStop) {
-          const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text);
+        // Check if spoken in one breath: "Translate [word] Stop"
+        if (hasEnglishStop) {
+          const phrase = extractEnglishPhrase(text);
           if (phrase) {
+            setDirection('en_de');
+            directionRef.current = 'en_de';
             setPhase('recording');
-            setStatusMessage(`Wort erfasst: „${phrase}“. Übersetze...`);
-            speakText('In Bearbeitung', 'de-DE', () => {
-              translateWithGemini(phrase, detectedPos);
+            setStatusMessage(`Wort erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
+            speakText('In Process', 'en-US', () => {
+              translateWithDirection(phrase, 'en_de');
             });
             return;
           }
         }
 
         // Standard 2-Step Flow:
-        // Switch to recording right away so subsequent words are not missed
+        setDirection('en_de');
+        directionRef.current = 'en_de';
         setPhase('recording');
         setCurrentRecordingText('');
         setLiveTranscript('');
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
+        setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort und sage „Stop“.');
 
+        switchRecognitionLang('en-US');
+        speakText('In Process', 'en-US');
+        return;
+      }
+
+      // Branch B: German -> English ("Übersetze")
+      if (hasGermanTrigger) {
+        if ('speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+        isSpeakingTtsRef.current = false;
+        setSpeakingSubPhase(null);
+
+        // Check if spoken in one breath: "Übersetze [word] Halt"
+        if (hasGermanStop) {
+          const phrase = extractGermanPhrase(text);
+          if (phrase) {
+            setDirection('de_en');
+            directionRef.current = 'de_en';
+            setPhase('recording');
+            setStatusMessage(`Wort erfasst (DE ➔ EN): „${phrase}“. Übersetze...`);
+            speakText('In Bearbeitung', 'de-DE', () => {
+              translateWithDirection(phrase, 'de_en');
+            });
+            return;
+          }
+        }
+
+        // Standard 2-Step Flow:
+        setDirection('de_en');
+        directionRef.current = 'de_en';
+        setPhase('recording');
+        setCurrentRecordingText('');
+        setLiveTranscript('');
+        recordedChunksRef.current = [];
+        setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.');
+
+        switchRecognitionLang('de-DE');
         speakText('In Bearbeitung', 'de-DE');
         return;
       }
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word until "Halt" is heard or silence)
+    // State 2: RECORDING
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
-      const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text);
-      if (currentClean) {
-        setLiveTranscript(currentClean);
-        setCurrentRecordingText(currentClean);
+      const activeDir = directionRef.current || 'de_en';
 
-        // Clear existing silence timer
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      if (activeDir === 'en_de') {
+        const clean = extractEnglishPhrase(text);
+        if (clean) {
+          setLiveTranscript(clean);
+          setCurrentRecordingText(clean);
 
-        if (hasStop) {
-          setLiveTranscript('');
-          translateWithGemini(currentClean, detectedPos);
-        } else {
-          // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
-          silenceTimerRef.current = setTimeout(() => {
-            if (phaseRef.current === 'recording') {
-              translateWithGemini(currentClean, detectedPos);
-            }
-          }, 3800);
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+          if (hasEnglishStop) {
+            setLiveTranscript('');
+            translateWithDirection(clean, 'en_de');
+          } else {
+            silenceTimerRef.current = setTimeout(() => {
+              if (phaseRef.current === 'recording') {
+                translateWithDirection(clean, 'en_de');
+              }
+            }, 3800);
+          }
+        }
+      } else {
+        const clean = extractGermanPhrase(text);
+        if (clean) {
+          setLiveTranscript(clean);
+          setCurrentRecordingText(clean);
+
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+          if (hasGermanStop) {
+            setLiveTranscript('');
+            translateWithDirection(clean, 'de_en');
+          } else {
+            silenceTimerRef.current = setTimeout(() => {
+              if (phaseRef.current === 'recording') {
+                translateWithDirection(clean, 'de_en');
+              }
+            }, 3800);
+          }
         }
       }
     }
-  }, [speakText, speakSequentialTranslation, searchLocalVocab, posFilter]);
+  }, [speakText, handleRepeat, switchRecognitionLang]);
 
   // Keep a stable ref to speech processor
-  const processGermanSpeechRef = useRef(processGermanSpeech);
+  const processLiveSpeechRef = useRef(processLiveSpeech);
   useEffect(() => {
-    processGermanSpeechRef.current = processGermanSpeech;
-  }, [processGermanSpeech]);
+    processLiveSpeechRef.current = processLiveSpeech;
+  }, [processLiveSpeech]);
 
   // Continuous Speech Recognition lifecycle
   useEffect(() => {
@@ -721,11 +1267,10 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = 'de-DE'; // German speech recognition engine
+        recognition.lang = recognitionLangRef.current || 'de-DE';
 
         recognition.onresult = (event) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Check all alternatives and prioritize trigger/stop words
             let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
@@ -736,7 +1281,10 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
                 candLower.includes('uebersetz') ||
                 candLower.includes('halt') ||
                 candLower.includes('stopp') ||
-                candLower.includes('translate')
+                candLower.includes('translate') ||
+                candLower.includes('wiederhol') ||
+                candLower.includes('repeat') ||
+                candLower.includes('stop')
               ) {
                 bestTranscript = candidate;
                 break;
@@ -745,8 +1293,8 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
 
             if (bestTranscript) {
               setLastHeardLive(bestTranscript);
-              if (processGermanSpeechRef.current) {
-                processGermanSpeechRef.current(bestTranscript);
+              if (processLiveSpeechRef.current) {
+                processLiveSpeechRef.current(bestTranscript);
               }
             }
           }
@@ -790,9 +1338,11 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
   // ----------------------------------------------------
   // Manual Actions & Triggers
   // ----------------------------------------------------
-  const handleStartRecordingManual = async () => {
+  const handleStartRecordingManual = async (chosenDir = 'de_en') => {
     unlockAudio();
-    // If voice listening is not yet active, turn it on!
+    setDirection(chosenDir);
+    directionRef.current = chosenDir;
+
     if (!isVoiceActive) {
       setIsVoiceActive(true);
       if (!isKeepAwake) {
@@ -802,19 +1352,30 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         } catch (e) {}
       }
     }
+
     setPhase('recording');
     setCurrentRecordingText('');
     setLiveTranscript('');
-    setStatusMessage('Aufnahme läuft... Sprich das Wort oder tippe unten.');
-    speakText('In Bearbeitung', 'de-DE');
+
+    if (chosenDir === 'en_de') {
+      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder tippe unten.');
+      switchRecognitionLang('en-US');
+      speakText('In Process', 'en-US');
+    } else {
+      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder tippe unten.');
+      switchRecognitionLang('de-DE');
+      speakText('In Bearbeitung', 'de-DE');
+    }
   };
 
   const handleStopRecordingManual = () => {
     unlockAudio();
     const raw = liveTranscript || currentRecordingText || manualInput;
-    const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw);
+    const activeDir = directionRef.current || 'de_en';
+    const textToUse = activeDir === 'en_de' ? extractEnglishPhrase(raw) : extractGermanPhrase(raw);
+
     if (textToUse) {
-      translateWithGemini(textToUse, detectedPos || posFilter);
+      translateWithDirection(textToUse, activeDir);
     } else {
       setPhase('idle');
       setStatusMessage('Kein Wort eingegeben.');
@@ -825,9 +1386,12 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     if (e) e.preventDefault();
     unlockAudio();
     if (!manualInput.trim()) return;
-    const { cleanText, detectedPos } = extractSpokenPhraseAndPos(manualInput.trim());
-    if (cleanText) {
-      translateWithGemini(cleanText, detectedPos || posFilter);
+
+    // Detect if input looks like English or German
+    let activeDir = directionRef.current || 'de_en';
+    const clean = manualInput.trim();
+    if (clean) {
+      translateWithDirection(clean, activeDir);
       setManualInput('');
     }
   };
@@ -944,9 +1508,11 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             fontSize: '13px',
             color: phase === 'recording' ? '#ef4444' : '#10b981',
             fontWeight: '600',
-            marginBottom: '32px'
+            marginBottom: '24px'
           }}>
-            {phase === 'recording' ? 'Aufnahme läuft (Sage „Halt“)...' : 'Hört zu: Sage „Übersetze“'}
+            {phase === 'recording'
+              ? (direction === 'en_de' ? 'Aufnahme (EN ➔ DE)... Sage „Stop“' : 'Aufnahme (DE ➔ EN)... Sage „Halt“')
+              : 'Hört zu: „Übersetze“ (DE) • „Translate“ (EN)'}
           </div>
 
           {currentResult && (
@@ -954,12 +1520,30 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
               background: 'rgba(255,255,255,0.04)',
               borderRadius: '16px',
               padding: '14px 16px',
-              marginBottom: '36px',
+              marginBottom: '28px',
               border: '1px solid rgba(255,255,255,0.06)'
             }}>
-              <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '1px' }}>Zuletzt</div>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: '#e4e4e7', margin: '4px 0' }}>{currentResult.german}</div>
-              <div style={{ fontSize: '14px', color: '#10b981', fontWeight: '700' }}>{currentResult.english}</div>
+              <div style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                {currentResult.hasBothUsages ? 'Zuletzt (Beide Verwendungen)' : 'Zuletzt'}
+              </div>
+              {currentResult.hasBothUsages && currentResult.verbUsage && currentResult.nounUsage ? (
+                <div style={{ marginTop: '6px', textAlign: 'left' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#93c5fd' }}>
+                    ⚡ {currentResult.verbUsage.german} <span style={{ color: '#10b981', fontWeight: '600' }}>• {currentResult.verbUsage.english}</span>
+                  </div>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#fcd34d', marginTop: '4px' }}>
+                    📦 {currentResult.nounUsage.german} <span style={{ color: '#10b981', fontWeight: '600' }}>• {currentResult.nounUsage.english}</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#e4e4e7', margin: '4px 0' }}>{currentResult.german}</div>
+                  <div style={{ fontSize: '14px', color: '#10b981', fontWeight: '700' }}>{currentResult.english}</div>
+                </>
+              )}
+              <div style={{ marginTop: '8px', fontSize: '11px', color: '#38bdf8' }}>
+                Sage „Wiederholen“ zum Vorlesen
+              </div>
             </div>
           )}
 
@@ -1035,7 +1619,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             </span>
           </div>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            Hände-frei beim Podcast hören: Sage <strong>„Übersetze“</strong> → sprich das Wort → sage <strong>„Halt“</strong>.
+            Hände-frei beim Hören: <strong>🇩🇪 „Übersetze“</strong> (DE ➔ EN) • <strong>🇬🇧 „Translate“</strong> (EN ➔ DE) • <strong>🔁 „Wiederholen“ / „Repeat“</strong>
           </p>
         </div>
 
@@ -1060,7 +1644,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
                 } catch (e) {}
               }
             }}
-            title={isVoiceActive ? "Voice Control aktiv (Hört auf 'Übersetze'). Klicken zum Deaktivieren" : "Voice Control aktivieren (Kontinuierliches Mithören)"}
+            title={isVoiceActive ? "Voice Control aktiv (Hört auf 'Übersetze' & 'Translate'). Klicken zum Deaktivieren" : "Voice Control aktivieren (Kontinuierliches Mithören)"}
             style={{
               background: isVoiceActive
                 ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))'
@@ -1118,6 +1702,30 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
           >
             <span style={{ fontSize: '13px' }}>{isKeepAwake ? '☀️' : '🌙'}</span>
             <span>{isKeepAwake ? 'Awake: ON' : 'Keep Awake'}</span>
+          </button>
+
+          {/* Repeat Button */}
+          <button
+            type="button"
+            id="live-repeat-header-btn"
+            onClick={handleRepeat}
+            title="Zuletzt übersetztes Wort und Beispielsatz wiederholen (Voice Trigger: „Wiederholen“ oder „Repeat“)"
+            style={{
+              background: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '12px',
+              color: '#e4e4e7',
+              padding: '8px 12px',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            <span>🔁</span>
+            <span>Wiederholen</span>
           </button>
 
           {/* Pocket Mode Toggle Button */}
@@ -1309,37 +1917,92 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            {liveTranscript ? `„${liveTranscript}“` : 'Spreche jetzt dein deutsches Wort... Beende mit „Halt“'}
+            {liveTranscript
+              ? `„${liveTranscript}“`
+              : (direction === 'en_de'
+                  ? 'Spreche jetzt dein englisches Wort... Beende mit „Stop“'
+                  : 'Spreche jetzt dein deutsches Wort... Beende mit „Halt“')}
           </div>
         )}
 
         {/* Manual Push-to-Talk / Control Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '12px' }}>
           {phase === 'idle' ? (
-            <button
-              type="button"
-              onClick={handleStartRecordingManual}
-              style={{
-                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '16px',
-                padding: '12px 24px',
-                fontSize: '14px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)'
-              }}
-            >
-              <span>🎙️</span>
-              <span>Jetzt Übersetzen (Manuell starten)</span>
-            </button>
+            <>
+              <button
+                type="button"
+                id="live-manual-de-btn"
+                onClick={() => handleStartRecordingManual('de_en')}
+                style={{
+                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '16px',
+                  padding: '12px 20px',
+                  fontSize: '14px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)'
+                }}
+              >
+                <span>🇩🇪</span>
+                <span>Übersetzen (DE ➔ EN)</span>
+              </button>
+
+              <button
+                type="button"
+                id="live-manual-en-btn"
+                onClick={() => handleStartRecordingManual('en_de')}
+                style={{
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '16px',
+                  padding: '12px 20px',
+                  fontSize: '14px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)'
+                }}
+              >
+                <span>🇬🇧</span>
+                <span>Translate (EN ➔ DE)</span>
+              </button>
+
+              {currentResult && (
+                <button
+                  type="button"
+                  id="live-manual-repeat-btn"
+                  onClick={handleRepeat}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    color: '#e4e4e7',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    borderRadius: '16px',
+                    padding: '12px 18px',
+                    fontSize: '14px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <span>🔁</span>
+                  <span>Wiederholen</span>
+                </button>
+              )}
+            </>
           ) : phase === 'recording' ? (
             <button
               type="button"
+              id="live-manual-stop-btn"
               onClick={handleStopRecordingManual}
               style={{
                 background: 'linear-gradient(135deg, #ef4444, #dc2626)',
@@ -1358,69 +2021,15 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
               }}
             >
               <span>🛑</span>
-              <span>Halt & Übersetzen</span>
+              <span>{direction === 'en_de' ? 'Stop & Übersetzen' : 'Halt & Übersetzen'}</span>
             </button>
           ) : null}
         </div>
 
-        {/* Word Type / Part-of-Speech Segmented Control */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '8px',
-          marginTop: '20px',
-          flexWrap: 'wrap'
-        }}>
-          <span style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-            Wortart:
-          </span>
-          <div style={{
-            display: 'inline-flex',
-            background: 'rgba(255, 255, 255, 0.05)',
-            padding: '4px',
-            borderRadius: '14px',
-            border: '1px solid rgba(255, 255, 255, 0.1)'
-          }}>
-            {[
-              { id: 'auto', label: 'Auto (Erkennen)', icon: '🔍' },
-              { id: 'verb', label: 'Verb', icon: '⚡', hint: 'Nur als Verb suchen/übersetzen (z.B. ansehen)' },
-              { id: 'noun', label: 'Nomen', icon: '📦', hint: 'Nur als Nomen suchen/übersetzen (z.B. das Ansehen)' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setPosFilter(tab.id)}
-                style={{
-                  background: posFilter === tab.id
-                    ? (tab.id === 'verb' ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' : tab.id === 'noun' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #8b5cf6, #6d28d9)')
-                    : 'transparent',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: posFilter === tab.id ? '#fff' : '#94a3b8',
-                  padding: '6px 14px',
-                  fontSize: '12px',
-                  fontWeight: posFilter === tab.id ? '800' : '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  boxShadow: posFilter === tab.id ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
-                  transition: 'all 0.15s ease'
-                }}
-                title={tab.hint}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Manual Text Input Bar */}
         <form onSubmit={handleManualSubmit} style={{
-          maxWidth: '540px',
-          margin: '20px auto 0',
+          maxWidth: '560px',
+          margin: '22px auto 0',
           display: 'flex',
           gap: '8px',
           background: 'rgba(255, 255, 255, 0.05)',
@@ -1432,7 +2041,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             type="text"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            placeholder={posFilter === 'verb' ? "Deutsches Verb eintippen (z.B. ansehen)..." : posFilter === 'noun' ? "Deutsches Nomen eintippen (z.B. Ansehen)..." : "Oder tippe deutsches Wort/Phrase hier..."}
+            placeholder="Wort oder Phrase eintippen (Deutsch oder Englisch)..."
             style={{
               flexGrow: 1,
               background: 'transparent',
@@ -1474,13 +2083,28 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
           boxShadow: '0 12px 36px rgba(0,0,0,0.4)',
           position: 'relative'
         }}>
+          {/* Top Bar of Card */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '800' }}>
-                  Deutsches Wort / Phrase
+                  {currentResult.direction === 'en_de' ? '🇬🇧 ➔ 🇩🇪 Übersetzung' : '🇩🇪 ➔ 🇬🇧 Übersetzung'}
                 </span>
-                {currentResult.pos && currentResult.pos !== 'other' && (
+                {currentResult.hasBothUsages ? (
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    padding: '3px 10px',
+                    borderRadius: '8px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(245, 158, 11, 0.25))',
+                    color: '#fef08a',
+                    border: '1px solid rgba(245, 158, 11, 0.5)'
+                  }}>
+                    ⚡ Verb & 📦 Nomen (Beide Verwendungen)
+                  </span>
+                ) : currentResult.pos && currentResult.pos !== 'other' && (
                   <span style={{
                     fontSize: '10px',
                     fontWeight: '800',
@@ -1496,8 +2120,9 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
                   </span>
                 )}
               </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
-                <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#fff', margin: 0, letterSpacing: '-0.5px' }}>
+                <h2 style={{ fontSize: '30px', fontWeight: '800', color: '#fff', margin: 0, letterSpacing: '-0.5px' }}>
                   {currentResult.german}
                 </h2>
                 {currentResult.isFromB1List ? (
@@ -1532,61 +2157,31 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
               </div>
             </div>
 
+            {/* Quick Actions Bar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {/* Quick Switch Part of Speech Button */}
+              {/* Wiederholen / Repeat Button */}
               <button
                 type="button"
-                onClick={() => {
-                  const isCurrentlyVerb = currentResult.pos === 'verb' || (currentResult.category === 'verbs' || currentResult.category === 'reflexive') || (!currentResult.german.toLowerCase().startsWith('der ') && !currentResult.german.toLowerCase().startsWith('die ') && !currentResult.german.toLowerCase().startsWith('das ') && currentResult.german.endsWith('en'));
-                  const newPos = isCurrentlyVerb ? 'noun' : 'verb';
-                  setPosFilter(newPos);
-                  translateWithGemini(currentResult.german, newPos);
-                }}
-                title="Als andere Wortart übersetzen"
+                id="live-card-repeat-btn"
+                onClick={handleRepeat}
+                title="Wiederholt Bedeutung und Beispielsatz (Voice: 'Wiederholen' oder 'Repeat')"
                 style={{
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(16, 185, 129, 0.25))',
+                  border: '1px solid rgba(59, 130, 246, 0.5)',
                   borderRadius: '12px',
-                  color: '#e2e8f0',
-                  padding: '8px 12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
+                  color: '#93c5fd',
+                  padding: '8px 14px',
+                  fontSize: '13px',
+                  fontWeight: '800',
                   cursor: 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
-                  transition: 'background 0.2s ease'
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
                 }}
               >
-                <span>🔄</span>
-                <span>
-                  {(currentResult.pos === 'verb' || (currentResult.category === 'verbs' || currentResult.category === 'reflexive') || (!currentResult.german.toLowerCase().startsWith('der ') && !currentResult.german.toLowerCase().startsWith('die ') && !currentResult.german.toLowerCase().startsWith('das ') && currentResult.german.endsWith('en')))
-                    ? 'Als Nomen übersetzen'
-                    : 'Als Verb übersetzen'}
-                </span>
-              </button>
-
-              {/* Audio Replay German */}
-              <button
-                type="button"
-                onClick={() => speakText(currentResult.german, 'de-DE')}
-                title="Deutsches Wort anhören"
-                style={{
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid rgba(59, 130, 246, 0.35)',
-                  borderRadius: '12px',
-                  color: '#93c5fd',
-                  padding: '8px 14px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <span>🔊</span>
-                <span>Deutsch</span>
+                <span>🔁</span>
+                <span>Wiederholen</span>
               </button>
 
               {/* Star / Add to My List */}
@@ -1614,113 +2209,312 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             </div>
           </div>
 
-          {/* English Translation Section */}
-          <div style={{
-            marginTop: '20px',
-            padding: '16px 20px',
-            borderRadius: '16px',
-            background: 'rgba(16, 185, 129, 0.12)',
-            border: '1px solid rgba(16, 185, 129, 0.35)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '12px'
-          }}>
-            <div>
-              <div style={{ fontSize: '11px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Englische Übersetzung
+          {/* DUAL USAGES DISPLAY (VERB CARD + NOUN CARD) */}
+          {currentResult.hasBothUsages && currentResult.verbUsage && currentResult.nounUsage ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+              gap: '16px',
+              marginTop: '20px'
+            }}>
+              {/* VERB USAGE CARD */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.35)',
+                borderRadius: '18px',
+                padding: '18px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    color: '#60a5fa',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    background: 'rgba(59, 130, 246, 0.2)',
+                    padding: '2px 8px',
+                    borderRadius: '6px'
+                  }}>
+                    ⚡ VERB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      speakText(currentResult.verbUsage.english, 'en-US', () => {
+                        setTimeout(() => speakText(currentResult.verbUsage.germanExample, 'de-DE'), 300);
+                      });
+                    }}
+                    title="Verb-Bedeutung & Beispielsatz vorlesen"
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.2)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      color: '#93c5fd',
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔊 Vorlesen
+                  </button>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '22px', fontWeight: '800', color: '#fff' }}>
+                    {currentResult.verbUsage.german}
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#34d399', marginTop: '2px' }}>
+                    {currentResult.verbUsage.english}
+                  </div>
+                </div>
+
+                {currentResult.verbUsage.germanExample && (
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    borderLeft: '3px solid #3b82f6',
+                    marginTop: '4px'
+                  }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#f3f4f6' }}>
+                      „{currentResult.verbUsage.germanExample}“
+                    </div>
+                    {currentResult.verbUsage.englishExample && (
+                      <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', marginTop: '4px' }}>
+                        "{currentResult.verbUsage.englishExample}"
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {currentResult.verbUsage.notes && (
+                  <div style={{ fontSize: '11px', color: '#93c5fd', opacity: 0.9 }}>
+                    💡 {currentResult.verbUsage.notes}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: '24px', fontWeight: '800', color: '#fff', marginTop: '4px' }}>
-                {currentResult.english}
+
+              {/* NOUN USAGE CARD */}
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                borderRadius: '18px',
+                padding: '18px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    color: '#fbbf24',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    background: 'rgba(245, 158, 11, 0.2)',
+                    padding: '2px 8px',
+                    borderRadius: '6px'
+                  }}>
+                    📦 NOMEN
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      speakText(currentResult.nounUsage.english, 'en-US', () => {
+                        setTimeout(() => speakText(currentResult.nounUsage.germanExample, 'de-DE'), 300);
+                      });
+                    }}
+                    title="Nomen-Bedeutung & Beispielsatz vorlesen"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.2)',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      color: '#fcd34d',
+                      borderRadius: '8px',
+                      padding: '4px 10px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔊 Vorlesen
+                  </button>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '22px', fontWeight: '800', color: '#fff' }}>
+                    {currentResult.nounUsage.german}
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#34d399', marginTop: '2px' }}>
+                    {currentResult.nounUsage.english}
+                  </div>
+                </div>
+
+                {currentResult.nounUsage.germanExample && (
+                  <div style={{
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
+                    borderLeft: '3px solid #f59e0b',
+                    marginTop: '4px'
+                  }}>
+                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#f3f4f6' }}>
+                      „{currentResult.nounUsage.germanExample}“
+                    </div>
+                    {currentResult.nounUsage.englishExample && (
+                      <div style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', marginTop: '4px' }}>
+                        "{currentResult.nounUsage.englishExample}"
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {currentResult.nounUsage.notes && (
+                  <div style={{ fontSize: '11px', color: '#fcd34d', opacity: 0.9 }}>
+                    💡 {currentResult.nounUsage.notes}
+                  </div>
+                )}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => speakText(currentResult.english, 'en-US')}
-              title="Englische Aussprache anhören"
-              style={{
-                background: 'rgba(16, 185, 129, 0.2)',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                borderRadius: '10px',
-                color: '#6ee7b7',
-                padding: '6px 12px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
+          ) : (
+            /* SINGLE USAGE CARD DISPLAY */
+            <>
+              {/* English Translation Section */}
+              <div style={{
+                marginTop: '20px',
+                padding: '16px 20px',
+                borderRadius: '16px',
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
-              }}
-            >
-              <span>🔊</span>
-              <span>English</span>
-            </button>
-          </div>
-
-          {/* German Example Sentence Section */}
-          {currentResult.germanExample && (
-            <div style={{
-              marginTop: '16px',
-              padding: '18px 20px',
-              borderRadius: '16px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '800' }}>
-                  Beispielsatz (Praxis / Podcast-Kontext)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => speakText(currentResult.germanExample, 'de-DE')}
-                  title="Beispielsatz anhören"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#38bdf8',
-                    cursor: 'pointer',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}
-                >
-                  <span>🔊</span>
-                  <span>Satz vorlesen</span>
-                </button>
-              </div>
-
-              <div style={{ fontSize: '17px', fontWeight: '700', color: '#f3f4f6', lineHeight: '1.45' }}>
-                „{currentResult.germanExample}“
-              </div>
-
-              {currentResult.englishExample && (
-                <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px', fontStyle: 'italic' }}>
-                  "{currentResult.englishExample}"
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#10b981', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                    Englische Übersetzung
+                  </div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: '#fff', marginTop: '4px' }}>
+                    {currentResult.english}
+                  </div>
                 </div>
-              )}
 
-              {currentResult.notes && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => speakText(currentResult.english, 'en-US')}
+                    title="Englische Aussprache anhören"
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid rgba(16, 185, 129, 0.4)',
+                      borderRadius: '10px',
+                      color: '#6ee7b7',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>🔊</span>
+                    <span>English</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => speakText(currentResult.german, 'de-DE')}
+                    title="Deutsche Aussprache anhören"
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.2)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      borderRadius: '10px',
+                      color: '#93c5fd',
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    <span>🔊</span>
+                    <span>Deutsch</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* German Example Sentence Section */}
+              {currentResult.germanExample && (
                 <div style={{
-                  marginTop: '12px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontSize: '12px',
-                  color: '#a78bfa',
-                  background: 'rgba(167, 139, 250, 0.1)',
-                  padding: '4px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(167, 139, 250, 0.25)'
+                  marginTop: '16px',
+                  padding: '18px 20px',
+                  borderRadius: '16px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)'
                 }}>
-                  <span>💡</span>
-                  <span>{currentResult.notes}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '800' }}>
+                      Beispielsatz (Praxis / Podcast-Kontext)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => speakText(currentResult.germanExample, 'de-DE')}
+                      title="Beispielsatz anhören"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#38bdf8',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <span>🔊</span>
+                      <span>Satz vorlesen</span>
+                    </button>
+                  </div>
+
+                  <div style={{ fontSize: '17px', fontWeight: '700', color: '#f3f4f6', lineHeight: '1.45' }}>
+                    „{currentResult.germanExample}“
+                  </div>
+
+                  {currentResult.englishExample && (
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '6px', fontStyle: 'italic' }}>
+                      "{currentResult.englishExample}"
+                    </div>
+                  )}
+
+                  {currentResult.notes && (
+                    <div style={{
+                      marginTop: '12px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      fontSize: '12px',
+                      color: '#a78bfa',
+                      background: 'rgba(167, 139, 250, 0.1)',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(167, 139, 250, 0.25)'
+                    }}>
+                      <span>💡</span>
+                      <span>{currentResult.notes}</span>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       )}
@@ -1839,8 +2633,8 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button
                       type="button"
-                      onClick={() => speakText(item.german, 'de-DE')}
-                      title="Anhören"
+                      onClick={() => speakResult(item)}
+                      title="Vorlesen (Wiederholen)"
                       style={{
                         background: 'rgba(255,255,255,0.06)',
                         border: 'none',
