@@ -80,6 +80,7 @@ export default function LiveTranslation({
   const directionRef = useRef('de_en');
   const recognitionLangRef = useRef('de-DE');
   const lastResultRef = useRef(null);
+  const recordingStartIndexRef = useRef(0);
 
   // Keep phaseRef & directionRef in sync with state
   useEffect(() => {
@@ -380,22 +381,35 @@ export default function LiveTranslation({
       text = text.replace(/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/gi, ' ');
     }
 
+    // 1. Strip leading trigger words
+    text = text.replace(/^\s*(?:bitte\s+)?(?:über|ueber|uber)\s*setz(?:en|e|t|ung|er)?\b\s*/gi, ' ');
+
+    // 2. Strip leading phone speaker acknowledgment echo ("In Bearbeitung" / "Bearbeitung")
+    text = text.replace(/^\s*(?:in\s+bearbeitung|bearbeitung)\b\s*/gi, ' ');
+
+    // 3. Strip trailing stop commands ("... Halt" / "... Stopp")
+    text = text.replace(/\b(?:halt|halte|stopp|stop|stoppen|fertig|ende|genug)\b\s*$/gi, ' ');
+
+    // 4. Strip repeat commands at boundaries
+    text = text.replace(/^\s*(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)\b\s*/gi, ' ');
+    text = text.replace(/\b(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)\b\s*$/gi, ' ');
+
     const cleanText = text
-      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:über|ueber|uber)\s*setz(?:en|e|t|ung|er)?(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:in\s+bearbeitung|bearbeitung|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/[.,;:!?]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+    // If remaining text was solely an echo or empty
+    if (/^(?:in\s+bearbeitung|bearbeitung|übersetzen|uebersetzen|ubersetzen|halt|stopp)$/i.test(cleanText)) {
+      return { cleanText: '', detectedPos };
+    }
 
     return { cleanText, detectedPos };
   };
 
   // ----------------------------------------------------
   // Clean English Text Extraction (Supports phrases 1 to 6 words)
+  // Preserves legitimate words like "progress", "stop", "hold" inside phrases
   // ----------------------------------------------------
   const extractEnglishPhraseAndPos = (rawText) => {
     if (!rawText) return { cleanText: '', detectedPos: null };
@@ -410,15 +424,28 @@ export default function LiveTranslation({
       text = text.replace(/\b(as\s+a?\s*noun|noun)\b/gi, ' ');
     }
 
+    // 1. Strip leading trigger words (e.g. "Translate make an appointment Stop")
+    text = text.replace(/^\s*(?:please\s+)?(?:translate|translation|translat|trenslate|trendslate)\b\s*/gi, ' ');
+
+    // 2. Strip leading phone speaker acknowledgment echo ("In Progress" / "In Process" / "Progress")
+    text = text.replace(/^\s*(?:in\s+progress|in\s+process|progress)\b\s*/gi, ' ');
+
+    // 3. Strip trailing stop commands (e.g. "... Stop" or "... Halt")
+    text = text.replace(/\b(?:stop|stopped|stopping|halt|done|finished)\b\s*$/gi, ' ');
+
+    // 4. Strip repeat commands at boundaries
+    text = text.replace(/^\s*(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again)\b\s*/gi, ' ');
+    text = text.replace(/\b(?:repeat(?:\s+that|\s+sentence)?|say\s+again)\b\s*$/gi, ' ');
+
     const cleanText = text
-      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:in\s+progress|progress|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:stop|stopped|stopping|halt|done|finished|hold|enough)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again)(?=\s|[.,;:!?]|$)/gi, ' ')
-      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/[.,;:!?]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+
+    // If remaining text was solely an echo or command keyword
+    if (/^(?:in\s+progress|in\s+process|progress|translate|stop|halt)$/i.test(cleanText)) {
+      return { cleanText: '', detectedPos };
+    }
 
     return { cleanText, detectedPos };
   };
@@ -644,19 +671,22 @@ Do NOT translate it as a verb.`;
 Your job is to translate spoken English words or phrases (1 to 6 words) into natural, idiomatic German, and provide an authentic, high-quality German example sentence with its English translation.
 
 CRITICAL RULES:
-1. Translate the English input into natural, accurate German:
+1. SPEECH-TO-TEXT PHONETIC ERROR RECONSTRUCTION:
+   The English input was captured via a microphone speech-to-text system and may contain phonetic misspellings, misrecognitions, split words, or non-native acoustic artifacts (for example: "a point meant" / "a point mend" -> "appointment", "the cision" / "die session" -> "decision", "sustain able" -> "sustainable", "chelendsch" -> "challenge", "look forward too" -> "look forward to", "in vironment" -> "environment", "oppurtunity" -> "opportunity", "re leible" -> "reliable", "com for table" -> "comfortable", "make a point ment" -> "make an appointment").
+   Intelligently reconstruct the user's intended authentic English word or phrase first, and output the correctly spelled English in the "english" field.
+2. Translate the reconstructed English input into natural, accurate German:
    - If the English input is a single noun, include the German definite article (der/die/das) and capitalize it (e.g. "decision" -> "die Entscheidung").
    - If the English input is a verb or phrasal verb, provide the German infinitive (e.g. "take care of" -> "sich kümmern um").
-   - If the English input is a short phrase or idiom (up to 6 words), provide the natural German idiomatic equivalent (e.g. "as soon as possible" -> "so bald wie möglich").
-2. ALWAYS provide an actual, authentic, everyday German sentence (B1/B2 level) demonstrating the true practical usage in daily life, work, travel, or conversations.
-3. NEVER generate generic, robotic, or meta sentences such as:
+   - If the English input is a short phrase or idiom (up to 6 words), provide the natural German idiomatic equivalent (e.g. "as soon as possible" -> "so bald wie möglich", "make an appointment" -> "einen Termin vereinbaren").
+3. ALWAYS provide an actual, authentic, everyday German sentence (B1/B2 level) demonstrating the true practical usage in daily life, work, travel, or conversations.
+4. NEVER generate generic, robotic, or meta sentences such as:
    - "Ich habe das Wort im Podcast gehört." (STRICTLY FORBIDDEN: never mention podcasts, radio, listening, or hearing words)
    - "Im Podcast wurde das Wort verwendet." (STRICTLY FORBIDDEN)
    - "Das Wort bedeutet..." or "Ich kenne dieses Wort." (STRICTLY FORBIDDEN)
-4. Always return a clean JSON object with this exact schema:
+5. Always return a clean JSON object with this exact schema:
 {
   "german": "The accurate German translation (with article 'der/die/das' if noun, or infinitive if verb, or natural phrase)",
-  "english": "The English word or phrase (cleaned/standardized)",
+  "english": "The reconstructed/corrected English word or phrase",
   "germanExample": "An authentic, natural B1/B2 German sentence using this German word/phrase in real-world context (DO NOT mention podcasts or hearing words)",
   "englishExample": "Accurate English translation of the German example sentence",
   "notes": "Helpful grammar or usage note (e.g. preposition, case, or context)",
@@ -689,9 +719,9 @@ Always return a clean JSON object with this exact schema:
 }${posInstruction}`;
 
     const promptText = dir === 'en_de'
-      ? `English input captured from speech (1-6 words): "${cleanInput}"
+      ? `English input captured from speech (1-6 words, possibly with speech-to-text phonetic artifacts): "${cleanInput}"
 ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}
-Translate to German and provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`
+Reconstruct intended English if needed, translate to German, and provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`
       : `German input captured from speech: "${cleanInput}"
 ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}
 Provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`;
@@ -849,18 +879,20 @@ Provide an authentic, natural German example sentence in a real-world scenario (
   // ----------------------------------------------------
   // Speech Recognition Event Engine
   // ----------------------------------------------------
-  const processGermanSpeech = useCallback((rawTranscript) => {
+  const processGermanSpeech = useCallback((rawTranscript, currentResultCount = 0) => {
     if (!rawTranscript) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
 
-    // Ignore phone's own speaker acknowledgments if picked up
+    // Ignore phone's own speaker acknowledgments if picked up SOLELY
+    const cleanAck = lower.replace(/[.,;:!?]/g, '').trim();
     if (
-      compact.includes('inbearbeitung') ||
-      lower.includes('in bearbeitung') ||
-      compact.includes('inprogress') ||
-      lower.includes('in progress')
+      cleanAck === 'in bearbeitung' ||
+      cleanAck === 'bearbeitung' ||
+      cleanAck === 'in progress' ||
+      cleanAck === 'progress' ||
+      cleanAck === 'in process'
     ) {
       return;
     }
@@ -873,8 +905,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       compact.includes('ubersetz');
 
     const hasEnglishTrigger =
-      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/i.test(text) ||
-      lower.includes('translate');
+      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation|translat|trenslate|trendslate|trans\s*late)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      lower.includes('translate') ||
+      lower.includes('translat') ||
+      lower.includes('trenslat');
 
     // Flexible repeat detection ("Wiederholen" for DE, "Repeat" for EN)
     const hasGermanRepeat =
@@ -888,17 +922,14 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
     const hasRepeat = hasGermanRepeat || hasEnglishRepeat;
 
-    // Flexible stop detection ("Halt" for DE, "Stop" for EN, both accepted as safety)
+    // Flexible stop detection: Standalone or at the end of utterance
     const hasGermanStop =
-      /(?:^|\s|[.,;:!?])(halt|halte|stopp|fertig|ende|genug)(?=\s|[.,;:!?]|$)/i.test(text) ||
-      lower === 'halt' ||
-      lower === 'stopp' ||
-      lower === 'fertig';
+      /\b(halt|halte|stopp|fertig|ende|genug)\b[.!]?\s*$/i.test(text) ||
+      /^(halt|halte|stopp|fertig|ende|genug)[.!]?$/i.test(lower);
 
     const hasEnglishStop =
-      /(?:^|\s|[.,;:!?])(stop|stopped|stopping|done|finished|enough)(?=\s|[.,;:!?]|$)/i.test(text) ||
-      lower === 'stop' ||
-      lower === 'done';
+      /\b(stop|stopped|stopping|done|finished)\b[.!]?\s*$/i.test(text) ||
+      /^(stop|stopped|done|finished)[.!]?$/i.test(lower);
 
     const hasTrigger = hasGermanTrigger || hasEnglishTrigger;
     const hasStop = hasGermanStop || hasEnglishStop;
@@ -1001,10 +1032,12 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
         if (targetDir === 'en_de') {
           setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
+          recordingStartIndexRef.current = currentResultCount;
           switchRecognitionLang('en-US');
           speakText('In Progress', 'en-US');
         } else {
           setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
+          recordingStartIndexRef.current = currentResultCount;
           switchRecognitionLang('de-DE');
           speakText('In Bearbeitung', 'de-DE');
         }
@@ -1105,16 +1138,17 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.maxAlternatives = 3;
+        recognition.maxAlternatives = 5;
         recognition.lang = recognitionLangRef.current || 'de-DE'; // Dynamic speech recognition engine
+        recordingStartIndexRef.current = 0;
 
         recognition.onresult = (event) => {
+          // 1. Inspect alternatives in newest results for commands / triggers
+          let latestCandidate = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Check all alternatives and prioritize trigger/stop/repeat words
-            let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
-              if (!bestTranscript) bestTranscript = candidate;
+              if (!latestCandidate) latestCandidate = candidate;
               const candLower = candidate.toLowerCase();
               if (
                 candLower.includes('übersetz') ||
@@ -1124,19 +1158,38 @@ Provide an authentic, natural German example sentence in a real-world scenario (
                 candLower.includes('stopp') ||
                 candLower.includes('stop') ||
                 candLower.includes('translate') ||
+                candLower.includes('translat') ||
+                candLower.includes('trenslate') ||
                 candLower.includes('wiederhol') ||
                 candLower.includes('repeat')
               ) {
-                bestTranscript = candidate;
+                latestCandidate = candidate;
                 break;
               }
             }
+          }
 
-            if (bestTranscript) {
-              setLastHeardLive(bestTranscript);
-              if (processGermanSpeechRef.current) {
-                processGermanSpeechRef.current(bestTranscript);
+          // 2. Compute cumulative transcript across all segments in the active recording session
+          const startIdx = Math.max(0, recordingStartIndexRef.current || 0);
+          let cumulativeTranscript = '';
+          for (let i = startIdx; i < event.results.length; i++) {
+            if (event.results[i] && event.results[i][0]) {
+              const seg = event.results[i][0].transcript.trim();
+              if (seg) {
+                cumulativeTranscript += (cumulativeTranscript ? ' ' : '') + seg;
               }
+            }
+          }
+
+          // In recording phase, use cumulative transcript so words spoken across pauses are never lost
+          const textToProcess = (phaseRef.current === 'recording' && cumulativeTranscript)
+            ? cumulativeTranscript
+            : latestCandidate;
+
+          if (textToProcess) {
+            setLastHeardLive(textToProcess);
+            if (processGermanSpeechRef.current) {
+              processGermanSpeechRef.current(textToProcess, event.results.length);
             }
           }
         };
@@ -1155,7 +1208,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               if (!isStoppingManually && isMountedRef.current) {
                 startRecognition();
               }
-            }, 180);
+            }, 40);
           }
         };
 
@@ -1196,6 +1249,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     setPhase('recording');
     setCurrentRecordingText('');
     currentRecordingTextRef.current = '';
+    recordingStartIndexRef.current = 0;
     detectedPosRef.current = null;
     setLiveTranscript('');
     if (dir === 'en_de') {
