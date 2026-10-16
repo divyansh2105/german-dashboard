@@ -73,6 +73,7 @@ export default function LiveTranslation({
   const recordedChunksRef = useRef([]);
   const currentRecordingTextRef = useRef('');
   const detectedPosRef = useRef(null);
+  const lastTriggerTimeRef = useRef(0);
   const phaseRef = useRef('idle');
 
   // Keep phaseRef in sync with phase state
@@ -639,6 +640,13 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       if (hasTrigger) {
+        // Prevent duplicate trigger execution from rapid interim + final speech results
+        const now = Date.now();
+        if (now - lastTriggerTimeRef.current < 2000) {
+          return;
+        }
+        lastTriggerTimeRef.current = now;
+
         // Cancel any previous TTS immediately
         if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
@@ -681,14 +689,8 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     // Empty by default, NEVER auto-submits until user says "Halt"
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
-      // If user says "Übersetze" again while recording, reset buffer and re-arm
+      // If trailing or repeated trigger events arrive while recording, do not speak again
       if (hasTrigger && !hasStop) {
-        setLiveTranscript('');
-        setCurrentRecordingText('');
-        currentRecordingTextRef.current = '';
-        detectedPosRef.current = null;
-        setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
-        speakText('In Bearbeitung', 'de-DE');
         return;
       }
 
