@@ -30,8 +30,9 @@ export default function LiveTranslation({
   const [liveTranscript, setLiveTranscript] = useState('');
   const [currentRecordingText, setCurrentRecordingText] = useState('');
   const [currentResult, setCurrentResult] = useState(null);
-  const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_example' | 'acknowledgment'
-  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“, um zu starten.');
+  const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_translation' | 'de_example'
+  const [direction, setDirection] = useState('de_en'); // 'de_en' (DE -> EN) | 'en_de' (EN -> DE)
+  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
   const [lastHeardLive, setLastHeardLive] = useState('');
   const [fallbackNotice, setFallbackNotice] = useState('');
   const [availableModels, setAvailableModels] = useState(() => getStoredAvailableModels());
@@ -75,11 +76,17 @@ export default function LiveTranslation({
   const detectedPosRef = useRef(null);
   const lastTriggerTimeRef = useRef(0);
   const phaseRef = useRef('idle');
+  const directionRef = useRef('de_en');
+  const recognitionLangRef = useRef('de-DE');
 
-  // Keep phaseRef in sync with phase state
+  // Keep phaseRef & directionRef in sync with state
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
+
+  useEffect(() => {
+    directionRef.current = direction;
+  }, [direction]);
 
   // Query live available models on mount / key change
   useEffect(() => {
@@ -235,41 +242,99 @@ export default function LiveTranslation({
     }
   }, []);
 
-  // Sequential speaker for translation results (English meaning -> brief pause -> German example)
-  const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
-    if (!enMeaning && !deSentence) {
+  // Switch speech recognition language dynamically ('de-DE' <-> 'en-US')
+  const switchRecognitionLang = useCallback((targetLang) => {
+    if (recognitionLangRef.current === targetLang) return;
+    recognitionLangRef.current = targetLang;
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.lang = targetLang;
+        recognitionRef.current.abort();
+      } catch (e) {
+        console.warn('Could not switch recognition lang:', e);
+      }
+    }
+  }, []);
+
+  // ----------------------------------------------------
+  // Sequential Speaker for Translation Results
+  // DE ➔ EN: Speaks English translation ('en-US') -> German example ('de-DE')
+  // EN ➔ DE: Speaks German translation ('de-DE') -> German example ('de-DE')
+  // ----------------------------------------------------
+  const speakSequentialResult = useCallback((res, dir = 'de_en', onComplete) => {
+    if (!res) {
       if (onComplete) onComplete();
       return;
     }
 
-    setPhase('speaking');
-    setSpeakingSubPhase('en');
-    setStatusMessage(`Lese Übersetzung vor: „${enMeaning}“`);
+    if (dir === 'en_de') {
+      // EN -> DE: Read German translation first, then German example sentence
+      setPhase('speaking');
+      setSpeakingSubPhase('de_translation');
+      setStatusMessage(`Lese deutsche Übersetzung vor: „${res.german}“`);
 
-    speakText(enMeaning, 'en-US', () => {
-      if (!isMountedRef.current) return;
-      if (deSentence) {
-        setTimeout(() => {
-          if (!isMountedRef.current) return;
-          setSpeakingSubPhase('de_example');
-          setStatusMessage(`Lese Beispielsatz vor: „${deSentence}“`);
-
-          speakText(deSentence, 'de-DE', () => {
+      speakText(res.german, 'de-DE', () => {
+        if (!isMountedRef.current) return;
+        if (res.germanExample) {
+          setTimeout(() => {
             if (!isMountedRef.current) return;
-            setSpeakingSubPhase(null);
-            setPhase('idle');
-            setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-            if (onComplete) onComplete();
-          });
-        }, 320);
-      } else {
-        setSpeakingSubPhase(null);
-        setPhase('idle');
-        setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-        if (onComplete) onComplete();
-      }
-    });
-  }, [speakText]);
+            setSpeakingSubPhase('de_example');
+            setStatusMessage(`Lese Beispielsatz vor: „${res.germanExample}“`);
+
+            speakText(res.germanExample, 'de-DE', () => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase(null);
+              setPhase('idle');
+              switchRecognitionLang('de-DE');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              if (onComplete) onComplete();
+            });
+          }, 320);
+        } else {
+          setSpeakingSubPhase(null);
+          setPhase('idle');
+          switchRecognitionLang('de-DE');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          if (onComplete) onComplete();
+        }
+      });
+    } else {
+      // DE -> EN: Read English translation first, then German example sentence
+      setPhase('speaking');
+      setSpeakingSubPhase('en');
+      setStatusMessage(`Lese Übersetzung vor: „${res.english}“`);
+
+      speakText(res.english, 'en-US', () => {
+        if (!isMountedRef.current) return;
+        if (res.germanExample) {
+          setTimeout(() => {
+            if (!isMountedRef.current) return;
+            setSpeakingSubPhase('de_example');
+            setStatusMessage(`Lese Beispielsatz vor: „${res.germanExample}“`);
+
+            speakText(res.germanExample, 'de-DE', () => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase(null);
+              setPhase('idle');
+              switchRecognitionLang('de-DE');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              if (onComplete) onComplete();
+            });
+          }, 320);
+        } else {
+          setSpeakingSubPhase(null);
+          setPhase('idle');
+          switchRecognitionLang('de-DE');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          if (onComplete) onComplete();
+        }
+      });
+    }
+  }, [speakText, switchRecognitionLang]);
+
+  const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
+    speakSequentialResult({ english: enMeaning, germanExample: deSentence }, 'de_en', onComplete);
+  }, [speakSequentialResult]);
 
   // ----------------------------------------------------
   // Keep-Awake Toggle (Prevents iPhone Auto-Lock in Pocket)
@@ -291,7 +356,7 @@ export default function LiveTranslation({
   // ----------------------------------------------------
   // Clean German Text Extraction & Spoken POS Recognition
   // ----------------------------------------------------
-  const extractSpokenPhraseAndPos = (rawText) => {
+  const extractGermanPhraseAndPos = (rawText) => {
     if (!rawText) return { cleanText: '', detectedPos: null };
     let detectedPos = null;
     let text = rawText;
@@ -299,10 +364,10 @@ export default function LiveTranslation({
     // Check for spoken POS qualifiers (e.g. "Verb ansehen", "ansehen als Verb", "Nomen ansehen", "Substantiv")
     if (/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/i.test(text)) {
       detectedPos = 'verb';
-      text = text.replace(/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/gi, '');
+      text = text.replace(/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/gi, ' ');
     } else if (/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/i.test(text)) {
       detectedPos = 'noun';
-      text = text.replace(/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/gi, '');
+      text = text.replace(/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/gi, ' ');
     }
 
     const cleanText = text
@@ -317,14 +382,45 @@ export default function LiveTranslation({
     return { cleanText, detectedPos };
   };
 
+  // ----------------------------------------------------
+  // Clean English Text Extraction (Supports phrases 1 to 6 words)
+  // ----------------------------------------------------
+  const extractEnglishPhraseAndPos = (rawText) => {
+    if (!rawText) return { cleanText: '', detectedPos: null };
+    let detectedPos = null;
+    let text = rawText;
+
+    if (/\b(as\s+a?\s*verb|verb)\b/i.test(text)) {
+      detectedPos = 'verb';
+      text = text.replace(/\b(as\s+a?\s*verb|verb)\b/gi, ' ');
+    } else if (/\b(as\s+a?\s*noun|noun)\b/i.test(text)) {
+      detectedPos = 'noun';
+      text = text.replace(/\b(as\s+a?\s*noun|noun)\b/gi, ' ');
+    }
+
+    const cleanText = text
+      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:in\s+progress|progress|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:stop|stopped|stopping|halt|done|finished|hold|enough)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/[.,;:!?]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return { cleanText, detectedPos };
+  };
+
+  const extractSpokenPhraseAndPos = (rawText, dir = 'de_en') => {
+    return dir === 'en_de' ? extractEnglishPhraseAndPos(rawText) : extractGermanPhraseAndPos(rawText);
+  };
+
   const cleanSpokenPhrase = (rawText) => {
-    return extractSpokenPhraseAndPos(rawText).cleanText;
+    return extractSpokenPhraseAndPos(rawText, directionRef.current || 'de_en').cleanText;
   };
 
   // ----------------------------------------------------
   // Local B1 Vocabulary Search (Checks verbs, nouns, conjugations)
   // ----------------------------------------------------
-  const searchLocalVocab = useCallback((query, targetPos = 'auto') => {
+  const searchLocalVocab = useCallback((query, targetPos = 'auto', dir = 'de_en') => {
     if (!query || !vocabData) return null;
     const cleanQ = query.toLowerCase().trim();
     if (!cleanQ) return null;
@@ -338,6 +434,33 @@ export default function LiveTranslation({
         .trim();
     };
 
+    // If searching English to German:
+    if (dir === 'en_de') {
+      const qWithoutTo = cleanQ.replace(/^(to)\s+/i, '').trim();
+      const categoriesToSearch = ['verbs', 'nouns', 'adjectives', 'connectors', 'reflexive'];
+
+      const getItemsForCategory = (cat) => {
+        if (Array.isArray(vocabData)) {
+          return vocabData.filter(item => (item.category || '').toLowerCase() === cat);
+        }
+        return Array.isArray(vocabData[cat]) ? vocabData[cat] : [];
+      };
+
+      for (const cat of categoriesToSearch) {
+        const items = getItemsForCategory(cat);
+        const match = items.find(item => {
+          if (!item.meaning) return false;
+          const cleanMeaning = item.meaning.toLowerCase().replace(/^(to)\s+/i, '').trim();
+          if (cleanMeaning === qWithoutTo) return true;
+          const parts = cleanMeaning.split(/[,;\/]/).map(p => p.trim());
+          return parts.includes(qWithoutTo);
+        });
+        if (match) return { ...match, category: cat };
+      }
+      return null;
+    }
+
+    // Standard German to English search:
     // Determine category search order based on targetPos
     // Categories available in vocabData: nouns, verbs, adjectives, connectors, reflexive
     let categoriesToSearch = [];
@@ -414,31 +537,36 @@ export default function LiveTranslation({
 
   // ----------------------------------------------------
   // Translation Handler:
+  // ----------------------------------------------------
+  // Translation Handler (Bidirectional: DE -> EN and EN -> DE)
   // 1. Checks B1 Wordlist FIRST -> If present, returns immediately without Gemini query!
   // 2. Otherwise calls Gemini with explicit POS constraints & fallback models
+  // 3. Supports 1 to 6 word English phrases for EN -> DE
   // ----------------------------------------------------
-  const translateWithGemini = async (phraseToTranslate, posOverride = null) => {
+  const translateWithDirection = async (phraseToTranslate, dir = 'de_en', posOverride = null) => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    const { cleanText: cleanInput, detectedPos: spokenPos } = extractSpokenPhraseAndPos(phraseToTranslate);
+    const { cleanText: cleanInput, detectedPos: spokenPos } = extractSpokenPhraseAndPos(phraseToTranslate, dir);
     const effectivePos = posOverride || spokenPos || posFilter;
 
     if (!cleanInput) {
-      speakText('Kein deutsches Wort erkannt.', 'de-DE', () => {
+      const errMsg = dir === 'en_de' ? 'No English phrase detected.' : 'Kein deutsches Wort erkannt.';
+      const errLang = dir === 'en_de' ? 'en-US' : 'de-DE';
+      speakText(errMsg, errLang, () => {
         setPhase('idle');
-        setStatusMessage('Bereit. Sage „Übersetze“, um zu starten.');
+        switchRecognitionLang('de-DE');
+        setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
       });
       return;
     }
 
-    // If spoken POS detected, update filter state for UI visibility
     if (spokenPos) {
       setPosFilter(spokenPos);
     }
 
     // ----------------------------------------------------
-    // STEP 1: FAST PATH - CHECK B1 WORDLIST FIRST (NO GEMINI CALL)
+    // STEP 1: FAST PATH - CHECK B1 WORDLIST FIRST
     // ----------------------------------------------------
-    const localMatch = searchLocalVocab(cleanInput, effectivePos);
+    const localMatch = searchLocalVocab(cleanInput, effectivePos, dir);
     if (localMatch) {
       const primaryExample = localMatch.examples?.[0];
       const germanEx = primaryExample?.de || `Beispielsatz: „${localMatch.word}“ ist ein wichtiges B1-Wort.`;
@@ -449,7 +577,7 @@ export default function LiveTranslation({
       const b1Result = {
         id: Date.now(),
         german: localMatch.word,
-        english: localMatch.meaning || 'Bedeutung im B1-Wortschatz',
+        english: localMatch.meaning || (dir === 'en_de' ? cleanInput : 'Bedeutung im B1-Wortschatz'),
         germanExample: germanEx,
         englishExample: englishEx,
         notes: localMatch.conjugation || localMatch.plural || (localMatch.category ? `B1 Wortschatz (${localMatch.category})` : 'B1 Wortschatz'),
@@ -464,17 +592,21 @@ export default function LiveTranslation({
       setCurrentResult(b1Result);
       setHistory(prev => [b1Result, ...prev]);
 
-      // Speak Aloud: English translation first, then German example sentence
-      speakSequentialTranslation(b1Result.english, b1Result.germanExample);
+      // Speak Aloud sequentially based on direction
+      speakSequentialResult(b1Result, dir);
       return; // EXIT EARLY! Zero Gemini API calls required!
     }
 
     // ----------------------------------------------------
-    // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI WITH POS CONSTRAINTS
+    // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI
     // ----------------------------------------------------
     setPhase('processing');
-    const posHintGerman = effectivePos === 'verb' ? ' (als Verb)' : effectivePos === 'noun' ? ' (als Nomen)' : '';
-    setStatusMessage(`Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“${posHintGerman}...`);
+    const posHint = effectivePos === 'verb' ? ' (als Verb)' : effectivePos === 'noun' ? ' (als Nomen)' : '';
+    if (dir === 'en_de') {
+      setStatusMessage(`Gemini übersetzt: „${cleanInput}“${posHint} ins Deutsche...`);
+    } else {
+      setStatusMessage(`Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“${posHint}...`);
+    }
 
     let posInstruction = '';
     if (effectivePos === 'verb') {
@@ -482,7 +614,7 @@ export default function LiveTranslation({
 CRITICAL POS SPECIFICATION:
 The user explicitly specified this is a VERB.
 Translate and output the word in its base infinitive verb form (lowercase, e.g. "ansehen" = "to look at / to watch").
-Do NOT translate it as the noun "das Ansehen" (reputation/prestige).`;
+Do NOT translate it as a noun.`;
     } else if (effectivePos === 'noun') {
       posInstruction = `
 CRITICAL POS SPECIFICATION:
@@ -491,7 +623,30 @@ Translate and output the word as a NOUN with its German definite article (der/di
 Do NOT translate it as a verb.`;
     }
 
-    const systemInstruction = `You are an expert native German language teacher and B1/B2 vocabulary coach.
+    const systemInstruction = dir === 'en_de'
+      ? `You are an expert native German language teacher and translator (B1/B2 level).
+Your job is to translate spoken English words or phrases (1 to 6 words) into natural, idiomatic German, and provide an authentic, high-quality German example sentence with its English translation.
+
+CRITICAL RULES:
+1. Translate the English input into natural, accurate German:
+   - If the English input is a single noun, include the German definite article (der/die/das) and capitalize it (e.g. "decision" -> "die Entscheidung").
+   - If the English input is a verb or phrasal verb, provide the German infinitive (e.g. "take care of" -> "sich kümmern um").
+   - If the English input is a short phrase or idiom (up to 6 words), provide the natural German idiomatic equivalent (e.g. "as soon as possible" -> "so bald wie möglich").
+2. ALWAYS provide an actual, authentic, everyday German sentence (B1/B2 level) demonstrating the true practical usage in daily life, work, travel, or conversations.
+3. NEVER generate generic, robotic, or meta sentences such as:
+   - "Ich habe das Wort im Podcast gehört." (STRICTLY FORBIDDEN: never mention podcasts, radio, listening, or hearing words)
+   - "Im Podcast wurde das Wort verwendet." (STRICTLY FORBIDDEN)
+   - "Das Wort bedeutet..." or "Ich kenne dieses Wort." (STRICTLY FORBIDDEN)
+4. Always return a clean JSON object with this exact schema:
+{
+  "german": "The accurate German translation (with article 'der/die/das' if noun, or infinitive if verb, or natural phrase)",
+  "english": "The English word or phrase (cleaned/standardized)",
+  "germanExample": "An authentic, natural B1/B2 German sentence using this German word/phrase in real-world context (DO NOT mention podcasts or hearing words)",
+  "englishExample": "Accurate English translation of the German example sentence",
+  "notes": "Helpful grammar or usage note (e.g. preposition, case, or context)",
+  "pos": "verb | noun | adjective | phrase | other"
+}${posInstruction}`
+      : `You are an expert native German language teacher and B1/B2 vocabulary coach.
 Your job is to translate spoken German words or phrases into clear, natural English and provide an authentic, high-quality German example sentence.
 
 CRITICAL RULES FOR "germanExample" AND "englishExample":
@@ -517,7 +672,11 @@ Always return a clean JSON object with this exact schema:
   "pos": "verb | noun | adjective | other"
 }${posInstruction}`;
 
-    const promptText = `German input captured from speech: "${cleanInput}"
+    const promptText = dir === 'en_de'
+      ? `English input captured from speech (1-6 words): "${cleanInput}"
+${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}
+Translate to German and provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`
+      : `German input captured from speech: "${cleanInput}"
 ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}
 Provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`;
 
@@ -569,43 +728,57 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     }
 
     // High quality fallback if Gemini fails or is offline
-    if (!parsed || !parsed.english) {
-      // Fallback to free public translation API
+    if (!parsed || (dir === 'en_de' ? !parsed.german : !parsed.english)) {
+      const langpair = dir === 'en_de' ? 'en|de' : 'de|en';
       try {
-        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=de|en`);
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=${langpair}`);
         const data = await res.json();
         const translation = data?.responseData?.translatedText || cleanInput;
 
         let smartGermanExample = '';
         let smartEnglishExample = '';
-        const isLikelyVerb = effectivePos === 'verb' || cleanInput.toLowerCase().endsWith('en');
-        const isLikelyNoun = effectivePos === 'noun' || /^(der|die|das)\s+/i.test(cleanInput);
 
-        if (isLikelyVerb) {
-          smartGermanExample = `Wir müssen das Problem sorgfältig ${cleanInput}, um eine gute Lösung zu finden.`;
-          smartEnglishExample = `We need to carefully ${translation} the problem to find a good solution.`;
-        } else if (isLikelyNoun) {
-          smartGermanExample = `Das ist ein wichtiger Punkt für ${cleanInput} in unserem Projekt.`;
-          smartEnglishExample = `That is an important point for ${translation} in our project.`;
+        if (dir === 'en_de') {
+          smartGermanExample = `Wir verwenden „${translation}“ häufig in diesem Zusammenhang.`;
+          smartEnglishExample = `We often use "${cleanInput}" in this context.`;
+          parsed = {
+            german: translation,
+            english: cleanInput,
+            germanExample: smartGermanExample,
+            englishExample: smartEnglishExample,
+            notes: 'Automatische Schnellübersetzung',
+            pos: effectivePos !== 'auto' ? effectivePos : 'phrase'
+          };
         } else {
-          smartGermanExample = `In der Praxis spielt „${cleanInput}“ eine entscheidende Rolle.`;
-          smartEnglishExample = `In practice, "${translation}" plays a decisive role.`;
-        }
+          const isLikelyVerb = effectivePos === 'verb' || cleanInput.toLowerCase().endsWith('en');
+          const isLikelyNoun = effectivePos === 'noun' || /^(der|die|das)\s+/i.test(cleanInput);
 
-        parsed = {
-          german: cleanInput,
-          english: translation,
-          germanExample: smartGermanExample,
-          englishExample: smartEnglishExample,
-          notes: 'Automatische Schnellübersetzung',
-          pos: effectivePos !== 'auto' ? effectivePos : (isLikelyNoun ? 'noun' : isLikelyVerb ? 'verb' : 'other')
-        };
+          if (isLikelyVerb) {
+            smartGermanExample = `Wir müssen das Problem sorgfältig ${cleanInput}, um eine gute Lösung zu finden.`;
+            smartEnglishExample = `We need to carefully ${translation} the problem to find a good solution.`;
+          } else if (isLikelyNoun) {
+            smartGermanExample = `Das ist ein wichtiger Punkt für ${cleanInput} in unserem Projekt.`;
+            smartEnglishExample = `That is an important point for ${translation} in our project.`;
+          } else {
+            smartGermanExample = `In der Praxis spielt „${cleanInput}“ eine entscheidende Rolle.`;
+            smartEnglishExample = `In practice, "${translation}" plays a decisive role.`;
+          }
+
+          parsed = {
+            german: cleanInput,
+            english: translation,
+            germanExample: smartGermanExample,
+            englishExample: smartEnglishExample,
+            notes: 'Automatische Schnellübersetzung',
+            pos: effectivePos !== 'auto' ? effectivePos : (isLikelyNoun ? 'noun' : isLikelyVerb ? 'verb' : 'other')
+          };
+        }
       } catch (e) {
         parsed = {
-          german: cleanInput,
-          english: 'Translation unavailable',
-          germanExample: `Können Sie „${cleanInput}“ bitte im Satz wiederholen?`,
-          englishExample: `Could you please repeat "${cleanInput}" in a sentence?`,
+          german: dir === 'en_de' ? cleanInput : cleanInput,
+          english: dir === 'en_de' ? cleanInput : 'Translation unavailable',
+          germanExample: `Können Sie das bitte im Satz wiederholen?`,
+          englishExample: `Could you please repeat that in a sentence?`,
           notes: 'Bitte Netzwerkverbindung prüfen',
           pos: effectivePos !== 'auto' ? effectivePos : 'other'
         };
@@ -615,7 +788,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     // Safety guard: ensure no meta "podcast" sentence ever slips through
     if (parsed && parsed.germanExample && /podcast/i.test(parsed.germanExample)) {
       const gWord = parsed.german || cleanInput;
-      const eWord = parsed.english || 'this';
+      const eWord = parsed.english || cleanInput;
       if (parsed.pos === 'verb' || gWord.endsWith('en')) {
         parsed.germanExample = `Wir müssen das Problem sorgfältig ${gWord}, um eine Lösung zu finden.`;
         parsed.englishExample = `We need to carefully ${eWord} the problem to find a solution.`;
@@ -633,7 +806,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     const newResult = {
       id: Date.now(),
       german: parsed.german || cleanInput,
-      english: parsed.english || 'Unbekannt',
+      english: parsed.english || (dir === 'en_de' ? cleanInput : 'Unbekannt'),
       germanExample: parsed.germanExample || '',
       englishExample: parsed.englishExample || '',
       notes: parsed.notes || '',
@@ -647,8 +820,12 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     setCurrentResult(newResult);
     setHistory(prev => [newResult, ...prev]);
 
-    // Speak Aloud: English translation first, then German example sentence
-    speakSequentialTranslation(newResult.english, newResult.germanExample);
+    // Speak Aloud sequentially based on direction
+    speakSequentialResult(newResult, dir);
+  };
+
+  const translateWithGemini = (phraseToTranslate, posOverride = null) => {
+    return translateWithDirection(phraseToTranslate, directionRef.current || 'de_en', posOverride);
   };
 
   // ----------------------------------------------------
@@ -660,31 +837,44 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
 
-    // Ignore phone's own speaker acknowledgment if picked up
-    if (compact.includes('inbearbeitung') || lower.includes('in bearbeitung')) {
+    // Ignore phone's own speaker acknowledgments if picked up
+    if (
+      compact.includes('inbearbeitung') ||
+      lower.includes('in bearbeitung') ||
+      compact.includes('inprogress') ||
+      lower.includes('in progress')
+    ) {
       return;
     }
 
-    // Flexible trigger detection ("Übersetze", "Über setze", "Übersetzen", "Translate", "Übersetzung")
-    const hasTrigger =
+    // Flexible trigger detection ("Übersetze" for DE->EN, "Translate" for EN->DE)
+    const hasGermanTrigger =
       /(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:über|ueber|uber)\s*setz(?:en|e|t|ung|er)?(?=\s|[.,;:!?]|$)/i.test(text) ||
-      /(?:^|\s|[.,;:!?])(?:translate|translation)(?=\s|[.,;:!?]|$)/i.test(text) ||
       compact.includes('übersetz') ||
       compact.includes('uebersetz') ||
-      compact.includes('ubersetz') ||
+      compact.includes('ubersetz');
+
+    const hasEnglishTrigger =
+      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/i.test(text) ||
       lower.includes('translate');
 
-    // Flexible stop detection ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug")
-    const hasStop =
-      /(?:^|\s|[.,;:!?])(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)(?=\s|[.,;:!?]|$)/i.test(text) ||
+    // Flexible stop detection ("Halt" for DE, "Stop" for EN, both accepted as safety)
+    const hasGermanStop =
+      /(?:^|\s|[.,;:!?])(halt|halte|stopp|fertig|ende|genug)(?=\s|[.,;:!?]|$)/i.test(text) ||
       lower === 'halt' ||
       lower === 'stopp' ||
-      lower === 'stop' ||
       lower === 'fertig';
 
+    const hasEnglishStop =
+      /(?:^|\s|[.,;:!?])(stop|stopped|stopping|done|finished|enough)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      lower === 'stop' ||
+      lower === 'done';
+
+    const hasTrigger = hasGermanTrigger || hasEnglishTrigger;
+    const hasStop = hasGermanStop || hasEnglishStop;
+
     // ----------------------------------------------------
-    // State 1: IDLE or SPEAKING (Trigger word "Übersetze" starts new session)
-    // Works reliably whether idle OR recovering from speech!
+    // State 1: IDLE or SPEAKING (Trigger starts new session)
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       if (hasTrigger) {
@@ -702,39 +892,56 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        // Check if user spoke entire command in one single breath: "Übersetze [word] Halt"
+        const targetDir = hasEnglishTrigger ? 'en_de' : 'de_en';
+        setDirection(targetDir);
+        directionRef.current = targetDir;
+
+        // Check if user spoke entire command in one single breath: "Translate [phrase] Stop" or "Übersetze [word] Halt"
         if (hasStop) {
-          const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text);
+          const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text, targetDir);
           if (phrase) {
             setPhase('recording');
             currentRecordingTextRef.current = phrase;
             detectedPosRef.current = detectedPos;
-            setStatusMessage(`Wort erfasst: „${phrase}“. Übersetze...`);
-            speakText('In Bearbeitung', 'de-DE', () => {
-              translateWithGemini(phrase, detectedPos);
-            });
+            if (targetDir === 'en_de') {
+              setStatusMessage(`Phrase erfasst: „${phrase}“. Translating...`);
+              speakText('In Progress', 'en-US', () => {
+                translateWithDirection(phrase, 'en_de', detectedPos);
+              });
+            } else {
+              setStatusMessage(`Wort erfasst: „${phrase}“. Übersetze...`);
+              speakText('In Bearbeitung', 'de-DE', () => {
+                translateWithDirection(phrase, 'de_en', detectedPos);
+              });
+            }
             return;
           }
         }
 
         // Standard 2-Step Flow:
-        // Switch to recording right away so subsequent words are not missed
         setPhase('recording');
         currentRecordingTextRef.current = '';
         detectedPosRef.current = null;
         setCurrentRecordingText('');
         setLiveTranscript('');
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
 
-        speakText('In Bearbeitung', 'de-DE');
+        if (targetDir === 'en_de') {
+          setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
+          switchRecognitionLang('en-US');
+          speakText('In Progress', 'en-US');
+        } else {
+          setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
+          switchRecognitionLang('de-DE');
+          speakText('In Bearbeitung', 'de-DE');
+        }
         return;
       }
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word until "Halt" is heard)
-    // Empty by default, NEVER auto-submits until user says "Halt"
+    // State 2: RECORDING (Capturing word/phrase until "Stop" or "Halt" is heard)
+    // Empty by default, NEVER auto-submits until stop keyword is spoken
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
       // If trailing or repeated trigger events arrive while recording, do not speak again
@@ -742,9 +949,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         return;
       }
 
-      const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text);
+      const activeDir = directionRef.current || 'de_en';
+      const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text, activeDir);
 
-      // Only update buffer if an actual word was spoken (not empty/trigger words)
+      // Only update buffer if an actual word/phrase was spoken (not empty/trigger words)
       if (currentClean) {
         setLiveTranscript(currentClean);
         setCurrentRecordingText(currentClean);
@@ -754,28 +962,33 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         }
       }
 
-      // ONLY submit when user explicitly says "Halt" / "Stopp"
+      // ONLY submit when user explicitly says "Stop" or "Halt"
       if (hasStop) {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        const wordToTranslate = currentClean || currentRecordingTextRef.current;
+        const phraseToTranslate = currentClean || currentRecordingTextRef.current;
         const posToUse = detectedPos || detectedPosRef.current;
 
-        if (wordToTranslate) {
+        if (phraseToTranslate) {
           setLiveTranscript('');
           setCurrentRecordingText('');
           currentRecordingTextRef.current = '';
           detectedPosRef.current = null;
-          translateWithGemini(wordToTranslate, posToUse);
+          translateWithDirection(phraseToTranslate, activeDir, posToUse);
         } else {
-          // If Halt was spoken but no word was captured yet
-          setStatusMessage('Kein Wort erfasst. Sage „Übersetze“, um es erneut zu versuchen.');
+          // If Stop/Halt was spoken but no word/phrase was captured yet
+          if (activeDir === 'en_de') {
+            setStatusMessage('Keine Phrase erfasst. Sage „Translate“, um es erneut zu versuchen.');
+            switchRecognitionLang('de-DE');
+          } else {
+            setStatusMessage('Kein Wort erfasst. Sage „Übersetze“, um es erneut zu versuchen.');
+          }
           setPhase('idle');
           currentRecordingTextRef.current = '';
           detectedPosRef.current = null;
         }
       }
     }
-  }, [speakText, speakSequentialTranslation, searchLocalVocab, posFilter]);
+  }, [speakText, translateWithDirection, switchRecognitionLang]);
 
   // Keep a stable ref to speech processor
   const processGermanSpeechRef = useRef(processGermanSpeech);
@@ -805,7 +1018,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = 'de-DE'; // German speech recognition engine
+        recognition.lang = recognitionLangRef.current || 'de-DE'; // Dynamic speech recognition engine
 
         recognition.onresult = (event) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -876,7 +1089,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
   // ----------------------------------------------------
   // Manual Actions & Triggers
   // ----------------------------------------------------
-  const handleStartRecordingManual = async () => {
+  const handleStartRecordingManual = async (dir = 'de_en') => {
     unlockAudio();
     // If voice listening is not yet active, turn it on!
     if (!isVoiceActive) {
@@ -888,28 +1101,39 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         } catch (e) {}
       }
     }
+    setDirection(dir);
+    directionRef.current = dir;
     setPhase('recording');
     setCurrentRecordingText('');
     currentRecordingTextRef.current = '';
     detectedPosRef.current = null;
     setLiveTranscript('');
-    setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
-    speakText('In Bearbeitung', 'de-DE');
+    if (dir === 'en_de') {
+      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
+      switchRecognitionLang('en-US');
+      speakText('In Progress', 'en-US');
+    } else {
+      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
+      switchRecognitionLang('de-DE');
+      speakText('In Bearbeitung', 'de-DE');
+    }
   };
 
   const handleStopRecordingManual = () => {
     unlockAudio();
+    const activeDir = directionRef.current || 'de_en';
     const raw = liveTranscript || currentRecordingText || currentRecordingTextRef.current || manualInput;
-    const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw);
+    const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw, activeDir);
     const finalWord = textToUse || currentRecordingTextRef.current;
     if (finalWord) {
       setLiveTranscript('');
       setCurrentRecordingText('');
       currentRecordingTextRef.current = '';
-      translateWithGemini(finalWord, detectedPos || detectedPosRef.current || posFilter);
+      translateWithDirection(finalWord, activeDir, detectedPos || detectedPosRef.current || posFilter);
     } else {
       setPhase('idle');
-      setStatusMessage('Kein Wort eingegeben.');
+      switchRecognitionLang('de-DE');
+      setStatusMessage(activeDir === 'en_de' ? 'Keine Phrase erfasst.' : 'Kein Wort eingegeben.');
     }
   };
 
@@ -917,9 +1141,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     if (e) e.preventDefault();
     unlockAudio();
     if (!manualInput.trim()) return;
-    const { cleanText, detectedPos } = extractSpokenPhraseAndPos(manualInput.trim());
+    const activeDir = directionRef.current || 'de_en';
+    const { cleanText, detectedPos } = extractSpokenPhraseAndPos(manualInput.trim(), activeDir);
     if (cleanText) {
-      translateWithGemini(cleanText, detectedPos || posFilter);
+      translateWithDirection(cleanText, activeDir, detectedPos || posFilter);
       setManualInput('');
     }
   };
@@ -1038,7 +1263,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             fontWeight: '600',
             marginBottom: '32px'
           }}>
-            {phase === 'recording' ? 'Aufnahme läuft (Sage „Halt“)...' : 'Hört zu: Sage „Übersetze“'}
+            {phase === 'recording'
+              ? (direction === 'en_de' ? 'Aufnahme läuft (Sage „Stop“)...' : 'Aufnahme läuft (Sage „Halt“)...')
+              : 'Hört zu: Sage „Übersetze“ (DE) oder „Translate“ (EN)'}
           </div>
 
           {currentResult && (
@@ -1127,7 +1354,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             </span>
           </div>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            Hände-frei beim Podcast hören: Sage <strong>„Übersetze“</strong> → sprich das Wort → sage <strong>„Halt“</strong>.
+            Hände-frei: <strong>„Übersetze“</strong> (DE) → <strong>„Halt“</strong> oder <strong>„Translate“</strong> (EN, 1-6 Wörter) → <strong>„Stop“</strong>.
           </p>
         </div>
 
@@ -1335,8 +1562,8 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         }}>
           {phase === 'recording' && 'Aufnahme aktiv'}
           {phase === 'processing' && 'Gemini Analyse'}
-          {phase === 'speaking' && (speakingSubPhase === 'en' ? 'Lese Übersetzung vor' : 'Lese Beispielsatz vor')}
-          {phase === 'idle' && (isVoiceActive ? 'Hört auf „Übersetze“' : 'Voice Control inaktiv')}
+          {phase === 'speaking' && (speakingSubPhase === 'en' ? 'Lese englische Übersetzung vor' : speakingSubPhase === 'de_translation' ? 'Lese deutsche Übersetzung vor' : 'Lese Beispielsatz vor')}
+          {phase === 'idle' && (isVoiceActive ? 'Hört auf „Übersetze“ (DE) oder „Translate“ (EN)' : 'Voice Control inaktiv')}
         </div>
 
         <h3 style={{ fontSize: '20px', fontWeight: '800', color: '#fff', margin: '0 0 16px 0', minHeight: '30px' }}>
@@ -1401,34 +1628,61 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            {liveTranscript ? `„${liveTranscript}“` : 'Spreche jetzt dein deutsches Wort... Beende mit „Halt“'}
+            {liveTranscript
+              ? `„${liveTranscript}“`
+              : (direction === 'en_de'
+                  ? 'Spreche jetzt deine englische Phrase (1-6 Wörter)... Beende mit „Stop“'
+                  : 'Spreche jetzt dein deutsches Wort... Beende mit „Halt“')}
           </div>
         )}
 
         {/* Manual Push-to-Talk / Control Buttons */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginTop: '12px' }}>
           {phase === 'idle' ? (
-            <button
-              type="button"
-              onClick={handleStartRecordingManual}
-              style={{
-                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '16px',
-                padding: '12px 24px',
-                fontSize: '14px',
-                fontWeight: '800',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)'
-              }}
-            >
-              <span>🎙️</span>
-              <span>Jetzt Übersetzen (Manuell starten)</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => handleStartRecordingManual('de_en')}
+                style={{
+                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '16px',
+                  padding: '12px 20px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(59, 130, 246, 0.4)'
+                }}
+              >
+                <span>🇩🇪</span>
+                <span>Übersetzen (DE ➔ EN)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleStartRecordingManual('en_de')}
+                style={{
+                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '16px',
+                  padding: '12px 20px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  boxShadow: '0 4px 16px rgba(139, 92, 246, 0.4)'
+                }}
+              >
+                <span>🇬🇧</span>
+                <span>Translate (EN ➔ DE)</span>
+              </button>
+            </>
           ) : phase === 'recording' ? (
             <button
               type="button"
@@ -1450,7 +1704,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               }}
             >
               <span>🛑</span>
-              <span>Halt & Übersetzen</span>
+              <span>{direction === 'en_de' ? 'Stop & Translate' : 'Halt & Übersetzen'}</span>
             </button>
           ) : null}
         </div>
@@ -1524,7 +1778,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             type="text"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            placeholder={posFilter === 'verb' ? "Deutsches Verb eintippen (z.B. ansehen)..." : posFilter === 'noun' ? "Deutsches Nomen eintippen (z.B. Ansehen)..." : "Oder tippe deutsches Wort/Phrase hier..."}
+            placeholder={direction === 'en_de' ? "Englische Phrase (1-6 Wörter) hier eintippen..." : (posFilter === 'verb' ? "Deutsches Verb eintippen (z.B. ansehen)..." : posFilter === 'noun' ? "Deutsches Nomen eintippen (z.B. Ansehen)..." : "Wort oder Phrase hier eintippen...")}
             style={{
               flexGrow: 1,
               background: 'transparent',
