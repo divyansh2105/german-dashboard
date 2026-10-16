@@ -261,8 +261,9 @@ export default function LiveTranslation({
   const silenceTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const recognitionRef = useRef(null);
+  const recognitionLangRef = useRef('en-US');
+  const lastProcessedResultIndexRef = useRef(-1);
   const recordedChunksRef = useRef([]);
-  const currentRecordingTextRef = useRef('');
   const phaseRef = useRef('idle');
 
   // Keep phaseRef in sync with phase state
@@ -349,77 +350,76 @@ export default function LiveTranslation({
     };
   }, [unlockAudio]);
 
+  // ----------------------------------------------------
+  // Audio Speech Synthesis Helpers (German & English)
+  // Restored from working commit 1a22f1e: includes safety duration timeout,
+  // 300ms speaker echo buffer, and prevents mic locking on iPhone
+  // ----------------------------------------------------
   const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
 
+    try { window.speechSynthesis.cancel(); } catch (e) {}
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-
-    // Resume speech synthesis engine if paused (critical on iOS WebKit / Chrome)
-    if (window.speechSynthesis.paused) {
-      window.speechSynthesis.resume();
-    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = lang.startsWith('de') ? 1.0 : 0.95;
-
-    // Retain global and ref references to avoid premature garbage collection on iOS/WebKit
-    window.__lt_utterance = utterance;
-    activeUtteranceRef.current = utterance;
 
     const voices = window.speechSynthesis.getVoices();
-    if (voices && voices.length > 0) {
-      let chosenVoice = null;
-      if (lang.startsWith('de')) {
-        chosenVoice = voices.find(v => (v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) && v.localService !== false) ||
-          voices.find(v => v.lang.startsWith('de'));
-      } else {
-        chosenVoice = voices.find(v => (v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) && v.localService !== false) ||
-          voices.find(v => v.lang.startsWith('en'));
-      }
-      if (chosenVoice) {
-        try { utterance.voice = chosenVoice; } catch (e) {}
-      }
+    if (lang && lang.startsWith('de')) {
+      const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
+        voices.find(v => v.lang.startsWith('de'));
+      if (deVoice) utterance.voice = deVoice;
+      utterance.rate = 1.0;
+    } else {
+      const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
+        voices.find(v => v.lang.startsWith('en'));
+      if (enVoice) utterance.voice = enVoice;
+      utterance.rate = 0.95;
     }
 
     isSpeakingTtsRef.current = true;
 
-    let isDone = false;
-    const finish = () => {
-      if (isDone) return;
-      isDone = true;
+    // Safety timeout: prevents microphone from getting permanently locked if onend drops on mobile/Safari
+    const maxTtsDuration = Math.max(2500, text.length * 85);
+    ttsSafetyTimerRef.current = setTimeout(() => {
+      isSpeakingTtsRef.current = false;
+    }, maxTtsDuration);
+
+    utterance.onend = () => {
       if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-      window.__lt_utterance = null;
-      activeUtteranceRef.current = null;
+      if (!isMountedRef.current) return;
+      // Brief buffer to ensure microphone doesn't capture speaker echo
       setTimeout(() => {
-        if (!isMountedRef.current) return;
         isSpeakingTtsRef.current = false;
         if (onEnd) onEnd();
-      }, 250);
+      }, 300);
     };
 
-    utterance.onend = finish;
-    utterance.onerror = (e) => {
-      console.warn('[LiveTranslation TTS Error]', e);
-      finish();
+    utterance.onerror = () => {
+      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+      if (!isMountedRef.current) return;
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
     };
 
-    // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
-    const wordCount = (text || '').trim().split(/\s+/).length;
-    const estDuration = Math.max(1800, wordCount * 550 + 1000);
-    ttsSafetyTimerRef.current = setTimeout(() => {
-      finish();
-    }, estDuration);
+    window.speechSynthesis.speak(utterance);
+  }, []);
 
-    try {
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('[LiveTranslation TTS Speak failed]', e);
-      finish();
-    }
+  const speakGerman = useCallback((text, onEnd) => {
+    speakText(text, 'de-DE', onEnd);
+  }, [speakText]);
+
+  const speakEnglish = useCallback((text, onEnd) => {
+    speakText(text, 'en-US', onEnd);
+  }, [speakText]);
+
+  // Switch speech recognition language seamlessly without aborting microphone
+  const switchRecognitionLang = useCallback((targetLang) => {
+    if (recognitionLangRef.current === targetLang) return;
+    recognitionLangRef.current = targetLang;
   }, []);
 
   // ----------------------------------------------------
@@ -433,6 +433,9 @@ export default function LiveTranslation({
     }
 
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
 
     setPhase('speaking');
 
@@ -465,6 +468,7 @@ export default function LiveTranslation({
                     setSpeakingSubPhase(null);
                     setPhase('idle');
                     setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+                    switchRecognitionLang('de-DE');
                     if (onComplete) onComplete();
                   });
                 }, 300);
@@ -498,6 +502,7 @@ export default function LiveTranslation({
                   setSpeakingSubPhase(null);
                   setPhase('idle');
                   setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+                  switchRecognitionLang('de-DE');
                   if (onComplete) onComplete();
                 });
               }, 300);
@@ -512,6 +517,7 @@ export default function LiveTranslation({
               setSpeakingSubPhase(null);
               setPhase('idle');
               setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              switchRecognitionLang('de-DE');
               if (onComplete) onComplete();
             });
           }, 300);
@@ -533,6 +539,7 @@ export default function LiveTranslation({
               setSpeakingSubPhase(null);
               setPhase('idle');
               setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              switchRecognitionLang('de-DE');
               if (onComplete) onComplete();
             });
           }, 320);
@@ -540,11 +547,12 @@ export default function LiveTranslation({
           setSpeakingSubPhase(null);
           setPhase('idle');
           setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          switchRecognitionLang('de-DE');
           if (onComplete) onComplete();
         }
       });
     }
-  }, [speakText]);
+  }, [speakText, switchRecognitionLang]);
 
   // Backward-compatibility alias
   const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
@@ -587,49 +595,35 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Spoken Phrase Extractors:
-  // - German to English: strictly single words (preserves article + noun if spoken together)
+  // Spoken Phrase Extractors (Restored from working commit 1a22f1e)
+  // - German to English: removes triggers/stops/TTS echo, preserves spoken words/nouns/verbs naturally
   // - English to German: small phrases (3 to 5 words) or single words
   // ----------------------------------------------------
-  const extractGermanPhrase = (rawText) => {
+  const cleanSpokenPhrase = (rawText) => {
     if (!rawText) return '';
-    let t = rawText.trim();
-    // 1. Remove ANY trigger words (including ubersetz, uber setzen, etc.)
-    t = t.replace(/\b(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?|translate|translation)\b/gi, '');
-    // 2. Remove TTS acknowledgments if picked up by microphone
-    t = t.replace(/\b(in bearbeitung|bearbeitung|in process|in progress)\b/gi, '');
-    // 3. Remove repeat command
-    t = t.replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '');
-    // 4. Remove stop commands (standalone words or compound suffixes)
-    t = t.replace(/\b(halt|halte|stopp|stop|stoppen|stopped|hold|holt|pause|fertig|ende|end|done|genug)\b/gi, '');
-    t = t.replace(/(halt|halte|stopp|stop|stoppen|hold|fertig|ende)$/gi, '');
-    // 5. Remove conversational fillers
-    t = t.replace(/\b(auf englisch|in english)\b/gi, '');
-    t = t.replace(/\b(das wort|das|die|der)?\s*(wort|bedeutung|ähm|äh)\b/gi, '');
-    t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
-
-    // Supports single words or small German phrases/collocations (up to 4 words)
-    const words = t.split(/\s+/).filter(Boolean);
-    if (words.length === 0) return '';
-    if (words.length <= 4) return words.join(' ');
-    return words.slice(0, 4).join(' ');
+    return rawText
+      .replace(/\b(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?)\b/gi, '')
+      .replace(/\b(translate|translation)\b/gi, '')
+      .replace(/\b(in bearbeitung|bearbeitung|in process|in progress)\b/gi, '')
+      .replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '')
+      .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
+      .replace(/[.,;:!?]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   };
+
+  const extractGermanPhrase = cleanSpokenPhrase;
 
   const extractEnglishPhrase = (rawText) => {
     if (!rawText) return '';
-    let t = rawText.trim();
-    // 1. Remove ANY trigger words
-    t = t.replace(/\b(please\s+)?(translate|translation|translating|über\s*setz(e|en|t)?|uber\s*setz(e|en|t)?)\b/gi, '');
-    // 2. Remove TTS acknowledgments if picked up by microphone
-    t = t.replace(/\b(in process|in progress|in bearbeitung|bearbeitung)\b/gi, '');
-    // 3. Remove repeat command
-    t = t.replace(/\b(repeat|say again|nochmal)\b/gi, '');
-    // 4. Remove stop commands (standalone or compound suffix)
-    t = t.replace(/\b(stop|halt|finished|done|finish|end|hold|enough)\b/gi, '');
-    t = t.replace(/(stop|halt|finished|done|finish|end)$/gi, '');
-    // 5. Remove conversational fillers
-    t = t.replace(/\b(the phrase is|phrase is|the phrase|the word is|the word|in german|auf deutsch|uh|um|erm|ah)\b/gi, '');
-    t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+    let t = rawText
+      .replace(/\b(please\s+)?(translate|translation|translating|über\s*setz(e|en|t)?|uber\s*setz(e|en|t)?)\b/gi, '')
+      .replace(/\b(in process|in progress|in bearbeitung|bearbeitung)\b/gi, '')
+      .replace(/\b(repeat|say again|nochmal)\b/gi, '')
+      .replace(/\b(stop|halt|finished|done|finish|end|hold|enough)\b/gi, '')
+      .replace(/[.,;:!?]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     // Supports small phrases (3 to 5 words) or single words for EN -> DE
     const words = t.split(/\s+/).filter(Boolean);
@@ -639,7 +633,7 @@ export default function LiveTranslation({
   };
 
   const extractSpokenPhraseAndPos = (rawText) => {
-    const cleanText = extractGermanPhrase(rawText);
+    const cleanText = cleanSpokenPhrase(rawText);
     return { cleanText, detectedPos: null };
   };
 
@@ -931,6 +925,7 @@ export default function LiveTranslation({
       speakText(msg, lang, () => {
         setPhase('idle');
         setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+        switchRecognitionLang('de-DE');
       });
       return;
     }
@@ -1132,10 +1127,14 @@ Always return a clean JSON object with this exact schema:
   };
 
   // ----------------------------------------------------
-  // Speech Recognition Event Engine (Restored from working commit b24c96b)
+  // Speech Recognition Event Engine (German & English & Wiederholen)
+  // Restored from working commit 1a22f1e:
+  // - Recognizes "Übersetze" / "Übersetzen" / "Translate"
+  // - Acknowledges aloud with "In Bearbeitung" / "In Process"
+  // - Captures words and triggers translation on "Halt" / "Stop"
   // ----------------------------------------------------
   const processLiveSpeech = useCallback((rawTranscript) => {
-    if (!rawTranscript) return;
+    if (!rawTranscript || isSpeakingTtsRef.current) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
@@ -1162,123 +1161,118 @@ Always return a clean JSON object with this exact schema:
       return;
     }
 
-    // 2. TRIGGER WORDS (Phonetically tolerant for German & English)
+    // 2. TRIGGER WORDS (Flexible detection from 1a22f1e)
     const hasGermanTrigger =
       /\b(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
       compact.includes('übersetz') ||
       compact.includes('uebersetz') ||
       compact.includes('ubersetz') ||
       compact.includes('ubersetzen') ||
-      compact.includes('ubersetze');
+      compact.includes('ubersetze') ||
+      (compact.includes('uber') && compact.includes('setz')) ||
+      (compact.includes('ueber') && compact.includes('setz'));
 
     const hasEnglishTrigger =
-      (/\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer)\b/i.test(lower) ||
-      compact.includes('translate') ||
-      compact.includes('translation')) &&
+      (/\b(translate|translation|translating|translates)\b/i.test(lower) ||
+      compact.includes('translate')) &&
       !hasGermanTrigger;
 
-    const hasTrigger = hasGermanTrigger || hasEnglishTrigger;
-
-    // Flexible stop detection ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug")
+    // 3. STOP DETECTION ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug" from 1a22f1e)
     const hasStop =
       /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower) ||
       lower.includes('halt') ||
       lower.includes('stopp') ||
       lower.includes('stop') ||
-      compact.includes('halt') ||
-      compact.includes('stopp') ||
-      compact.includes('stop') ||
-      compact.includes('fertig') ||
-      compact.includes('ende');
+      lower.includes('fertig');
 
     // ----------------------------------------------------
     // State 1: IDLE or SPEAKING (Trigger starts new session)
-    // Works reliably whether idle OR recovering from speech!
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
-      if (hasTrigger) {
-        // Cancel any previous TTS immediately
+      if (hasGermanTrigger || hasEnglishTrigger) {
         if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
-        isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        const targetDir = hasEnglishTrigger ? 'en_de' : 'de_en';
-        setDirection(targetDir);
-        directionRef.current = targetDir;
+        const isEn = hasEnglishTrigger && !hasGermanTrigger;
+        const activeDir = isEn ? 'en_de' : 'de_en';
+        setDirection(activeDir);
+        directionRef.current = activeDir;
 
         // Check if user spoke entire command in one single breath: "Übersetze [word] Halt" or "Translate [phrase] Stop"
         if (hasStop) {
-          const phrase = targetDir === 'en_de' ? extractEnglishPhrase(text) : extractGermanPhrase(text);
+          const phrase = isEn ? extractEnglishPhrase(text) : cleanSpokenPhrase(text);
           if (phrase) {
             setPhase('recording');
-            setStatusMessage(`Erfasst: „${phrase}“. Übersetze...`);
-            const ackMsg = targetDir === 'en_de' ? 'In Process' : 'In Bearbeitung';
-            const ackLang = targetDir === 'en_de' ? 'en-US' : 'de-DE';
-            speakText(ackMsg, ackLang, () => {
-              translateWithDirection(phrase, targetDir);
+            setStatusMessage(
+              isEn
+                ? `Phrase erfasst (EN ➔ DE): „${phrase}“. Übersetze...`
+                : `Wort erfasst (DE ➔ EN): „${phrase}“. Übersetze...`
+            );
+            speakText(isEn ? 'In Process' : 'In Bearbeitung', isEn ? 'en-US' : 'de-DE', () => {
+              translateWithDirection(phrase, activeDir);
             });
             return;
           }
         }
 
         // Standard 2-Step Flow:
+        // Acknowledge trigger: Speak "In Bearbeitung" in German or "In Process" in English
         setPhase('recording');
         setCurrentRecordingText('');
-        setLiveTranscript('');
         currentRecordingTextRef.current = '';
+        setLiveTranscript('');
         recordedChunksRef.current = [];
-        if (targetDir === 'en_de') {
-          setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (3–5 Wörter) und sage „Stop“.');
-          speakText('In Process', 'en-US');
-        } else {
-          setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase und sage „Halt“.');
-          speakText('In Bearbeitung', 'de-DE');
-        }
+        setStatusMessage(
+          isEn
+            ? 'Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (3–5 Wörter) und sage „Stop“.'
+            : 'Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.'
+        );
+
+        speakText(isEn ? 'In Process' : 'In Bearbeitung', isEn ? 'en-US' : 'de-DE', () => {
+          // Acknowledgment spoken, microphone ready to capture the German word
+        });
         return;
       }
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word until "Halt" / "Stop" is heard or silence)
+    // State 2: RECORDING (Capturing word until "Halt" or "Stop" is heard or silence)
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
       const activeDir = directionRef.current || 'de_en';
       const isEn = activeDir === 'en_de';
-      const clean = isEn ? extractEnglishPhrase(text) : extractGermanPhrase(text);
+      const currentClean = isEn ? extractEnglishPhrase(text) : cleanSpokenPhrase(text);
 
-      if (clean) {
-        setLiveTranscript(clean);
-        setCurrentRecordingText(clean);
-        currentRecordingTextRef.current = clean;
+      if (currentClean) {
+        setLiveTranscript(currentClean);
+        setCurrentRecordingText(currentClean);
+        currentRecordingTextRef.current = currentClean;
+      }
 
-        // Clear existing silence timer
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      // Clear existing silence timer
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        if (hasStop) {
+      const phraseToUse = currentClean || currentRecordingTextRef.current;
+
+      if (hasStop) {
+        if (phraseToUse) {
           setLiveTranscript('');
-          const phraseToTranslate = clean;
           currentRecordingTextRef.current = '';
-          translateWithDirection(phraseToTranslate, activeDir);
-        } else {
-          // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
-          silenceTimerRef.current = setTimeout(() => {
-            if (phaseRef.current === 'recording') {
-              const phraseToTranslate = currentRecordingTextRef.current || clean;
-              if (phraseToTranslate) {
-                currentRecordingTextRef.current = '';
-                translateWithDirection(phraseToTranslate, activeDir);
-              }
-            }
-          }, 3800);
+          translateWithDirection(phraseToUse, activeDir);
         }
-      } else if (hasStop && currentRecordingTextRef.current) {
-        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-        const phraseToTranslate = currentRecordingTextRef.current;
-        setLiveTranscript('');
-        currentRecordingTextRef.current = '';
-        translateWithDirection(phraseToTranslate, activeDir);
+      } else if (phraseToUse) {
+        // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
+        silenceTimerRef.current = setTimeout(() => {
+          if (phaseRef.current === 'recording') {
+            const finalWord = currentRecordingTextRef.current || phraseToUse;
+            if (finalWord) {
+              currentRecordingTextRef.current = '';
+              translateWithDirection(finalWord, activeDir);
+            }
+          }
+        }, 3800);
       }
     }
   }, [speakText, handleRepeat]);
@@ -1289,7 +1283,7 @@ Always return a clean JSON object with this exact schema:
     processLiveSpeechRef.current = processLiveSpeech;
   }, [processLiveSpeech]);
 
-  // Continuous Speech Recognition lifecycle (German de-DE engine - commit b24c96b)
+  // Continuous Speech Recognition lifecycle (German de-DE engine from commit 1a22f1e)
   useEffect(() => {
     if (!SpeechRecognition) return;
 
@@ -1311,9 +1305,11 @@ Always return a clean JSON object with this exact schema:
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = 'de-DE'; // German speech recognition engine
+        recognition.lang = 'de-DE'; // German speech recognition engine (commit 1a22f1e)
 
         recognition.onresult = (event) => {
+          if (isSpeakingTtsRef.current) return; // Prevent mic from hearing phone's own speaker
+
           for (let i = event.resultIndex; i < event.results.length; i++) {
             // Check all alternatives and prioritize trigger/stop words
             let bestTranscript = '';
@@ -1347,7 +1343,6 @@ Always return a clean JSON object with this exact schema:
         };
 
         recognition.onerror = (event) => {
-          console.warn('SpeechRecognition error:', event.error);
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
             isStoppingManually = true;
             setIsVoiceActive(false);
@@ -1369,6 +1364,11 @@ Always return a clean JSON object with this exact schema:
         recognitionRef.current = recognition;
       } catch (err) {
         console.warn('SpeechRecognition start error:', err);
+        setTimeout(() => {
+          if (!isStoppingManually && isMountedRef.current) {
+            startRecognition();
+          }
+        }, 300);
       }
     };
 
@@ -1406,10 +1406,10 @@ Always return a clean JSON object with this exact schema:
 
     if (chosenDir === 'en_de') {
       setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (oder tippe unten).');
-      speakText('In Process', 'en-US');
+      speakEnglish('In Process');
     } else {
       setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase (oder tippe unten).');
-      speakText('In Bearbeitung', 'de-DE');
+      speakGerman('In Bearbeitung');
     }
   };
 
