@@ -32,7 +32,7 @@ export default function LiveTranslation({
   const [currentResult, setCurrentResult] = useState(null);
   const [speakingSubPhase, setSpeakingSubPhase] = useState(null); // 'en' | 'de_translation' | 'de_example'
   const [direction, setDirection] = useState('de_en'); // 'de_en' (DE -> EN) | 'en_de' (EN -> DE)
-  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+  const [statusMessage, setStatusMessage] = useState('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
   const [lastHeardLive, setLastHeardLive] = useState('');
   const [fallbackNotice, setFallbackNotice] = useState('');
   const [availableModels, setAvailableModels] = useState(() => getStoredAvailableModels());
@@ -79,6 +79,7 @@ export default function LiveTranslation({
   const phaseRef = useRef('idle');
   const directionRef = useRef('de_en');
   const recognitionLangRef = useRef('de-DE');
+  const lastResultRef = useRef(null);
 
   // Keep phaseRef & directionRef in sync with state
   useEffect(() => {
@@ -88,6 +89,14 @@ export default function LiveTranslation({
   useEffect(() => {
     directionRef.current = direction;
   }, [direction]);
+
+  useEffect(() => {
+    if (currentResult) {
+      lastResultRef.current = currentResult;
+    } else if (!lastResultRef.current && history.length > 0) {
+      lastResultRef.current = history[0];
+    }
+  }, [currentResult, history]);
 
   // Query live available models on mount / key change
   useEffect(() => {
@@ -376,6 +385,8 @@ export default function LiveTranslation({
       .replace(/(?:^|\s|[.,;:!?])(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/(?:^|\s|[.,;:!?])(?:in\s+bearbeitung|bearbeitung|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/(?:^|\s|[.,;:!?])(?:halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/[.,;:!?]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -403,6 +414,8 @@ export default function LiveTranslation({
       .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/(?:^|\s|[.,;:!?])(?:in\s+progress|progress|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/(?:^|\s|[.,;:!?])(?:stop|stopped|stopping|halt|done|finished|hold|enough)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal)(?=\s|[.,;:!?]|$)/gi, ' ')
       .replace(/[.,;:!?]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -577,6 +590,7 @@ export default function LiveTranslation({
 
       const b1Result = {
         id: Date.now(),
+        dir,
         german: localMatch.word,
         english: localMatch.meaning || (dir === 'en_de' ? cleanInput : 'Bedeutung im B1-Wortschatz'),
         germanExample: germanEx,
@@ -590,6 +604,7 @@ export default function LiveTranslation({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
+      lastResultRef.current = b1Result;
       setCurrentResult(b1Result);
       setHistory(prev => [b1Result, ...prev.filter(item => item.german !== b1Result.german)].slice(0, 10));
 
@@ -806,6 +821,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
     const newResult = {
       id: Date.now(),
+      dir,
       german: parsed.german || cleanInput,
       english: parsed.english || (dir === 'en_de' ? cleanInput : 'Unbekannt'),
       germanExample: parsed.germanExample || '',
@@ -818,6 +834,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
+    lastResultRef.current = newResult;
     setCurrentResult(newResult);
     setHistory(prev => [newResult, ...prev.filter(item => item.german !== newResult.german)].slice(0, 10));
 
@@ -859,6 +876,18 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       /(?:^|\s|[.,;:!?])(?:please\s+)?(?:translate|translation)(?=\s|[.,;:!?]|$)/i.test(text) ||
       lower.includes('translate');
 
+    // Flexible repeat detection ("Wiederholen" for DE, "Repeat" for EN)
+    const hasGermanRepeat =
+      /(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      compact.includes('wiederhol') ||
+      compact.includes('nochmal');
+
+    const hasEnglishRepeat =
+      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again|once\s+more)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      lower.includes('repeat');
+
+    const hasRepeat = hasGermanRepeat || hasEnglishRepeat;
+
     // Flexible stop detection ("Halt" for DE, "Stop" for EN, both accepted as safety)
     const hasGermanStop =
       /(?:^|\s|[.,;:!?])(halt|halte|stopp|fertig|ende|genug)(?=\s|[.,;:!?]|$)/i.test(text) ||
@@ -875,9 +904,52 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     const hasStop = hasGermanStop || hasEnglishStop;
 
     // ----------------------------------------------------
-    // State 1: IDLE or SPEAKING (Trigger starts new session)
+    // State 1: IDLE or SPEAKING (Trigger starts new session OR Repeat re-speaks last word)
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
+      // Repeat command ("Wiederholen" / "Repeat")
+      if (hasRepeat) {
+        const now = Date.now();
+        if (now - lastTriggerTimeRef.current < 1500) {
+          return;
+        }
+        lastTriggerTimeRef.current = now;
+
+        if ('speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+        isSpeakingTtsRef.current = false;
+        setSpeakingSubPhase(null);
+
+        const target = lastResultRef.current || currentResult || (history && history[0]);
+        if (!target) {
+          if (hasEnglishRepeat) {
+            speakText('No translation to repeat.', 'en-US', () => {
+              setPhase('idle');
+              switchRecognitionLang('de-DE');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“.');
+            });
+          } else {
+            speakText('Keine Übersetzung zum Wiederholen vorhanden.', 'de-DE', () => {
+              setPhase('idle');
+              switchRecognitionLang('de-DE');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“.');
+            });
+          }
+          return;
+        }
+
+        const targetDir = target.dir || (hasEnglishRepeat ? 'en_de' : 'de_en');
+        if (hasEnglishRepeat) {
+          setStatusMessage(`Repeating translation & sentence: „${target.english || target.german}“...`);
+        } else {
+          setStatusMessage(`Wiederhole Übersetzung & Satz: „${target.german}“...`);
+        }
+
+        speakSequentialResult(target, targetDir);
+        return;
+      }
+
       if (hasTrigger) {
         // Prevent duplicate trigger execution from rapid interim + final speech results
         const now = Date.now();
@@ -945,6 +1017,21 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     // Empty by default, NEVER auto-submits until stop keyword is spoken
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
+      // If repeat was spoken instead of a phrase while recording, abort to repeat last
+      if (hasRepeat && !hasStop) {
+        const cleanCheck = (cleanSpokenPhrase(text) || '').toLowerCase().trim();
+        if (!cleanCheck || cleanCheck.includes('repeat') || cleanCheck.includes('wiederhol')) {
+          setPhase('idle');
+          currentRecordingTextRef.current = '';
+          const target = lastResultRef.current || currentResult || (history && history[0]);
+          if (target) {
+            const targetDir = target.dir || (hasEnglishRepeat ? 'en_de' : 'de_en');
+            speakSequentialResult(target, targetDir);
+          }
+          return;
+        }
+      }
+
       // If trailing or repeated trigger events arrive while recording, do not speak again
       if (hasTrigger && !hasStop) {
         return;
@@ -989,7 +1076,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         }
       }
     }
-  }, [speakText, translateWithDirection, switchRecognitionLang]);
+  }, [speakText, translateWithDirection, switchRecognitionLang, speakSequentialResult, cleanSpokenPhrase, currentResult, history]);
 
   // Keep a stable ref to speech processor
   const processGermanSpeechRef = useRef(processGermanSpeech);
@@ -1023,7 +1110,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
         recognition.onresult = (event) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Check all alternatives and prioritize trigger/stop words
+            // Check all alternatives and prioritize trigger/stop/repeat words
             let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
@@ -1036,7 +1123,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
                 candLower.includes('halt') ||
                 candLower.includes('stopp') ||
                 candLower.includes('stop') ||
-                candLower.includes('translate')
+                candLower.includes('translate') ||
+                candLower.includes('wiederhol') ||
+                candLower.includes('repeat')
               ) {
                 bestTranscript = candidate;
                 break;
@@ -1149,6 +1238,31 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       setManualInput('');
     }
   };
+
+  const handleRepeatTranslation = useCallback(() => {
+    unlockAudio();
+    if ('speechSynthesis' in window) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+    isSpeakingTtsRef.current = false;
+    setSpeakingSubPhase(null);
+
+    const target = lastResultRef.current || currentResult || (history && history[0]);
+    if (!target) {
+      const isEnglish = directionRef.current === 'en_de';
+      speakText(isEnglish ? 'No translation to repeat.' : 'Keine Übersetzung zum Wiederholen vorhanden.', isEnglish ? 'en-US' : 'de-DE');
+      return;
+    }
+
+    const targetDir = target.dir || directionRef.current || 'de_en';
+    if (targetDir === 'en_de') {
+      setStatusMessage(`Repeating translation & sentence for „${target.german || target.english}“...`);
+    } else {
+      setStatusMessage(`Wiederhole Übersetzung & Satz für „${target.german}“...`);
+    }
+
+    speakSequentialResult(target, targetDir);
+  }, [currentResult, history, speakSequentialResult, speakText, unlockAudio]);
 
   // ----------------------------------------------------
   // Star / My List toggle
@@ -1266,7 +1380,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
           }}>
             {phase === 'recording'
               ? (direction === 'en_de' ? 'Aufnahme läuft (Sage „Stop“)...' : 'Aufnahme läuft (Sage „Halt“)...')
-              : 'Hört zu: Sage „Übersetze“ (DE) oder „Translate“ (EN)'}
+              : 'Hört zu: „Übersetze“, „Translate“ oder „Wiederholen“'}
           </div>
 
           {currentResult && (
@@ -1355,7 +1469,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             </span>
           </div>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            Hände-frei: <strong>„Übersetze“</strong> (DE) → <strong>„Halt“</strong> oder <strong>„Translate“</strong> (EN, 1-6 Wörter) → <strong>„Stop“</strong>.
+            Hände-frei: <strong>„Übersetze“</strong> (DE) → <strong>„Halt“</strong>, <strong>„Translate“</strong> (EN) → <strong>„Stop“</strong>, oder <strong>„Wiederholen“</strong> / <strong>„Repeat“</strong> zum Nochmal-Hören.
           </p>
         </div>
 
@@ -1934,6 +2048,30 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               >
                 <span>🔊</span>
                 <span>Deutsch</span>
+              </button>
+
+              {/* Repeat Translation & Example Sentence */}
+              <button
+                type="button"
+                onClick={handleRepeatTranslation}
+                title="Übersetzung und Beispielsatz wiederholen (Voice: „Wiederholen“ oder „Repeat“)"
+                style={{
+                  background: 'rgba(168, 85, 247, 0.18)',
+                  border: '1px solid rgba(168, 85, 247, 0.45)',
+                  borderRadius: '12px',
+                  color: '#d8b4fe',
+                  padding: '8px 14px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'background 0.2s ease'
+                }}
+              >
+                <span>🔁</span>
+                <span>Wiederholen</span>
               </button>
 
               {/* Star / Add to My List */}
