@@ -65,6 +65,7 @@ export default function LiveTranslation({
 
   // Audio & speech synthesis refs
   const isSpeakingTtsRef = useRef(false);
+  const activeUtteranceRef = useRef(null);
   const ttsSafetyTimerRef = useRef(null);
   const silenceTimerRef = useRef(null);
   const isMountedRef = useRef(true);
@@ -120,60 +121,152 @@ export default function LiveTranslation({
 
   // ----------------------------------------------------
   // Audio Speech Synthesis Helpers (German & English)
+  // Specially optimized for iOS Safari & iPhone Chrome (WebKit)
   // ----------------------------------------------------
+  const unlockAudio = useCallback(() => {
+    if ('speechSynthesis' in window) {
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+      try {
+        const dummy = new SpeechSynthesisUtterance('');
+        dummy.volume = 0;
+        window.speechSynthesis.speak(dummy);
+      } catch (e) {}
+    }
+    if (window.AudioContext || window.webkitAudioContext) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  // Global touch listener to unlock audio on first user touch/tap on iPhone
+  useEffect(() => {
+    const handleGesture = () => {
+      unlockAudio();
+      window.removeEventListener('click', handleGesture);
+      window.removeEventListener('touchstart', handleGesture);
+    };
+    window.addEventListener('click', handleGesture, { passive: true });
+    window.addEventListener('touchstart', handleGesture, { passive: true });
+    return () => {
+      window.removeEventListener('click', handleGesture);
+      window.removeEventListener('touchstart', handleGesture);
+    };
+  }, [unlockAudio]);
+
   const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
 
-    // Cancel ongoing speech
-    window.speechSynthesis.cancel();
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+
+    // Resume speech synthesis engine if paused (critical on iOS WebKit / Chrome)
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
+    utterance.rate = lang.startsWith('de') ? 1.0 : 0.95;
+
+    // Retain global and ref references to avoid premature garbage collection on iOS/WebKit
+    window.__lt_utterance = utterance;
+    activeUtteranceRef.current = utterance;
 
     const voices = window.speechSynthesis.getVoices();
-    if (lang.startsWith('de')) {
-      const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-        voices.find(v => v.lang.startsWith('de'));
-      if (deVoice) utterance.voice = deVoice;
-      utterance.rate = 1.0;
-    } else {
-      const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-        voices.find(v => v.lang.startsWith('en'));
-      if (enVoice) utterance.voice = enVoice;
-      utterance.rate = 0.95;
+    if (voices && voices.length > 0) {
+      let chosenVoice = null;
+      if (lang.startsWith('de')) {
+        chosenVoice = voices.find(v => (v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) && v.localService !== false) ||
+          voices.find(v => v.lang.startsWith('de'));
+      } else {
+        chosenVoice = voices.find(v => (v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) && v.localService !== false) ||
+          voices.find(v => v.lang.startsWith('en'));
+      }
+      if (chosenVoice) {
+        try { utterance.voice = chosenVoice; } catch (e) {}
+      }
     }
 
     isSpeakingTtsRef.current = true;
 
-    // Safety timeout: prevents microphone from getting permanently locked if onend drops on mobile/Safari
-    const maxTtsDuration = Math.max(2500, text.length * 85);
-    ttsSafetyTimerRef.current = setTimeout(() => {
-      isSpeakingTtsRef.current = false;
-    }, maxTtsDuration);
-
-    utterance.onend = () => {
+    let isDone = false;
+    const finish = () => {
+      if (isDone) return;
+      isDone = true;
       if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-      if (!isMountedRef.current) return;
-      // Brief buffer to ensure microphone doesn't capture speaker echo
+      window.__lt_utterance = null;
+      activeUtteranceRef.current = null;
       setTimeout(() => {
+        if (!isMountedRef.current) return;
         isSpeakingTtsRef.current = false;
         if (onEnd) onEnd();
-      }, 300);
+      }, 250);
     };
 
-    utterance.onerror = () => {
-      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-      if (!isMountedRef.current) return;
-      isSpeakingTtsRef.current = false;
-      if (onEnd) onEnd();
+    utterance.onend = finish;
+    utterance.onerror = (e) => {
+      console.warn('[LiveTranslation TTS Error]', e);
+      finish();
     };
 
-    window.speechSynthesis.speak(utterance);
+    // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
+    const wordCount = (text || '').trim().split(/\s+/).length;
+    const estDuration = Math.max(1800, wordCount * 550 + 1000);
+    ttsSafetyTimerRef.current = setTimeout(() => {
+      finish();
+    }, estDuration);
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('[LiveTranslation TTS Speak failed]', e);
+      finish();
+    }
   }, []);
+
+  // Sequential speaker for translation results (English meaning -> brief pause -> German example)
+  const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
+    if (!enMeaning && !deSentence) {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    setPhase('speaking');
+    setSpeakingSubPhase('en');
+    setStatusMessage(`Lese Übersetzung vor: „${enMeaning}“`);
+
+    speakText(enMeaning, 'en-US', () => {
+      if (!isMountedRef.current) return;
+      if (deSentence) {
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          setSpeakingSubPhase('de_example');
+          setStatusMessage(`Lese Beispielsatz vor: „${deSentence}“`);
+
+          speakText(deSentence, 'de-DE', () => {
+            if (!isMountedRef.current) return;
+            setSpeakingSubPhase(null);
+            setPhase('idle');
+            setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
+            if (onComplete) onComplete();
+          });
+        }, 320);
+      } else {
+        setSpeakingSubPhase(null);
+        setPhase('idle');
+        setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
+        if (onComplete) onComplete();
+      }
+    });
+  }, [speakText]);
 
   // ----------------------------------------------------
   // Keep-Awake Toggle (Prevents iPhone Auto-Lock in Pocket)
@@ -367,32 +460,8 @@ export default function LiveTranslation({
       setCurrentResult(b1Result);
       setHistory(prev => [b1Result, ...prev]);
 
-      // Speak Aloud Workflow: English translation first, then German example sentence
-      setPhase('speaking');
-      setSpeakingSubPhase('en');
-      setStatusMessage(`📚 Im B1-Wortschatz gefunden! Lese vor: „${b1Result.english}“`);
-
-      speakText(b1Result.english, 'en-US', () => {
-        if (!isMountedRef.current) return;
-        setTimeout(() => {
-          if (!isMountedRef.current) return;
-          if (b1Result.germanExample) {
-            setSpeakingSubPhase('de_example');
-            setStatusMessage(`Lese Beispielsatz vor: „${b1Result.germanExample}“`);
-            speakText(b1Result.germanExample, 'de-DE', () => {
-              if (!isMountedRef.current) return;
-              setSpeakingSubPhase(null);
-              setPhase('idle');
-              setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-            });
-          } else {
-            setSpeakingSubPhase(null);
-            setPhase('idle');
-            setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-          }
-        }, 380);
-      });
-
+      // Speak Aloud: English translation first, then German example sentence
+      speakSequentialTranslation(b1Result.english, b1Result.germanExample);
       return; // EXIT EARLY! Zero Gemini API calls required!
     }
 
@@ -526,39 +595,15 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     setCurrentResult(newResult);
     setHistory(prev => [newResult, ...prev]);
 
-    // ----------------------------------------------------
-    // Speak Aloud Workflow:
-    // 1. Speak English translation ('en-US')
-    // 2. Pause
-    // 3. Speak German example sentence ('de-DE')
-    // 4. Return to 'idle' listening
-    // ----------------------------------------------------
-    setPhase('speaking');
-    setSpeakingSubPhase('en');
-    setStatusMessage(`Lese Übersetzung vor: „${newResult.english}“`);
-
-    speakText(newResult.english, 'en-US', () => {
-      if (!isMountedRef.current) return;
-      setTimeout(() => {
-        if (!isMountedRef.current) return;
-        setSpeakingSubPhase('de_example');
-        setStatusMessage(`Lese Beispielsatz vor: „${newResult.germanExample}“`);
-
-        speakText(newResult.germanExample, 'de-DE', () => {
-          if (!isMountedRef.current) return;
-          setSpeakingSubPhase(null);
-          setPhase('idle');
-          setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
-        });
-      }, 400);
-    });
+    // Speak Aloud: English translation first, then German example sentence
+    speakSequentialTranslation(newResult.english, newResult.germanExample);
   };
 
   // ----------------------------------------------------
   // Speech Recognition Event Engine
   // ----------------------------------------------------
   const processGermanSpeech = useCallback((rawTranscript) => {
-    if (!rawTranscript || isSpeakingTtsRef.current) return;
+    if (!rawTranscript) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
@@ -583,10 +628,18 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
       lower.includes('fertig');
 
     // ----------------------------------------------------
-    // State 1: IDLE (Waiting for trigger word "Übersetze")
+    // State 1: IDLE or SPEAKING (Trigger word "Übersetze" starts new session)
+    // Works reliably whether idle OR recovering from speech!
     // ----------------------------------------------------
-    if (phaseRef.current === 'idle') {
+    if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       if (hasTrigger) {
+        // Cancel any previous TTS immediately
+        if ('speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+        isSpeakingTtsRef.current = false;
+        setSpeakingSubPhase(null);
+
         // Check if user spoke entire command in one single breath: "Übersetze [word] Halt"
         if (hasStop) {
           const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text);
@@ -601,16 +654,14 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         }
 
         // Standard 2-Step Flow:
-        // Acknowledge trigger: Speak "In Bearbeitung" in German
+        // Switch to recording right away so subsequent words are not missed
         setPhase('recording');
         setCurrentRecordingText('');
         setLiveTranscript('');
         recordedChunksRef.current = [];
         setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
 
-        speakText('In Bearbeitung', 'de-DE', () => {
-          // Acknowledgment spoken, microphone ready to capture the German word
-        });
+        speakText('In Bearbeitung', 'de-DE');
         return;
       }
     }
@@ -640,7 +691,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         }
       }
     }
-  }, [speakText, searchLocalVocab, posFilter]);
+  }, [speakText, speakSequentialTranslation, searchLocalVocab, posFilter]);
 
   // Keep a stable ref to speech processor
   const processGermanSpeechRef = useRef(processGermanSpeech);
@@ -673,8 +724,6 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         recognition.lang = 'de-DE'; // German speech recognition engine
 
         recognition.onresult = (event) => {
-          if (isSpeakingTtsRef.current) return; // Prevent mic from hearing phone's own speaker
-
           for (let i = event.resultIndex; i < event.results.length; i++) {
             // Check all alternatives and prioritize trigger/stop words
             let bestTranscript = '';
@@ -742,6 +791,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
   // Manual Actions & Triggers
   // ----------------------------------------------------
   const handleStartRecordingManual = async () => {
+    unlockAudio();
     // If voice listening is not yet active, turn it on!
     if (!isVoiceActive) {
       setIsVoiceActive(true);
@@ -760,6 +810,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
   };
 
   const handleStopRecordingManual = () => {
+    unlockAudio();
     const raw = liveTranscript || currentRecordingText || manualInput;
     const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw);
     if (textToUse) {
@@ -772,6 +823,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
 
   const handleManualSubmit = (e) => {
     if (e) e.preventDefault();
+    unlockAudio();
     if (!manualInput.trim()) return;
     const { cleanText, detectedPos } = extractSpokenPhraseAndPos(manualInput.trim());
     if (cleanText) {
@@ -994,6 +1046,7 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
             type="button"
             id="live-voice-control-btn"
             onClick={async () => {
+              unlockAudio();
               if (!SpeechRecognition) {
                 alert("Speech recognition is not supported in this browser. Try Google Chrome, Microsoft Edge, or Apple Safari.");
                 return;
