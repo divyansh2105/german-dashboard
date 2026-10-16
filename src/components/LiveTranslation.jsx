@@ -258,7 +258,6 @@ export default function LiveTranslation({
   const recognitionLangRef = useRef('de-DE');
   const recordedChunksRef = useRef([]);
   const phaseRef = useRef('idle');
-  const lastConsumedIndexRef = useRef(-1);
 
   // Keep phaseRef in sync with phase state
   useEffect(() => {
@@ -644,6 +643,8 @@ export default function LiveTranslation({
     t = t.replace(/\b(repeat|say again|nochmal)\b/gi, '');
     // 4. Remove stop commands
     t = t.replace(/\b(stop|halt|finished|done|finish|end)\b/gi, '');
+    // 5. Remove conversational fillers
+    t = t.replace(/\b(the phrase is|phrase is|the phrase|the word is|the word|in german|auf deutsch|uh|um|erm|ah)\b/gi, '');
     t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
 
     // Supports small phrases (3 to 5 words) or single words for EN -> DE
@@ -1198,10 +1199,6 @@ Always return a clean JSON object with this exact schema:
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       // Branch A: English -> German ("Translate")
       if (hasEnglishTrigger) {
-        if (resultIndex >= 0) {
-          lastConsumedIndexRef.current = resultIndex;
-        }
-
         if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
@@ -1233,17 +1230,14 @@ Always return a clean JSON object with this exact schema:
         recordedChunksRef.current = [];
         setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (3–5 Wörter) und sage „Stop“.');
 
-        switchRecognitionLang('en-US');
-        speakText('In Process', 'en-US');
+        speakText('In Process', 'en-US', () => {
+          switchRecognitionLang('en-US');
+        });
         return;
       }
 
       // Branch B: German -> English ("Übersetze" / "Übersetzen")
       if (hasGermanTrigger) {
-        if (resultIndex >= 0) {
-          lastConsumedIndexRef.current = resultIndex;
-        }
-
         if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
@@ -1275,8 +1269,9 @@ Always return a clean JSON object with this exact schema:
         recordedChunksRef.current = [];
         setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.');
 
-        switchRecognitionLang('de-DE');
-        speakText('In Bearbeitung', 'de-DE');
+        speakText('In Bearbeitung', 'de-DE', () => {
+          switchRecognitionLang('de-DE');
+        });
         return;
       }
     }
@@ -1287,49 +1282,48 @@ Always return a clean JSON object with this exact schema:
     if (phaseRef.current === 'recording') {
       const activeDir = directionRef.current || 'de_en';
       const isEn = activeDir === 'en_de';
-      const clean = isEn ? extractEnglishPhrase(text) : extractGermanPhrase(text);
-      const hasStop = isEn ? hasEnglishStop : hasGermanStop;
 
-      if (clean) {
-        if (isEn) {
-          const combined = currentRecordingTextRef.current
-            ? extractEnglishPhrase(`${currentRecordingTextRef.current} ${clean}`)
-            : clean;
-          setLiveTranscript(combined);
-          setCurrentRecordingText(combined);
-          currentRecordingTextRef.current = combined;
-        } else {
-          // German strictly single word
-          setLiveTranscript(clean);
-          setCurrentRecordingText(clean);
-          currentRecordingTextRef.current = clean;
-        }
+      // Ignore utterance if it contains only residual trigger words
+      const isOnlyTrigger = /^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)[.?!]?$/i.test(text.trim());
+      if (isOnlyTrigger) {
+        return;
       }
 
-      const phraseToUse = currentRecordingTextRef.current || clean;
+      const clean = isEn ? extractEnglishPhrase(text) : extractGermanPhrase(text);
+      // Support stop command in either language for forgiving user experience
+      const hasStop = isEn ? hasEnglishStop : (hasGermanStop || hasEnglishStop);
+
+      if (clean) {
+        setLiveTranscript(clean);
+        setCurrentRecordingText(clean);
+        currentRecordingTextRef.current = clean;
+      }
+
+      const phraseToUse = clean || currentRecordingTextRef.current;
+
+      if (hasStop) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        const target = phraseToUse || currentRecordingTextRef.current;
+        if (target) {
+          setLiveTranscript('');
+          currentRecordingTextRef.current = '';
+          translateWithDirection(target, activeDir);
+        }
+        return;
+      }
 
       if (phraseToUse) {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-        if (hasStop) {
-          if (resultIndex >= 0) {
-            lastConsumedIndexRef.current = resultIndex;
-          }
-          setLiveTranscript('');
-          currentRecordingTextRef.current = '';
-          translateWithDirection(phraseToUse, activeDir);
-        } else {
-          // Automatic silence timer: if user doesn't say "Stop"/"Halt", translate after 3.8s
-          silenceTimerRef.current = setTimeout(() => {
-            if (phaseRef.current === 'recording') {
-              const finalWord = currentRecordingTextRef.current || phraseToUse;
-              if (finalWord) {
-                currentRecordingTextRef.current = '';
-                translateWithDirection(finalWord, activeDir);
-              }
+        // Automatic silence timer: if user doesn't say "Stop"/"Halt", translate after 3.8s
+        silenceTimerRef.current = setTimeout(() => {
+          if (phaseRef.current === 'recording') {
+            const finalWord = currentRecordingTextRef.current || phraseToUse;
+            if (finalWord) {
+              currentRecordingTextRef.current = '';
+              translateWithDirection(finalWord, activeDir);
             }
-          }, 3800);
-        }
+          }
+        }, 3800);
       }
     }
   }, [speakText, handleRepeat, switchRecognitionLang]);
@@ -1366,11 +1360,6 @@ Always return a clean JSON object with this exact schema:
 
         recognition.onresult = (event) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Guard: don't re-process an utterance index that was already consumed
-            if (i <= lastConsumedIndexRef.current) {
-              continue;
-            }
-
             let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
@@ -1459,12 +1448,14 @@ Always return a clean JSON object with this exact schema:
 
     if (chosenDir === 'en_de') {
       setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (oder tippe unten).');
-      switchRecognitionLang('en-US');
-      speakText('In Process', 'en-US');
+      speakText('In Process', 'en-US', () => {
+        switchRecognitionLang('en-US');
+      });
     } else {
       setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase (oder tippe unten).');
-      switchRecognitionLang('de-DE');
-      speakText('In Bearbeitung', 'de-DE');
+      speakText('In Bearbeitung', 'de-DE', () => {
+        switchRecognitionLang('de-DE');
+      });
     }
   };
 
