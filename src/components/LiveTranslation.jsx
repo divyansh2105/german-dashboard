@@ -491,20 +491,35 @@ Translate and output the word as a NOUN with its German definite article (der/di
 Do NOT translate it as a verb.`;
     }
 
-    const systemInstruction = `You are a native German language expert and B1/B2 language coach.
-Your job is to translate spoken German words or phrases heard during podcasts into clear English and provide a practical German example sentence.
+    const systemInstruction = `You are an expert native German language teacher and B1/B2 vocabulary coach.
+Your job is to translate spoken German words or phrases into clear, natural English and provide an authentic, high-quality German example sentence.
+
+CRITICAL RULES FOR "germanExample" AND "englishExample":
+1. ALWAYS provide an actual, authentic, everyday German sentence (B1/B2 level) demonstrating the true practical usage of the word in daily life, work, travel, business, or social conversations.
+2. NEVER generate generic, robotic, or meta sentences such as:
+   - "Ich habe das Wort im Podcast gehört." (STRICTLY FORBIDDEN: never mention podcasts, radio, listening, or hearing words)
+   - "Im Podcast wurde das Wort verwendet." (STRICTLY FORBIDDEN)
+   - "Das Wort bedeutet..." or "Ich kenne dieses Wort." (STRICTLY FORBIDDEN)
+3. The example sentence MUST show how native speakers actually use the word in context.
+   Examples of EXCELLENT sentences:
+   - "die Herausforderung" -> "Eine neue Sprache zu lernen ist eine große Herausforderung, aber es lohnt sich."
+   - "ansehen" (Verb) -> "Wir müssen uns das Dokument vor dem Meeting noch genau ansehen."
+   - "zuverlässig" -> "Mein Kollege ist sehr zuverlässig und pünktlich bei der Arbeit."
+   - "die Voraussetzung" -> "Gute Deutschkenntnisse sind eine wichtige Voraussetzung für diesen Beruf."
+
 Always return a clean JSON object with this exact schema:
 {
   "german": "The correctly spelled German word/phrase (with article 'der/die/das' if it is a noun, e.g. 'die Herausforderung')",
-  "english": "Concise English translation / meaning",
-  "germanExample": "A realistic B1/B2 German sentence using this word in workplace, business, or daily life context",
-  "englishExample": "English translation of the German example sentence",
-  "notes": "Optional short grammar note (e.g., preposition used with verb, plural form, or formality)",
+  "english": "Concise, accurate English translation / meaning",
+  "germanExample": "An authentic, natural B1/B2 German sentence using this word in real-world context (DO NOT mention podcasts or hearing words)",
+  "englishExample": "Accurate English translation of the German example sentence",
+  "notes": "Helpful grammar note (e.g. preposition used with verb like 'warten auf + Akk', plural form, or formality)",
   "pos": "verb | noun | adjective | other"
 }${posInstruction}`;
 
     const promptText = `German input captured from speech: "${cleanInput}"
-${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}`;
+${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}
+Provide an authentic, natural German example sentence in a real-world scenario (DO NOT mention podcasts or audio).`;
 
     let parsed = null;
     let usedModelName = getStoredGeminiModel();
@@ -560,23 +575,56 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=de|en`);
         const data = await res.json();
         const translation = data?.responseData?.translatedText || cleanInput;
+
+        let smartGermanExample = '';
+        let smartEnglishExample = '';
+        const isLikelyVerb = effectivePos === 'verb' || cleanInput.toLowerCase().endsWith('en');
+        const isLikelyNoun = effectivePos === 'noun' || /^(der|die|das)\s+/i.test(cleanInput);
+
+        if (isLikelyVerb) {
+          smartGermanExample = `Wir müssen das Problem sorgfältig ${cleanInput}, um eine gute Lösung zu finden.`;
+          smartEnglishExample = `We need to carefully ${translation} the problem to find a good solution.`;
+        } else if (isLikelyNoun) {
+          smartGermanExample = `Das ist ein wichtiger Punkt für ${cleanInput} in unserem Projekt.`;
+          smartEnglishExample = `That is an important point for ${translation} in our project.`;
+        } else {
+          smartGermanExample = `In der Praxis spielt „${cleanInput}“ eine entscheidende Rolle.`;
+          smartEnglishExample = `In practice, "${translation}" plays a decisive role.`;
+        }
+
         parsed = {
           german: cleanInput,
           english: translation,
-          germanExample: `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
-          englishExample: `In the podcast the word "${translation}" was used.`,
+          germanExample: smartGermanExample,
+          englishExample: smartEnglishExample,
           notes: 'Automatische Schnellübersetzung',
-          pos: effectivePos !== 'auto' ? effectivePos : 'other'
+          pos: effectivePos !== 'auto' ? effectivePos : (isLikelyNoun ? 'noun' : isLikelyVerb ? 'verb' : 'other')
         };
       } catch (e) {
         parsed = {
           german: cleanInput,
           english: 'Translation unavailable',
-          germanExample: `Können Sie „${cleanInput}“ bitte wiederholen?`,
-          englishExample: `Could you please repeat "${cleanInput}"?`,
+          germanExample: `Können Sie „${cleanInput}“ bitte im Satz wiederholen?`,
+          englishExample: `Could you please repeat "${cleanInput}" in a sentence?`,
           notes: 'Bitte Netzwerkverbindung prüfen',
           pos: effectivePos !== 'auto' ? effectivePos : 'other'
         };
+      }
+    }
+
+    // Safety guard: ensure no meta "podcast" sentence ever slips through
+    if (parsed && parsed.germanExample && /podcast/i.test(parsed.germanExample)) {
+      const gWord = parsed.german || cleanInput;
+      const eWord = parsed.english || 'this';
+      if (parsed.pos === 'verb' || gWord.endsWith('en')) {
+        parsed.germanExample = `Wir müssen das Problem sorgfältig ${gWord}, um eine Lösung zu finden.`;
+        parsed.englishExample = `We need to carefully ${eWord} the problem to find a solution.`;
+      } else if (parsed.pos === 'noun' || /^(der|die|das)\s+/i.test(gWord)) {
+        parsed.germanExample = `Das ist ein wichtiger Punkt für ${gWord} in unserem Alltag.`;
+        parsed.englishExample = `That is an important point for ${eWord} in our daily life.`;
+      } else {
+        parsed.germanExample = `In der Praxis spielt „${gWord}“ eine wichtige Rolle.`;
+        parsed.englishExample = `In practice, "${eWord}" plays an important role.`;
       }
     }
 
