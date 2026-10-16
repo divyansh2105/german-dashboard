@@ -195,8 +195,14 @@ export default function LiveTranslation({
   onToggleMyList,
   isAnonymous = false
 }) {
-  // Voice Control & Keep-Awake state
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  // Voice Control & Keep-Awake state (default active for instant hands-free use)
+  const [isVoiceActive, setIsVoiceActive] = useState(() => {
+    try {
+      return localStorage.getItem('b1_live_voice_active') !== 'false';
+    } catch (e) {
+      return true;
+    }
+  });
   const [isKeepAwake, setIsKeepAwake] = useState(false);
   const [isPocketMode, setIsPocketMode] = useState(false);
 
@@ -255,7 +261,8 @@ export default function LiveTranslation({
   const silenceTimerRef = useRef(null);
   const isMountedRef = useRef(true);
   const recognitionRef = useRef(null);
-  const recognitionLangRef = useRef('de-DE');
+  const recognitionLangRef = useRef('en-US');
+  const lastProcessedResultIndexRef = useRef(-1);
   const recordedChunksRef = useRef([]);
   const phaseRef = useRef('idle');
 
@@ -343,81 +350,79 @@ export default function LiveTranslation({
     };
   }, [unlockAudio]);
 
-  const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
+  const speakGerman = useCallback((text, onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
-
-    if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-
-    // Cancel pending/stalled speech before starting new utterance (critical on iOS WebKit)
-    try {
-      window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } catch (e) {}
+    try { window.speechSynthesis.cancel(); } catch (e) {}
 
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    utterance.rate = lang.startsWith('de') ? 1.0 : 0.95;
-
-    // Retain global and ref references to avoid premature garbage collection on iOS/WebKit
-    window.__lt_utterance = utterance;
-    activeUtteranceRef.current = utterance;
+    utterance.lang = 'de-DE';
 
     const voices = window.speechSynthesis.getVoices();
-    if (voices && voices.length > 0) {
-      let chosenVoice = null;
-      if (lang.startsWith('de')) {
-        chosenVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-          voices.find(v => v.lang.startsWith('de'));
-      } else {
-        chosenVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-          voices.find(v => v.lang.startsWith('en'));
-      }
-      if (chosenVoice) {
-        try { utterance.voice = chosenVoice; } catch (e) {}
-      }
-    }
+    const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
+      voices.find(v => v.lang.startsWith('de'));
+    if (deVoice) utterance.voice = deVoice;
+    utterance.rate = 1.0;
 
     isSpeakingTtsRef.current = true;
 
-    let isDone = false;
-    const finish = () => {
-      if (isDone) return;
-      isDone = true;
-      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-      window.__lt_utterance = null;
-      activeUtteranceRef.current = null;
-      setTimeout(() => {
-        if (!isMountedRef.current) return;
-        isSpeakingTtsRef.current = false;
-        if (onEnd) onEnd();
-      }, 150);
+    utterance.onend = () => {
+      if (!isMountedRef.current) return;
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
     };
 
-    utterance.onend = finish;
-    utterance.onerror = (e) => {
-      console.warn('[LiveTranslation TTS Error]', e);
-      finish();
+    utterance.onerror = () => {
+      if (!isMountedRef.current) return;
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
     };
 
-    // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
-    const wordCount = (text || '').trim().split(/\s+/).length;
-    const estDuration = Math.max(1600, wordCount * 500 + 800);
-    ttsSafetyTimerRef.current = setTimeout(() => {
-      finish();
-    }, estDuration);
-
-    try {
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('[LiveTranslation TTS Speak failed]', e);
-      finish();
-    }
+    window.speechSynthesis.speak(utterance);
   }, []);
+
+  const speakEnglish = useCallback((text, onEnd) => {
+    if (!('speechSynthesis' in window) || !text) {
+      if (onEnd) onEnd();
+      return;
+    }
+    try { window.speechSynthesis.cancel(); } catch (e) {}
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+
+    const voices = window.speechSynthesis.getVoices();
+    const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
+      voices.find(v => v.lang.startsWith('en'));
+    if (enVoice) utterance.voice = enVoice;
+    utterance.rate = 1.0;
+
+    isSpeakingTtsRef.current = true;
+
+    utterance.onend = () => {
+      if (!isMountedRef.current) return;
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
+    };
+
+    utterance.onerror = () => {
+      if (!isMountedRef.current) return;
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
+    if (lang && lang.startsWith('en')) {
+      speakEnglish(text, onEnd);
+    } else {
+      speakGerman(text, onEnd);
+    }
+  }, [speakGerman, speakEnglish]);
 
   // Switch speech recognition language seamlessly (de-DE <-> en-US) without aborting microphone
   const switchRecognitionLang = useCallback((targetLang) => {
@@ -1150,8 +1155,8 @@ Always return a clean JSON object with this exact schema:
   // ----------------------------------------------------
   // Speech Recognition Event Engine (German & English & Wiederholen)
   // ----------------------------------------------------
-  const processLiveSpeech = useCallback((rawTranscript, resultIndex = -1) => {
-    if (!rawTranscript) return;
+  const processLiveSpeech = useCallback((rawTranscript) => {
+    if (!rawTranscript) return false;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
@@ -1163,33 +1168,38 @@ Always return a clean JSON object with this exact schema:
       compact.includes('inprocess') ||
       lower.includes('in process')
     ) {
-      return;
+      return false;
     }
 
     // 1. REPEAT TRIGGER ("Wiederholen", "Wiederhole", "Repeat", "Nochmal")
     const isRepeat =
-      /\b(wiederhol(e|en|t)?|repeat|nochmal|say\s*again)\b/i.test(lower) ||
-      compact.includes('wiederhol');
+      /\b(wiederhol(e|en|t)?|repeat|repeating|replay|again|nochmal|say\s*again)\b/i.test(lower) ||
+      compact.includes('wiederhol') ||
+      compact.includes('repeat') ||
+      compact.includes('nochmal');
 
     if (isRepeat && (phaseRef.current === 'idle' || phaseRef.current === 'speaking')) {
       handleRepeat();
-      return;
+      return true;
     }
 
     // 2. TRIGGER WORDS (Phonetically tolerant for German & English)
     const hasGermanTrigger =
-      /\b(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
+      /\b(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?|over\s*set)\b/i.test(lower) ||
       compact.includes('übersetz') ||
       compact.includes('uebersetz') ||
       compact.includes('ubersetz') ||
+      compact.includes('ubersetzen') ||
+      compact.includes('ubersetze') ||
       (compact.includes('uber') && compact.includes('setz')) ||
       (compact.includes('ueber') && compact.includes('setz'));
 
     const hasEnglishTrigger =
-      (/\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer)\b/i.test(lower) ||
+      (/\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer|trans|late)\b/i.test(lower) ||
       compact.includes('translate') ||
       compact.includes('transit') ||
-      compact.includes('translation')) &&
+      compact.includes('translation') ||
+      compact.includes('translat')) &&
       !hasGermanTrigger;
 
     const hasGermanStop =
@@ -1201,7 +1211,8 @@ Always return a clean JSON object with this exact schema:
       compact.includes('fertig') ||
       compact.includes('ende') ||
       compact.endsWith('halt') ||
-      compact.endsWith('stop');
+      compact.endsWith('stop') ||
+      compact.endsWith('hold');
 
     const hasEnglishStop =
       /\b(stop|halt|finished|done|finish|end|pause|hold|enough)\b/i.test(lower) ||
@@ -1219,10 +1230,9 @@ Always return a clean JSON object with this exact schema:
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       // Branch A: English -> German ("Translate")
       if (hasEnglishTrigger) {
-        if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+        if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
-        isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
         // Check if spoken in one breath: "Translate [word or phrase] Stop"
@@ -1233,10 +1243,10 @@ Always return a clean JSON object with this exact schema:
             directionRef.current = 'en_de';
             setPhase('recording');
             setStatusMessage(`Phrase erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
-            speakText('In Process', 'en-US', () => {
+            speakEnglish('In Process', () => {
               translateWithDirection(phrase, 'en_de');
             });
-            return;
+            return true;
           }
         }
 
@@ -1250,18 +1260,15 @@ Always return a clean JSON object with this exact schema:
         recordedChunksRef.current = [];
         setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (3–5 Wörter) und sage „Stop“.');
 
-        speakText('In Process', 'en-US', () => {
-          switchRecognitionLang('en-US');
-        });
-        return;
+        speakEnglish('In Process');
+        return true;
       }
 
       // Branch B: German -> English ("Übersetze" / "Übersetzen")
       if (hasGermanTrigger) {
-        if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
+        if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
-        isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
         // Check if spoken in one breath: "Übersetze [word] Halt"
@@ -1272,10 +1279,10 @@ Always return a clean JSON object with this exact schema:
             directionRef.current = 'de_en';
             setPhase('recording');
             setStatusMessage(`Wort erfasst (DE ➔ EN): „${word}“. Übersetze...`);
-            speakText('In Bearbeitung', 'de-DE', () => {
+            speakGerman('In Bearbeitung', () => {
               translateWithDirection(word, 'de_en');
             });
-            return;
+            return true;
           }
         }
 
@@ -1289,10 +1296,8 @@ Always return a clean JSON object with this exact schema:
         recordedChunksRef.current = [];
         setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.');
 
-        speakText('In Bearbeitung', 'de-DE', () => {
-          switchRecognitionLang('de-DE');
-        });
-        return;
+        speakGerman('In Bearbeitung');
+        return true;
       }
     }
 
@@ -1304,14 +1309,13 @@ Always return a clean JSON object with this exact schema:
       const isEn = activeDir === 'en_de';
 
       // Ignore utterance if it contains only residual trigger words
-      const isOnlyTrigger = /^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?|translate|translation|transit)[.?!]?$/i.test(text.trim());
-      if (isOnlyTrigger) {
-        return;
-      }
-
+      const isOnlyTrigger = hasGermanTrigger || hasEnglishTrigger;
       const clean = isEn ? extractEnglishPhrase(text) : extractGermanPhrase(text);
-      // Support stop command in either language for forgiving user experience
       const hasStop = isEn ? hasEnglishStop : (hasGermanStop || hasEnglishStop);
+
+      if (!clean && isOnlyTrigger) {
+        return false;
+      }
 
       if (clean) {
         setLiveTranscript(clean);
@@ -1328,8 +1332,8 @@ Always return a clean JSON object with this exact schema:
           setLiveTranscript('');
           currentRecordingTextRef.current = '';
           translateWithDirection(target, activeDir);
+          return true;
         }
-        return;
       }
 
       if (phraseToUse) {
@@ -1345,8 +1349,10 @@ Always return a clean JSON object with this exact schema:
           }
         }, 3800);
       }
+      return false;
     }
-  }, [speakText, handleRepeat, switchRecognitionLang]);
+    return false;
+  }, [speakGerman, speakEnglish, handleRepeat]);
 
   // Keep a stable ref to speech processor
   const processLiveSpeechRef = useRef(processLiveSpeech);
@@ -1354,7 +1360,7 @@ Always return a clean JSON object with this exact schema:
     processLiveSpeechRef.current = processLiveSpeech;
   }, [processLiveSpeech]);
 
-  // Continuous Speech Recognition lifecycle
+  // Continuous Speech Recognition lifecycle (en-US native on iPhone)
   useEffect(() => {
     if (!SpeechRecognition) return;
 
@@ -1372,44 +1378,31 @@ Always return a clean JSON object with this exact schema:
     const startRecognition = () => {
       if (isStoppingManually || !isMountedRef.current) return;
       try {
+        lastProcessedResultIndexRef.current = -1;
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = recognitionLangRef.current || 'de-DE';
+        recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            let bestTranscript = '';
-            for (let j = 0; j < event.results[i].length; j++) {
-              const candidate = event.results[i][j].transcript.trim();
-              if (!bestTranscript) bestTranscript = candidate;
-              const candLower = candidate.toLowerCase();
-              if (
-                candLower.includes('übersetz') ||
-                candLower.includes('uebersetz') ||
-                candLower.includes('ubersetz') ||
-                (candLower.includes('uber') && candLower.includes('setz')) ||
-                candLower.includes('translate') ||
-                candLower.includes('transit') ||
-                candLower.includes('halt') ||
-                candLower.includes('stopp') ||
-                candLower.includes('stop') ||
-                candLower.includes('hold') ||
-                candLower.includes('wiederhol') ||
-                candLower.includes('repeat') ||
-                candLower.includes('fertig') ||
-                candLower.includes('done')
-              ) {
-                bestTranscript = candidate;
-                break;
-              }
+            // Guard: if this utterance index was already consumed by trigger/stop, skip it!
+            if (i <= lastProcessedResultIndexRef.current) {
+              continue;
             }
 
-            if (bestTranscript) {
-              setLastHeardLive(bestTranscript);
+            for (let j = 0; j < event.results[i].length; j++) {
+              const candidate = event.results[i][j].transcript.trim();
+              if (!candidate) continue;
+              setLastHeardLive(candidate);
+
               if (processLiveSpeechRef.current) {
-                processLiveSpeechRef.current(bestTranscript, i);
+                const consumed = processLiveSpeechRef.current(candidate);
+                if (consumed) {
+                  lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, event.results.length - 1);
+                  return;
+                }
               }
             }
           }
@@ -1466,28 +1459,24 @@ Always return a clean JSON object with this exact schema:
 
     if (!isVoiceActive) {
       setIsVoiceActive(true);
-      if (!isKeepAwake) {
-        try {
-          await wakeLockManager.enable();
-          setIsKeepAwake(true);
-        } catch (e) {}
-      }
+      try {
+        localStorage.setItem('b1_live_voice_active', 'true');
+        await wakeLockManager.enable();
+        setIsKeepAwake(true);
+      } catch (e) {}
     }
 
     setPhase('recording');
     setCurrentRecordingText('');
     setLiveTranscript('');
+    currentRecordingTextRef.current = '';
 
     if (chosenDir === 'en_de') {
       setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (oder tippe unten).');
-      speakText('In Process', 'en-US', () => {
-        switchRecognitionLang('en-US');
-      });
+      speakEnglish('In Process');
     } else {
       setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase (oder tippe unten).');
-      speakText('In Bearbeitung', 'de-DE', () => {
-        switchRecognitionLang('de-DE');
-      });
+      speakGerman('In Bearbeitung');
     }
   };
 
@@ -1760,6 +1749,9 @@ Always return a clean JSON object with this exact schema:
               }
               const nextVoice = !isVoiceActive;
               setIsVoiceActive(nextVoice);
+              try {
+                localStorage.setItem('b1_live_voice_active', nextVoice ? 'true' : 'false');
+              } catch (e) {}
               if (nextVoice && !isKeepAwake) {
                 try {
                   await wakeLockManager.enable();
