@@ -323,6 +323,11 @@ export default function LiveTranslation({
           window.speechSynthesis.resume();
         }
         window.speechSynthesis.cancel();
+        // Mandatory dummy utterance to unlock iOS WebKit background speech playback
+        const dummy = new SpeechSynthesisUtterance(' ');
+        dummy.volume = 0.01;
+        dummy.rate = 1.0;
+        window.speechSynthesis.speak(dummy);
       } catch (e) {}
     }
     if (window.AudioContext || window.webkitAudioContext) {
@@ -333,6 +338,40 @@ export default function LiveTranslation({
         }
       } catch (e) {}
     }
+  }, []);
+
+  // Instant feedback chime (works 100% reliably on iPhone Web Audio)
+  const playChime = useCallback((type = 'start') => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === 'start') {
+        // High double-tone for start recording: C5 -> G5
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.22);
+      } else {
+        // Falling double-tone for stop recording: G5 -> C5
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime);
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.22);
+      }
+    } catch (e) {}
   }, []);
 
   // Global touch listener to unlock audio on first user touch/tap on iPhone
@@ -350,19 +389,18 @@ export default function LiveTranslation({
     };
   }, [unlockAudio]);
 
-  // ----------------------------------------------------
-  // Audio Speech Synthesis Helpers (German & English)
-  // Restored from working commit 1a22f1e: includes safety duration timeout,
-  // 300ms speaker echo buffer, and prevents mic locking on iPhone
-  // ----------------------------------------------------
+  // Audio Speech Synthesis Engine (German & English)
   const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
 
-    try { window.speechSynthesis.cancel(); } catch (e) {}
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+
+    if (window.speechSynthesis.paused) {
+      try { window.speechSynthesis.resume(); } catch (e) {}
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
@@ -382,8 +420,8 @@ export default function LiveTranslation({
 
     isSpeakingTtsRef.current = true;
 
-    // Safety timeout: prevents microphone from getting permanently locked if onend drops on mobile/Safari
-    const maxTtsDuration = Math.max(2500, text.length * 85);
+    // Safety timeout: prevents mic echo tracking lock
+    const maxTtsDuration = Math.max(1600, text.length * 85);
     ttsSafetyTimerRef.current = setTimeout(() => {
       isSpeakingTtsRef.current = false;
     }, maxTtsDuration);
@@ -391,11 +429,10 @@ export default function LiveTranslation({
     utterance.onend = () => {
       if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
       if (!isMountedRef.current) return;
-      // Brief buffer to ensure microphone doesn't capture speaker echo
       setTimeout(() => {
         isSpeakingTtsRef.current = false;
         if (onEnd) onEnd();
-      }, 300);
+      }, 200);
     };
 
     utterance.onerror = () => {
@@ -405,7 +442,12 @@ export default function LiveTranslation({
       if (onEnd) onEnd();
     };
 
-    window.speechSynthesis.speak(utterance);
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      isSpeakingTtsRef.current = false;
+      if (onEnd) onEnd();
+    }
   }, []);
 
   const speakGerman = useCallback((text, onEnd) => {
@@ -1128,13 +1170,12 @@ Always return a clean JSON object with this exact schema:
 
   // ----------------------------------------------------
   // Speech Recognition Event Engine (German & English & Wiederholen)
-  // Restored from working commit 1a22f1e:
   // - Recognizes "Übersetze" / "Übersetzen" / "Translate"
-  // - Acknowledges aloud with "In Bearbeitung" / "In Process"
+  // - Acknowledges instantly with audio chime + "In Bearbeitung" / "In Process"
   // - Captures words and triggers translation on "Halt" / "Stop"
   // ----------------------------------------------------
   const processLiveSpeech = useCallback((rawTranscript) => {
-    if (!rawTranscript || isSpeakingTtsRef.current) return;
+    if (!rawTranscript) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
     const compact = lower.replace(/\s+/g, '');
@@ -1161,7 +1202,7 @@ Always return a clean JSON object with this exact schema:
       return;
     }
 
-    // 2. TRIGGER WORDS (Flexible detection from 1a22f1e)
+    // 2. TRIGGER WORDS (Highly tolerant for both German and English phonetics)
     const hasGermanTrigger =
       /\b(über\s*setz(e|en|t|ung|er)?|ueber\s*setz(e|en|t|ung|er)?|uber\s*setz(e|en|t|ung|er)?)\b/i.test(lower) ||
       compact.includes('übersetz') ||
@@ -1173,23 +1214,33 @@ Always return a clean JSON object with this exact schema:
       (compact.includes('ueber') && compact.includes('setz'));
 
     const hasEnglishTrigger =
-      (/\b(translate|translation|translating|translates)\b/i.test(lower) ||
-      compact.includes('translate')) &&
+      (/\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer|trans|late|relate|trennt\s*late|trend\s*late|englische?\s*bedeutung)\b/i.test(lower) ||
+      compact.includes('translate') ||
+      compact.includes('translat') ||
+      compact.includes('transit') ||
+      compact.includes('transfer') ||
+      compact.includes('trenntlate') ||
+      compact.includes('trendlate')) &&
       !hasGermanTrigger;
 
-    // 3. STOP DETECTION ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug" from 1a22f1e)
+    // 3. STOP DETECTION ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Hold")
     const hasStop =
-      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower) ||
-      lower.includes('halt') ||
-      lower.includes('stopp') ||
-      lower.includes('stop') ||
-      lower.includes('fertig');
+      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|holt|genug)\b/i.test(lower) ||
+      compact.includes('halt') ||
+      compact.includes('stopp') ||
+      compact.includes('stop') ||
+      compact.includes('fertig') ||
+      compact.endsWith('halt') ||
+      compact.endsWith('stop') ||
+      compact.endsWith('stopp') ||
+      compact.includes('hold');
 
     // ----------------------------------------------------
     // State 1: IDLE or SPEAKING (Trigger starts new session)
     // ----------------------------------------------------
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       if (hasGermanTrigger || hasEnglishTrigger) {
+        unlockAudio();
         if ('speechSynthesis' in window) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
@@ -1199,6 +1250,9 @@ Always return a clean JSON object with this exact schema:
         const activeDir = isEn ? 'en_de' : 'de_en';
         setDirection(activeDir);
         directionRef.current = activeDir;
+
+        // Instant audio chime confirmation
+        playChime('start');
 
         // Check if user spoke entire command in one single breath: "Übersetze [word] Halt" or "Translate [phrase] Stop"
         if (hasStop) {
@@ -1230,9 +1284,7 @@ Always return a clean JSON object with this exact schema:
             : 'Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.'
         );
 
-        speakText(isEn ? 'In Process' : 'In Bearbeitung', isEn ? 'en-US' : 'de-DE', () => {
-          // Acknowledgment spoken, microphone ready to capture the German word
-        });
+        speakText(isEn ? 'In Process' : 'In Bearbeitung', isEn ? 'en-US' : 'de-DE');
         return;
       }
     }
@@ -1257,12 +1309,19 @@ Always return a clean JSON object with this exact schema:
       const phraseToUse = currentClean || currentRecordingTextRef.current;
 
       if (hasStop) {
+        playChime('stop');
         if (phraseToUse) {
           setLiveTranscript('');
           currentRecordingTextRef.current = '';
           translateWithDirection(phraseToUse, activeDir);
+        } else {
+          setPhase('idle');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
         }
-      } else if (phraseToUse) {
+        return;
+      }
+
+      if (phraseToUse) {
         // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
         silenceTimerRef.current = setTimeout(() => {
           if (phaseRef.current === 'recording') {
@@ -1275,7 +1334,7 @@ Always return a clean JSON object with this exact schema:
         }, 3800);
       }
     }
-  }, [speakText, handleRepeat]);
+  }, [speakText, handleRepeat, unlockAudio, playChime]);
 
   // Keep a stable ref to speech processor
   const processLiveSpeechRef = useRef(processLiveSpeech);
@@ -1283,7 +1342,7 @@ Always return a clean JSON object with this exact schema:
     processLiveSpeechRef.current = processLiveSpeech;
   }, [processLiveSpeech]);
 
-  // Continuous Speech Recognition lifecycle (German de-DE engine from commit 1a22f1e)
+  // Continuous Speech Recognition lifecycle (German de-DE engine with multi-lingual trigger priority)
   useEffect(() => {
     if (!SpeechRecognition) return;
 
@@ -1305,11 +1364,9 @@ Always return a clean JSON object with this exact schema:
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.maxAlternatives = 3;
-        recognition.lang = 'de-DE'; // German speech recognition engine (commit 1a22f1e)
+        recognition.lang = 'de-DE'; // German speech recognition engine
 
         recognition.onresult = (event) => {
-          if (isSpeakingTtsRef.current) return; // Prevent mic from hearing phone's own speaker
-
           for (let i = event.resultIndex; i < event.results.length; i++) {
             // Check all alternatives and prioritize trigger/stop words
             let bestTranscript = '';
@@ -1324,7 +1381,11 @@ Always return a clean JSON object with this exact schema:
                 candLower.includes('halt') ||
                 candLower.includes('stopp') ||
                 candLower.includes('stop') ||
+                candLower.includes('hold') ||
                 candLower.includes('translate') ||
+                candLower.includes('transit') ||
+                candLower.includes('transfer') ||
+                candLower.includes('translat') ||
                 candLower.includes('wiederhol') ||
                 candLower.includes('repeat')
               ) {
