@@ -623,7 +623,30 @@ export default function AnkiiSpeaking({
       }
     }
 
-    let initialList = shuffleArray(allFilteredPool);
+    // Cross-session freshness tracking: get recently studied words from localStorage
+    let recentWords = [];
+    try {
+      const stored = localStorage.getItem('b1_ankii_recent_words');
+      if (stored) recentWords = JSON.parse(stored);
+    } catch (e) {}
+
+    const recentSet = new Set(recentWords.map(w => (w || '').toLowerCase()));
+
+    // Partition pool into unseen words vs recently studied words to prevent repetition across multiple sessions
+    const unseenPool = allFilteredPool.filter(item => !recentSet.has(item.word.toLowerCase()));
+    const seenPool = allFilteredPool.filter(item => recentSet.has(item.word.toLowerCase()));
+
+    // Fully shuffle both pools independently
+    const shuffledUnseen = shuffleArray(unseenPool);
+    const shuffledSeen = shuffleArray(seenPool);
+
+    // Combine fresh unseen words first, followed by seen words
+    let combinedPool = [...shuffledUnseen, ...shuffledSeen];
+    if (combinedPool.length === 0) {
+      combinedPool = shuffleArray(allFilteredPool);
+    }
+
+    let initialList = combinedPool;
     if (queueLimit !== 'all') {
       const limit = parseInt(queueLimit, 10);
       initialList = initialList.slice(0, limit);
@@ -654,12 +677,23 @@ export default function AnkiiSpeaking({
     }, 100);
   };
 
-  // Helper to advance to the next card in line (no cycling)
+  // Helper to advance to the next card in line
   const advanceToNextWord = useCallback(() => {
     clearAdvanceTimers();
     cardAppearedTimeRef.current = Date.now();
     lastExecutedCommandTimeRef.current = Date.now();
     setSpellingDisplay(null);
+
+    // Persist recently studied word in localStorage (keeping last 400 words across sessions)
+    if (currentCard && currentCard.word) {
+      try {
+        const stored = localStorage.getItem('b1_ankii_recent_words');
+        const prev = stored ? JSON.parse(stored) : [];
+        const updated = [currentCard.word, ...prev.filter(w => w.toLowerCase() !== currentCard.word.toLowerCase())].slice(0, 400);
+        localStorage.setItem('b1_ankii_recent_words', JSON.stringify(updated));
+      } catch (e) {}
+    }
+
     const nextIdx = currentIndex + 1;
     if (nextIdx >= sessionCards.length) {
       setSessionFinished(true);
@@ -672,7 +706,7 @@ export default function AnkiiSpeaking({
       const nextWord = getAudioGermanWord(sessionCards[nextIdx].word);
       speakGerman(nextWord);
     }
-  }, [currentIndex, sessionCards, speakGerman]);
+  }, [currentIndex, sessionCards, speakGerman, currentCard]);
 
   // ----------------------------------------------------
   // Action 1: Mastered / Known (Instant Recall)
@@ -696,7 +730,7 @@ export default function AnkiiSpeaking({
   // Action 2: Forgot Word (English Meaning Only)
   // [N] or Swipe Left or "English" Button
   // Reveals English translation, reads aloud via TTS.
-  // Does NOT auto-advance; stays until user chooses to advance.
+  // Re-inserts randomly between 20 and 400 positions ahead in queue
   // ----------------------------------------------------
   const handleForgotEnglish = useCallback(() => {
     if (!currentCard) return;
@@ -706,19 +740,31 @@ export default function AnkiiSpeaking({
       onReview(currentCard.word, currentCard.category, 'hard');
     }
 
+    // Only re-insert once per card appearance
     if (revealedState === 'none') {
       setSessionResults(prev => [...prev, { card: currentCard, result: 'english' }]);
+
+      // Re-insert randomly between 20 and 400 positions ahead in the queue
+      const minOffset = 20;
+      const maxOffset = 400;
+      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
+      setSessionCards(prev => {
+        const next = [...prev];
+        const insertIndex = Math.min(next.length, currentIndex + offset);
+        next.splice(insertIndex, 0, currentCard);
+        return next;
+      });
     }
 
     setRevealedState('english');
     speakEnglish(currentCard.meaning);
-  }, [currentCard, revealedState, onReview, speakEnglish]);
+  }, [currentCard, currentIndex, revealedState, onReview, speakEnglish]);
 
   // ----------------------------------------------------
   // Action 3: More Context (English + Workplace Example)
   // [M] or Swipe Up or "Context" Button
   // Reveals English & Workplace Example, reads sequentially via TTS.
-  // Does NOT auto-advance; stays until user chooses to advance.
+  // Re-inserts randomly between 20 and 400 positions ahead in queue
   // ----------------------------------------------------
   const handleMoreContext = useCallback(() => {
     if (!currentCard) return;
@@ -730,15 +776,27 @@ export default function AnkiiSpeaking({
 
     const example = getWorkplaceExample(currentCard);
 
+    // Only re-insert once per card appearance
     if (revealedState === 'none') {
       setSessionResults(prev => [...prev, { card: currentCard, result: 'context' }]);
+
+      // Re-insert randomly between 20 and 400 positions ahead in the queue
+      const minOffset = 20;
+      const maxOffset = 400;
+      const offset = Math.floor(Math.random() * (maxOffset - minOffset + 1)) + minOffset;
+      setSessionCards(prev => {
+        const next = [...prev];
+        const insertIndex = Math.min(next.length, currentIndex + offset);
+        next.splice(insertIndex, 0, currentCard);
+        return next;
+      });
     }
 
     setRevealedState('context');
 
     const exampleDe = example ? example.de : '';
     speakSequentialContext(currentCard.meaning, exampleDe);
-  }, [currentCard, revealedState, onReview, speakSequentialContext]);
+  }, [currentCard, currentIndex, revealedState, onReview, speakSequentialContext]);
 
   // Advance to next card manually (when card is revealed)
   const handleAdvanceNext = useCallback(() => {
@@ -777,19 +835,24 @@ export default function AnkiiSpeaking({
       });
     }
 
-    // 2. Advance to the next card immediately
+    // 2. Advance to the next card immediately & remove any future copies of this deleted word
     cardAppearedTimeRef.current = Date.now();
     lastExecutedCommandTimeRef.current = Date.now();
     setSessionDeletedCount(prev => prev + 1);
     setSpellingDisplay(null);
+
+    // Remove any future occurrences of this deleted word if it was re-inserted earlier
+    const cleanedCards = sessionCards.filter((c, idx) => idx <= currentIndex || c.word.toLowerCase() !== wordKey.toLowerCase());
+    setSessionCards(cleanedCards);
+
     const nextIdx = currentIndex + 1;
-    if (nextIdx >= sessionCards.length) {
+    if (nextIdx >= cleanedCards.length) {
       setSessionFinished(true);
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     } else {
       setCurrentIndex(nextIdx);
       setRevealedState('none');
-      const nextWord = getAudioGermanWord(sessionCards[nextIdx].word);
+      const nextWord = getAudioGermanWord(cleanedCards[nextIdx].word);
       speakGerman(nextWord);
     }
 
