@@ -221,11 +221,11 @@ export default function LiveTranslation({
     currentResultRef.current = currentResult;
   }, [currentResult]);
 
-  // Translation history (persisted in localStorage)
+  // Translation history (persisted in localStorage, limited to 10 items)
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('b1_live_translations');
-      return saved ? JSON.parse(saved) : [];
+      return saved ? JSON.parse(saved).slice(0, 10) : [];
     } catch (e) {
       return [];
     }
@@ -298,10 +298,10 @@ export default function LiveTranslation({
     };
   }, []);
 
-  // Save history to localStorage
+  // Save history to localStorage (capped at 10 items)
   useEffect(() => {
     try {
-      localStorage.setItem('b1_live_translations', JSON.stringify(history.slice(0, 100)));
+      localStorage.setItem('b1_live_translations', JSON.stringify(history.slice(0, 10)));
     } catch (e) {}
   }, [history]);
 
@@ -962,7 +962,7 @@ export default function LiveTranslation({
       };
 
       setCurrentResult(b1Result);
-      setHistory(prev => [b1Result, ...prev]);
+      setHistory(prev => [b1Result, ...prev.filter(item => item.german !== b1Result.german)].slice(0, 10));
 
       // Speak both usages or single usage aloud
       speakResult(b1Result);
@@ -1121,7 +1121,7 @@ Always return a clean JSON object with this exact schema:
     };
 
     setCurrentResult(newResult);
-    setHistory(prev => [newResult, ...prev]);
+    setHistory(prev => [newResult, ...prev.filter(item => item.german !== newResult.german)].slice(0, 10));
 
     // Speak out loud (both usages if present)
     speakResult(newResult);
@@ -2609,10 +2609,10 @@ Always return a clean JSON object with this exact schema:
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0 }}>
-              📜 Podcast Wörter ({history.length})
+              📜 Podcast Wörter ({history.length}/10)
             </h3>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Alle in dieser Session erfassten Begriffe
+              Die letzten 10 erfassten Begriffe & Phrasen
             </span>
           </div>
 
