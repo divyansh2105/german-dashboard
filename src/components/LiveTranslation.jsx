@@ -37,11 +37,12 @@ export default function LiveTranslation({
   const [fallbackNotice, setFallbackNotice] = useState('');
   const [availableModels, setAvailableModels] = useState(() => getStoredAvailableModels());
 
-  // Translation history (persisted in localStorage)
+  // Translation history (persisted in localStorage, limited to 10 most recent words)
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('b1_live_translations');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.slice(0, 10) : [];
     } catch (e) {
       return [];
     }
@@ -122,10 +123,10 @@ export default function LiveTranslation({
     };
   }, []);
 
-  // Save history to localStorage
+  // Save history to localStorage (kept to most recent 10 words)
   useEffect(() => {
     try {
-      localStorage.setItem('b1_live_translations', JSON.stringify(history.slice(0, 100)));
+      localStorage.setItem('b1_live_translations', JSON.stringify(history.slice(0, 10)));
     } catch (e) {}
   }, [history]);
 
@@ -590,7 +591,7 @@ export default function LiveTranslation({
       };
 
       setCurrentResult(b1Result);
-      setHistory(prev => [b1Result, ...prev]);
+      setHistory(prev => [b1Result, ...prev.filter(item => item.german !== b1Result.german)].slice(0, 10));
 
       // Speak Aloud sequentially based on direction
       speakSequentialResult(b1Result, dir);
@@ -818,7 +819,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     };
 
     setCurrentResult(newResult);
-    setHistory(prev => [newResult, ...prev]);
+    setHistory(prev => [newResult, ...prev.filter(item => item.german !== newResult.german)].slice(0, 10));
 
     // Speak Aloud sequentially based on direction
     speakSequentialResult(newResult, dir);
@@ -2076,10 +2077,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
             <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0 }}>
-              📜 Podcast Wörter ({history.length})
+              📜 Podcast Wörter ({history.length}{history.length >= 10 ? ' · Max 10' : ''})
             </h3>
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              Alle in dieser Session erfassten Begriffe
+              Die 10 neuesten erfassten Begriffe
             </span>
           </div>
 
