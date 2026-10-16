@@ -71,6 +71,8 @@ export default function LiveTranslation({
   const isMountedRef = useRef(true);
   const recognitionRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const currentRecordingTextRef = useRef('');
+  const detectedPosRef = useRef(null);
   const phaseRef = useRef('idle');
 
   // Keep phaseRef in sync with phase state
@@ -303,10 +305,11 @@ export default function LiveTranslation({
     }
 
     const cleanText = text
-      .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
-      .replace(/\b(translate|translation)\b/gi, '')
-      .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
-      .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
+      .replace(/(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:über|ueber|uber)\s*setz(?:en|e|t|ung|er)?(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:translate|translation)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:in\s+bearbeitung|bearbeitung|in\s+process)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/(?:^|\s|[.,;:!?])(?:halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)(?=\s|[.,;:!?]|$)/gi, ' ')
+      .replace(/[.,;:!?]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
 
@@ -615,17 +618,20 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
 
     // Flexible trigger detection ("Übersetze", "Über setze", "Übersetzen", "Translate", "Übersetzung")
     const hasTrigger =
-      /\b(über\s*setz(e|en|t|ung|er)?|translate|translation)\b/i.test(lower) ||
+      /(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:über|ueber|uber)\s*setz(?:en|e|t|ung|er)?(?=\s|[.,;:!?]|$)/i.test(text) ||
+      /(?:^|\s|[.,;:!?])(?:translate|translation)(?=\s|[.,;:!?]|$)/i.test(text) ||
       compact.includes('übersetz') ||
       compact.includes('uebersetz') ||
+      compact.includes('ubersetz') ||
       lower.includes('translate');
 
     // Flexible stop detection ("Halt", "Stopp", "Stop", "Fertig", "Ende", "Genug")
     const hasStop =
-      /\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/i.test(lower) ||
-      lower.includes('halt') ||
-      lower.includes('stopp') ||
-      lower.includes('fertig');
+      /(?:^|\s|[.,;:!?])(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      lower === 'halt' ||
+      lower === 'stopp' ||
+      lower === 'stop' ||
+      lower === 'fertig';
 
     // ----------------------------------------------------
     // State 1: IDLE or SPEAKING (Trigger word "Übersetze" starts new session)
@@ -645,6 +651,8 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
           const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text);
           if (phrase) {
             setPhase('recording');
+            currentRecordingTextRef.current = phrase;
+            detectedPosRef.current = detectedPos;
             setStatusMessage(`Wort erfasst: „${phrase}“. Übersetze...`);
             speakText('In Bearbeitung', 'de-DE', () => {
               translateWithGemini(phrase, detectedPos);
@@ -656,6 +664,8 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
         // Standard 2-Step Flow:
         // Switch to recording right away so subsequent words are not missed
         setPhase('recording');
+        currentRecordingTextRef.current = '';
+        detectedPosRef.current = null;
         setCurrentRecordingText('');
         setLiveTranscript('');
         recordedChunksRef.current = [];
@@ -667,27 +677,51 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word until "Halt" is heard or silence)
+    // State 2: RECORDING (Capturing word until "Halt" is heard)
+    // Empty by default, NEVER auto-submits until user says "Halt"
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
+      // If user says "Übersetze" again while recording, reset buffer and re-arm
+      if (hasTrigger && !hasStop) {
+        setLiveTranscript('');
+        setCurrentRecordingText('');
+        currentRecordingTextRef.current = '';
+        detectedPosRef.current = null;
+        setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
+        speakText('In Bearbeitung', 'de-DE');
+        return;
+      }
+
       const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text);
+
+      // Only update buffer if an actual word was spoken (not empty/trigger words)
       if (currentClean) {
         setLiveTranscript(currentClean);
         setCurrentRecordingText(currentClean);
+        currentRecordingTextRef.current = currentClean;
+        if (detectedPos) {
+          detectedPosRef.current = detectedPos;
+        }
+      }
 
-        // Clear existing silence timer
+      // ONLY submit when user explicitly says "Halt" / "Stopp"
+      if (hasStop) {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        const wordToTranslate = currentClean || currentRecordingTextRef.current;
+        const posToUse = detectedPos || detectedPosRef.current;
 
-        if (hasStop) {
+        if (wordToTranslate) {
           setLiveTranscript('');
-          translateWithGemini(currentClean, detectedPos);
+          setCurrentRecordingText('');
+          currentRecordingTextRef.current = '';
+          detectedPosRef.current = null;
+          translateWithGemini(wordToTranslate, posToUse);
         } else {
-          // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
-          silenceTimerRef.current = setTimeout(() => {
-            if (phaseRef.current === 'recording') {
-              translateWithGemini(currentClean, detectedPos);
-            }
-          }, 3800);
+          // If Halt was spoken but no word was captured yet
+          setStatusMessage('Kein Wort erfasst. Sage „Übersetze“, um es erneut zu versuchen.');
+          setPhase('idle');
+          currentRecordingTextRef.current = '';
+          detectedPosRef.current = null;
         }
       }
     }
@@ -734,8 +768,10 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
               if (
                 candLower.includes('übersetz') ||
                 candLower.includes('uebersetz') ||
+                candLower.includes('ubersetz') ||
                 candLower.includes('halt') ||
                 candLower.includes('stopp') ||
+                candLower.includes('stop') ||
                 candLower.includes('translate')
               ) {
                 bestTranscript = candidate;
@@ -804,17 +840,23 @@ ${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUp
     }
     setPhase('recording');
     setCurrentRecordingText('');
+    currentRecordingTextRef.current = '';
+    detectedPosRef.current = null;
     setLiveTranscript('');
-    setStatusMessage('Aufnahme läuft... Sprich das Wort oder tippe unten.');
+    setStatusMessage('Aufnahme läuft... Sprich das Wort und sage „Halt“.');
     speakText('In Bearbeitung', 'de-DE');
   };
 
   const handleStopRecordingManual = () => {
     unlockAudio();
-    const raw = liveTranscript || currentRecordingText || manualInput;
+    const raw = liveTranscript || currentRecordingText || currentRecordingTextRef.current || manualInput;
     const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw);
-    if (textToUse) {
-      translateWithGemini(textToUse, detectedPos || posFilter);
+    const finalWord = textToUse || currentRecordingTextRef.current;
+    if (finalWord) {
+      setLiveTranscript('');
+      setCurrentRecordingText('');
+      currentRecordingTextRef.current = '';
+      translateWithGemini(finalWord, detectedPos || detectedPosRef.current || posFilter);
     } else {
       setPhase('idle');
       setStatusMessage('Kein Wort eingegeben.');
