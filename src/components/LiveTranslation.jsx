@@ -258,6 +258,7 @@ export default function LiveTranslation({
   const recognitionLangRef = useRef('de-DE');
   const recordedChunksRef = useRef([]);
   const phaseRef = useRef('idle');
+  const lastConsumedIndexRef = useRef(-1);
 
   // Keep phaseRef in sync with phase state
   useEffect(() => {
@@ -370,10 +371,10 @@ export default function LiveTranslation({
     if (voices && voices.length > 0) {
       let chosenVoice = null;
       if (lang.startsWith('de')) {
-        chosenVoice = voices.find(v => (v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) && v.localService !== false) ||
+        chosenVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
           voices.find(v => v.lang.startsWith('de'));
       } else {
-        chosenVoice = voices.find(v => (v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) && v.localService !== false) ||
+        chosenVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
           voices.find(v => v.lang.startsWith('en'));
       }
       if (chosenVoice) {
@@ -602,41 +603,54 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // ----------------------------------------------------
-  // Spoken Phrase Extractors (German & English) - supports single words & small phrases
+  // Spoken Phrase Extractors:
+  // - German to English: strictly single words (preserves article + noun if spoken together)
+  // - English to German: small phrases (3 to 5 words) or single words
   // ----------------------------------------------------
   const extractGermanPhrase = (rawText) => {
     if (!rawText) return '';
     let t = rawText.trim();
-    // 1. Remove trigger words at start ("Übersetze", "Bitte übersetzen", "Translate", etc.)
-    t = t.replace(/^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)\s*[:,-]?\s*/gi, '');
+    // 1. Remove ANY trigger words: "Übersetze", "Übersetzen", "Bitte übersetzen", "Translate", etc.
+    t = t.replace(/\b(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)\b/gi, '');
     // 2. Remove TTS acknowledgments if picked up by microphone
     t = t.replace(/\b(in bearbeitung|bearbeitung|in process|in progress)\b/gi, '');
-    // 3. Remove repeat command if present at edges
-    t = t.replace(/^(wiederhol(e|en|t)?|repeat|nochmal)\s*/gi, '');
-    // 4. Remove stop commands at end of phrase ("Halt", "Stopp", "Stop", "Fertig", "Ende")
-    t = t.replace(/\s*[,.-]?\s*\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b[.?!]?\s*$/gi, '');
-    // 5. Cleanup redundant prefix triggers if any remain
-    t = t.replace(/^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate)\b/gi, '');
-    t = t.replace(/\s+/g, ' ').trim();
-    return t;
+    // 3. Remove repeat command
+    t = t.replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '');
+    // 4. Remove stop commands anywhere
+    t = t.replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '');
+    // 5. Remove conversational fillers
+    t = t.replace(/\b(das wort|das|die|der)?\s*(wort|bedeutung|ähm|äh)\b/gi, '');
+    t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // STRICT SINGLE WORD REQUIREMENT FOR DE -> EN
+    const words = t.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '';
+    // If user said article + noun (e.g. "das Ansehen", "der Tisch"), keep them together
+    if (words.length === 2 && /^(der|die|das|ein|eine|dem|den|des)\b/i.test(words[0])) {
+      return `${words[0]} ${words[1]}`;
+    }
+    // Otherwise return strictly single word (last salient word)
+    return words[words.length - 1];
   };
 
   const extractEnglishPhrase = (rawText) => {
     if (!rawText) return '';
     let t = rawText.trim();
-    // 1. Remove trigger words at start ("Translate", "Please translate", "Übersetze", etc.)
-    t = t.replace(/^(please\s+)?(translate|translation|über\s*setz(e|en|t)?)\s*[:,-]?\s*/gi, '');
+    // 1. Remove ANY trigger words: "Translate", "Please translate", "Übersetze", etc.
+    t = t.replace(/\b(please\s+)?(translate|translation|über\s*setz(e|en|t)?)\b/gi, '');
     // 2. Remove TTS acknowledgments if picked up by microphone
     t = t.replace(/\b(in process|in progress|in bearbeitung|bearbeitung)\b/gi, '');
-    // 3. Remove repeat command if present at edges
-    t = t.replace(/^(repeat|say again|nochmal)\s*/gi, '');
-    // 4. Remove stop commands at end of phrase ("Stop", "Halt", "Finished", "Done", "Finish")
-    t = t.replace(/\s*[,.-]?\s*\b(stop|halt|finished|done|finish|end)\b[.?!]?\s*$/gi, '');
-    // 5. Cleanup redundant prefix triggers if any remain
-    t = t.replace(/^(please\s+)?(translate)\b/gi, '');
-    t = t.replace(/\s+/g, ' ').trim();
-    return t;
+    // 3. Remove repeat command
+    t = t.replace(/\b(repeat|say again|nochmal)\b/gi, '');
+    // 4. Remove stop commands
+    t = t.replace(/\b(stop|halt|finished|done|finish|end)\b/gi, '');
+    t = t.replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Supports small phrases (3 to 5 words) or single words for EN -> DE
+    const words = t.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return '';
+    if (words.length <= 5) return words.join(' ');
+    return words.slice(0, 5).join(' ');
   };
 
   const extractSpokenPhraseAndPos = (rawText) => {
@@ -983,17 +997,18 @@ export default function LiveTranslation({
     const isPhraseInput = cleanInput.includes(' ') || cleanInput.split(/\s+/).length > 1;
 
     const systemInstruction = `You are a native German language expert and Goethe B1/B2 curriculum language coach.
-Your job is to translate words, idioms, collocations, and phrases between German and English.
+Your job is to translate between German and English:
 
-SUPPORT FOR BOTH SINGLE WORDS AND PHRASES:
-1. Single Words (e.g. "ansehen", "treffen", "essen", "leben", "schreiben", "versprechen", "hoffen"):
-   - You MUST check if the single word functions as BOTH a verb and a noun in German.
+1. GERMAN TO ENGLISH (DE ➔ EN):
+   - Translate the single German word to English.
+   - You MUST check if the word functions as BOTH a verb and a noun in German (e.g. "ansehen" = to look at / "das Ansehen" = reputation; "treffen" = to meet / "das Treffen" = meeting; "essen" = to eat / "das Essen" = food; "leben" = to live / "das Leben" = life; "schreiben" = to write / "das Schreiben" = official letter; "versprechen" = to promise / "das Versprechen" = promise; "hoffen" = to hope / "die Hoffnung" = hope).
    - If BOTH usages exist, you MUST set "hasBothUsages": true, and provide both complete usages under "verbUsage" and "nounUsage".
    - If only one usage exists, set "hasBothUsages": false, and leave "verbUsage" and "nounUsage" as null.
 
-2. Phrases, Idioms, Collocations & Expressions (e.g. "auf jeden Fall", "in der Regel", "Bescheid geben", "sich Sorgen machen", "zur Verfügung stehen", "by the way", "as well as", "take into account", "piece of cake", "at the end of the day"):
-   - For multi-word phrases and idioms, ALWAYS set "hasBothUsages": false, set "verbUsage": null, "nounUsage": null, and set "pos": "phrase" (or "idiom").
-   - Provide the most natural, authentic B1/B2 German translation and a realistic example sentence illustrating natural usage in workplace, daily life, or podcast contexts.
+2. ENGLISH TO GERMAN (EN ➔ DE):
+   - Translate the English input (single word or small phrase of 3–5 words, e.g. "by the way", "take into account", "as well as", "looking forward to", "piece of cake") into natural B1/B2 German.
+   - For multi-word phrases, ALWAYS set "hasBothUsages": false, set "verbUsage": null, "nounUsage": null, and set "pos": "phrase".
+   - For single English words, check if the German translation has both verb and noun usages.
 
 Always return a clean JSON object with this exact schema:
 {
@@ -1021,8 +1036,8 @@ Always return a clean JSON object with this exact schema:
 }`;
 
     const promptText = isEn
-      ? `English input: "${cleanInput}". Translate accurately to German (supports single words, collocations, idioms, or small phrases). Provide natural German translation and example sentence.`
-      : `German input: "${cleanInput}". Translate accurately to English (supports single words, collocations, idioms, or small phrases). Provide English translation and example sentence.`;
+      ? `English input: "${cleanInput}". Translate to natural German (supports single words or small phrases of 3–5 words). Provide authentic German translation and example sentence.`
+      : `German input: "${cleanInput}". Translate this single German word to English. Check if it functions as both a verb and a noun in German. Provide English translation and German example sentence.`;
 
     let parsed = null;
     let usedModelName = getStoredGeminiModel();
@@ -1135,7 +1150,7 @@ Always return a clean JSON object with this exact schema:
   // ----------------------------------------------------
   // Speech Recognition Event Engine (German & English & Wiederholen)
   // ----------------------------------------------------
-  const processLiveSpeech = useCallback((rawTranscript) => {
+  const processLiveSpeech = useCallback((rawTranscript, resultIndex = -1) => {
     if (!rawTranscript) return;
     const text = rawTranscript.trim();
     const lower = text.toLowerCase();
@@ -1183,7 +1198,11 @@ Always return a clean JSON object with this exact schema:
     if (phaseRef.current === 'idle' || phaseRef.current === 'speaking') {
       // Branch A: English -> German ("Translate")
       if (hasEnglishTrigger) {
-        if ('speechSynthesis' in window) {
+        if (resultIndex >= 0) {
+          lastConsumedIndexRef.current = resultIndex;
+        }
+
+        if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
         isSpeakingTtsRef.current = false;
@@ -1196,7 +1215,7 @@ Always return a clean JSON object with this exact schema:
             setDirection('en_de');
             directionRef.current = 'en_de';
             setPhase('recording');
-            setStatusMessage(`Wort / Phrase erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
+            setStatusMessage(`Phrase erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
             speakText('In Process', 'en-US', () => {
               translateWithDirection(phrase, 'en_de');
             });
@@ -1212,31 +1231,35 @@ Always return a clean JSON object with this exact schema:
         setLiveTranscript('');
         currentRecordingTextRef.current = '';
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase und sage „Stop“.');
+        setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (3–5 Wörter) und sage „Stop“.');
 
         switchRecognitionLang('en-US');
         speakText('In Process', 'en-US');
         return;
       }
 
-      // Branch B: German -> English ("Übersetze")
+      // Branch B: German -> English ("Übersetze" / "Übersetzen")
       if (hasGermanTrigger) {
-        if ('speechSynthesis' in window) {
+        if (resultIndex >= 0) {
+          lastConsumedIndexRef.current = resultIndex;
+        }
+
+        if ('speechSynthesis' in window && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
           try { window.speechSynthesis.cancel(); } catch (e) {}
         }
         isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        // Check if spoken in one breath: "Übersetze [word or phrase] Halt"
+        // Check if spoken in one breath: "Übersetze [word] Halt"
         if (hasGermanStop) {
-          const phrase = extractGermanPhrase(text);
-          if (phrase) {
+          const word = extractGermanPhrase(text);
+          if (word) {
             setDirection('de_en');
             directionRef.current = 'de_en';
             setPhase('recording');
-            setStatusMessage(`Wort / Phrase erfasst (DE ➔ EN): „${phrase}“. Übersetze...`);
+            setStatusMessage(`Wort erfasst (DE ➔ EN): „${word}“. Übersetze...`);
             speakText('In Bearbeitung', 'de-DE', () => {
-              translateWithDirection(phrase, 'de_en');
+              translateWithDirection(word, 'de_en');
             });
             return;
           }
@@ -1250,7 +1273,7 @@ Always return a clean JSON object with this exact schema:
         setLiveTranscript('');
         currentRecordingTextRef.current = '';
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase und sage „Halt“.');
+        setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.');
 
         switchRecognitionLang('de-DE');
         speakText('In Bearbeitung', 'de-DE');
@@ -1259,7 +1282,7 @@ Always return a clean JSON object with this exact schema:
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Captures single words or multi-word phrases)
+    // State 2: RECORDING (DE: single word | EN: 3-5 word phrase)
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
       const activeDir = directionRef.current || 'de_en';
@@ -1268,27 +1291,41 @@ Always return a clean JSON object with this exact schema:
       const hasStop = isEn ? hasEnglishStop : hasGermanStop;
 
       if (clean) {
-        setLiveTranscript(clean);
-        setCurrentRecordingText(clean);
-        currentRecordingTextRef.current = clean;
+        if (isEn) {
+          const combined = currentRecordingTextRef.current
+            ? extractEnglishPhrase(`${currentRecordingTextRef.current} ${clean}`)
+            : clean;
+          setLiveTranscript(combined);
+          setCurrentRecordingText(combined);
+          currentRecordingTextRef.current = combined;
+        } else {
+          // German strictly single word
+          setLiveTranscript(clean);
+          setCurrentRecordingText(clean);
+          currentRecordingTextRef.current = clean;
+        }
       }
 
-      const candidatePhrase = clean || currentRecordingTextRef.current || liveTranscriptRef.current;
+      const phraseToUse = currentRecordingTextRef.current || clean;
 
-      if (candidatePhrase) {
+      if (phraseToUse) {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
         if (hasStop) {
+          if (resultIndex >= 0) {
+            lastConsumedIndexRef.current = resultIndex;
+          }
           setLiveTranscript('');
           currentRecordingTextRef.current = '';
-          translateWithDirection(candidatePhrase, activeDir);
+          translateWithDirection(phraseToUse, activeDir);
         } else {
-          // Automatic silence timer: if user doesn't say "Stop"/"Halt", translate phrase after 3.8s
+          // Automatic silence timer: if user doesn't say "Stop"/"Halt", translate after 3.8s
           silenceTimerRef.current = setTimeout(() => {
             if (phaseRef.current === 'recording') {
-              const phraseToRun = currentRecordingTextRef.current || candidatePhrase;
-              if (phraseToRun) {
-                translateWithDirection(phraseToRun, activeDir);
+              const finalWord = currentRecordingTextRef.current || phraseToUse;
+              if (finalWord) {
+                currentRecordingTextRef.current = '';
+                translateWithDirection(finalWord, activeDir);
               }
             }
           }, 3800);
@@ -1328,21 +1365,16 @@ Always return a clean JSON object with this exact schema:
         recognition.lang = recognitionLangRef.current || 'de-DE';
 
         recognition.onresult = (event) => {
-          // 1. Reconstruct current full session utterance across all chunks in this recognition run
-          let fullUtterance = '';
-          for (let i = 0; i < event.results.length; i++) {
-            const piece = event.results[i][0]?.transcript?.trim();
-            if (piece) {
-              fullUtterance += (fullUtterance ? ' ' : '') + piece;
-            }
-          }
-
-          // 2. Also find bestTranscript of the newest result for instant command matching
-          let bestNewTranscript = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
+            // Guard: don't re-process an utterance index that was already consumed
+            if (i <= lastConsumedIndexRef.current) {
+              continue;
+            }
+
+            let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
-              if (!bestNewTranscript) bestNewTranscript = candidate;
+              if (!bestTranscript) bestTranscript = candidate;
               const candLower = candidate.toLowerCase();
               if (
                 candLower.includes('übersetz') ||
@@ -1354,17 +1386,16 @@ Always return a clean JSON object with this exact schema:
                 candLower.includes('repeat') ||
                 candLower.includes('stop')
               ) {
-                bestNewTranscript = candidate;
+                bestTranscript = candidate;
                 break;
               }
             }
-          }
 
-          const transcriptToPass = fullUtterance || bestNewTranscript;
-          if (transcriptToPass) {
-            setLastHeardLive(bestNewTranscript || fullUtterance);
-            if (processLiveSpeechRef.current) {
-              processLiveSpeechRef.current(transcriptToPass);
+            if (bestTranscript) {
+              setLastHeardLive(bestTranscript);
+              if (processLiveSpeechRef.current) {
+                processLiveSpeechRef.current(bestTranscript, i);
+              }
             }
           }
         };
