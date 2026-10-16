@@ -50,6 +50,9 @@ export default function LiveTranslation({
   const [manualInput, setManualInput] = useState('');
   const [historySearch, setHistorySearch] = useState('');
 
+  // Part of speech preference: 'auto' | 'verb' | 'noun'
+  const [posFilter, setPosFilter] = useState('auto');
+
   // API Key management modal
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [inputKey, setInputKey] = useState(() => getStoredGeminiKey());
@@ -190,49 +193,138 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Clean German Text Extraction
+  // Clean German Text Extraction & Spoken POS Recognition
   // ----------------------------------------------------
-  const cleanSpokenPhrase = (rawText) => {
-    if (!rawText) return '';
-    return rawText
+  const extractSpokenPhraseAndPos = (rawText) => {
+    if (!rawText) return { cleanText: '', detectedPos: null };
+    let detectedPos = null;
+    let text = rawText;
+
+    // Check for spoken POS qualifiers (e.g. "Verb ansehen", "ansehen als Verb", "Nomen ansehen", "Substantiv")
+    if (/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/i.test(text)) {
+      detectedPos = 'verb';
+      text = text.replace(/\b(als\s+verb|verb|als\s+zeitwort|als\s+tätigkeitswort)\b/gi, '');
+    } else if (/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/i.test(text)) {
+      detectedPos = 'noun';
+      text = text.replace(/\b(als\s+nomen|nomen|als\s+substantiv|substantiv|als\s+namenwort|als\s+hauptwort)\b/gi, '');
+    }
+
+    const cleanText = text
       .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
       .replace(/\b(translate|translation)\b/gi, '')
       .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
       .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
+
+    return { cleanText, detectedPos };
+  };
+
+  const cleanSpokenPhrase = (rawText) => {
+    return extractSpokenPhraseAndPos(rawText).cleanText;
   };
 
   // ----------------------------------------------------
-  // Local Vocabulary Fallback Search
+  // Local B1 Vocabulary Search (Checks verbs, nouns, conjugations)
   // ----------------------------------------------------
-  const searchLocalVocab = (query) => {
-    if (!query || !Array.isArray(vocabData) || vocabData.length === 0) return null;
+  const searchLocalVocab = useCallback((query, targetPos = 'auto') => {
+    if (!query || !vocabData) return null;
     const cleanQ = query.toLowerCase().trim();
+    if (!cleanQ) return null;
 
-    // 1. Exact match on word
-    let match = vocabData.find(item => item.word.toLowerCase() === cleanQ);
-    if (match) return match;
+    const normalizeWord = (w) => {
+      return (w || '')
+        .toLowerCase()
+        .replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
+        .replace(/\(.*\)/g, '')
+        .replace(/,.*$/, '')
+        .trim();
+    };
 
-    // 2. Exact match on clean word without article
-    match = vocabData.find(item => {
-      const bare = item.word.replace(/^(der|die|das)\s+/i, '').toLowerCase();
-      return bare === cleanQ;
-    });
-    if (match) return match;
+    // Determine category search order based on targetPos
+    // Categories available in vocabData: nouns, verbs, adjectives, connectors, reflexive
+    let categoriesToSearch = [];
+    if (targetPos === 'verb') {
+      categoriesToSearch = ['verbs', 'reflexive'];
+    } else if (targetPos === 'noun') {
+      categoriesToSearch = ['nouns'];
+    } else {
+      // 'auto': prioritize verbs if input looks like an infinitive / lowercase;
+      // prioritize nouns if input has definite article
+      if (/^(der|die|das|ein|eine)\s+/i.test(cleanQ)) {
+        categoriesToSearch = ['nouns', 'verbs', 'adjectives', 'connectors', 'reflexive'];
+      } else {
+        categoriesToSearch = ['verbs', 'nouns', 'reflexive', 'adjectives', 'connectors'];
+      }
+    }
 
-    // 3. Word contains query
-    match = vocabData.find(item => item.word.toLowerCase().includes(cleanQ));
-    return match || null;
-  };
+    const getItemsForCategory = (cat) => {
+      if (Array.isArray(vocabData)) {
+        return vocabData.filter(item => (item.category || '').toLowerCase() === cat);
+      }
+      return Array.isArray(vocabData[cat]) ? vocabData[cat] : [];
+    };
+
+    // Pass 1: Exact match on normalized word or raw word
+    for (const cat of categoriesToSearch) {
+      const items = getItemsForCategory(cat);
+      const match = items.find(item => {
+        const itemRaw = (item.word || '').toLowerCase().trim();
+        const itemNorm = normalizeWord(item.word);
+        const queryNorm = normalizeWord(cleanQ);
+        return itemRaw === cleanQ || itemNorm === queryNorm;
+      });
+      if (match) return { ...match, category: cat };
+    }
+
+    // Pass 2: Conjugation or plural match (e.g. "sieht an", "sah an", "hat angesehen" -> "ansehen")
+    for (const cat of categoriesToSearch) {
+      const items = getItemsForCategory(cat);
+      const match = items.find(item => {
+        if (item.conjugation) {
+          const conjParts = item.conjugation
+            .toLowerCase()
+            .replace(/[^a-zäöüß\s]/g, ' ')
+            .split(/\s+/);
+          if (conjParts.includes(cleanQ)) return true;
+          if (item.conjugation.toLowerCase().includes(cleanQ)) return true;
+        }
+        if (item.plural) {
+          if (item.plural.toLowerCase().includes(cleanQ)) return true;
+        }
+        return false;
+      });
+      if (match) return { ...match, category: cat };
+    }
+
+    // Pass 3: If targetPos was 'auto', check remaining categories as fallback
+    if (targetPos === 'auto') {
+      const remainingCats = ['verbs', 'nouns', 'adjectives', 'connectors', 'reflexive']
+        .filter(c => !categoriesToSearch.includes(c));
+      for (const cat of remainingCats) {
+        const items = getItemsForCategory(cat);
+        const match = items.find(item => {
+          const itemNorm = normalizeWord(item.word);
+          const queryNorm = normalizeWord(cleanQ);
+          return itemNorm === queryNorm;
+        });
+        if (match) return { ...match, category: cat };
+      }
+    }
+
+    return null;
+  }, [vocabData]);
 
   // ----------------------------------------------------
-  // Gemini AI Translation & Sentence Generator with Model Fallback
-  // Cascades 3.6-flash -> 3.7-flash -> 3.5-flash -> 2.0-flash -> 1.5-flash
+  // Translation Handler:
+  // 1. Checks B1 Wordlist FIRST -> If present, returns immediately without Gemini query!
+  // 2. Otherwise calls Gemini with explicit POS constraints & fallback models
   // ----------------------------------------------------
-  const translateWithGemini = async (phraseToTranslate) => {
+  const translateWithGemini = async (phraseToTranslate, posOverride = null) => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    const cleanInput = cleanSpokenPhrase(phraseToTranslate);
+    const { cleanText: cleanInput, detectedPos: spokenPos } = extractSpokenPhraseAndPos(phraseToTranslate);
+    const effectivePos = posOverride || spokenPos || posFilter;
+
     if (!cleanInput) {
       speakText('Kein deutsches Wort erkannt.', 'de-DE', () => {
         setPhase('idle');
@@ -241,10 +333,90 @@ export default function LiveTranslation({
       return;
     }
 
-    setPhase('processing');
-    setStatusMessage(`Gemini übersetzt: „${cleanInput}“...`);
+    // If spoken POS detected, update filter state for UI visibility
+    if (spokenPos) {
+      setPosFilter(spokenPos);
+    }
 
-    const localMatch = searchLocalVocab(cleanInput);
+    // ----------------------------------------------------
+    // STEP 1: FAST PATH - CHECK B1 WORDLIST FIRST (NO GEMINI CALL)
+    // ----------------------------------------------------
+    const localMatch = searchLocalVocab(cleanInput, effectivePos);
+    if (localMatch) {
+      const primaryExample = localMatch.examples?.[0];
+      const germanEx = primaryExample?.de || `Beispielsatz: „${localMatch.word}“ ist ein wichtiges B1-Wort.`;
+      const englishEx = primaryExample?.en || '';
+      const isVerb = localMatch.category === 'verbs' || localMatch.category === 'reflexive';
+      const isNoun = localMatch.category === 'nouns';
+
+      const b1Result = {
+        id: Date.now(),
+        german: localMatch.word,
+        english: localMatch.meaning || 'Bedeutung im B1-Wortschatz',
+        germanExample: germanEx,
+        englishExample: englishEx,
+        notes: localMatch.conjugation || localMatch.plural || (localMatch.category ? `B1 Wortschatz (${localMatch.category})` : 'B1 Wortschatz'),
+        category: localMatch.category,
+        pos: isNoun ? 'noun' : (isVerb ? 'verb' : 'other'),
+        usedModel: 'B1 Wortschatz (Lokal)',
+        isFromB1List: true,
+        wasFallback: false,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+
+      setCurrentResult(b1Result);
+      setHistory(prev => [b1Result, ...prev]);
+
+      // Speak Aloud Workflow: English translation first, then German example sentence
+      setPhase('speaking');
+      setSpeakingSubPhase('en');
+      setStatusMessage(`📚 Im B1-Wortschatz gefunden! Lese vor: „${b1Result.english}“`);
+
+      speakText(b1Result.english, 'en-US', () => {
+        if (!isMountedRef.current) return;
+        setTimeout(() => {
+          if (!isMountedRef.current) return;
+          if (b1Result.germanExample) {
+            setSpeakingSubPhase('de_example');
+            setStatusMessage(`Lese Beispielsatz vor: „${b1Result.germanExample}“`);
+            speakText(b1Result.germanExample, 'de-DE', () => {
+              if (!isMountedRef.current) return;
+              setSpeakingSubPhase(null);
+              setPhase('idle');
+              setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
+            });
+          } else {
+            setSpeakingSubPhase(null);
+            setPhase('idle');
+            setStatusMessage('Bereit. Sage „Übersetze“, um das nächste Wort zu übersetzen.');
+          }
+        }, 380);
+      });
+
+      return; // EXIT EARLY! Zero Gemini API calls required!
+    }
+
+    // ----------------------------------------------------
+    // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI WITH POS CONSTRAINTS
+    // ----------------------------------------------------
+    setPhase('processing');
+    const posHintGerman = effectivePos === 'verb' ? ' (als Verb)' : effectivePos === 'noun' ? ' (als Nomen)' : '';
+    setStatusMessage(`Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“${posHintGerman}...`);
+
+    let posInstruction = '';
+    if (effectivePos === 'verb') {
+      posInstruction = `
+CRITICAL POS SPECIFICATION:
+The user explicitly specified this is a VERB.
+Translate and output the word in its base infinitive verb form (lowercase, e.g. "ansehen" = "to look at / to watch").
+Do NOT translate it as the noun "das Ansehen" (reputation/prestige).`;
+    } else if (effectivePos === 'noun') {
+      posInstruction = `
+CRITICAL POS SPECIFICATION:
+The user explicitly specified this is a NOUN.
+Translate and output the word as a NOUN with its German definite article (der/die/das) capitalized (e.g. "das Ansehen" = "reputation / prestige / standing").
+Do NOT translate it as a verb.`;
+    }
 
     const systemInstruction = `You are a native German language expert and B1/B2 language coach.
 Your job is to translate spoken German words or phrases heard during podcasts into clear English and provide a practical German example sentence.
@@ -254,11 +426,12 @@ Always return a clean JSON object with this exact schema:
   "english": "Concise English translation / meaning",
   "germanExample": "A realistic B1/B2 German sentence using this word in workplace, business, or daily life context",
   "englishExample": "English translation of the German example sentence",
-  "notes": "Optional short grammar note (e.g., preposition used with verb, plural form, or formality)"
-}`;
+  "notes": "Optional short grammar note (e.g., preposition used with verb, plural form, or formality)",
+  "pos": "verb | noun | adjective | other"
+}${posInstruction}`;
 
     const promptText = `German input captured from speech: "${cleanInput}"
-${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.meaning}', Category='${localMatch.category || ''}')` : ''}`;
+${effectivePos !== 'auto' ? `User requested part of speech: "${effectivePos.toUpperCase()}"` : ''}`;
 
     let parsed = null;
     let usedModelName = getStoredGeminiModel();
@@ -309,38 +482,32 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
 
     // High quality fallback if Gemini fails or is offline
     if (!parsed || !parsed.english) {
-      if (localMatch) {
+      // Fallback to free public translation API
+      try {
+        const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=de|en`);
+        const data = await res.json();
+        const translation = data?.responseData?.translatedText || cleanInput;
         parsed = {
-          german: localMatch.word,
-          english: localMatch.meaning,
-          germanExample: localMatch.examples?.[0]?.de || `Wir müssen ${localMatch.word} genau verstehen.`,
-          englishExample: localMatch.examples?.[0]?.en || `We need to understand ${localMatch.meaning} carefully.`,
-          notes: localMatch.conjugation || 'Aus deinem B1-Wortschatz'
+          german: cleanInput,
+          english: translation,
+          germanExample: `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
+          englishExample: `In the podcast the word "${translation}" was used.`,
+          notes: 'Automatische Schnellübersetzung',
+          pos: effectivePos !== 'auto' ? effectivePos : 'other'
         };
-      } else {
-        // Fallback to free public translation API
-        try {
-          const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(cleanInput)}&langpair=de|en`);
-          const data = await res.json();
-          const translation = data?.responseData?.translatedText || cleanInput;
-          parsed = {
-            german: cleanInput,
-            english: translation,
-            germanExample: `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
-            englishExample: `In the podcast the word "${translation}" was used.`,
-            notes: 'Automatische Schnellübersetzung'
-          };
-        } catch (e) {
-          parsed = {
-            german: cleanInput,
-            english: 'Translation unavailable',
-            germanExample: `Können Sie „${cleanInput}“ bitte wiederholen?`,
-            englishExample: `Could you please repeat "${cleanInput}"?`,
-            notes: 'Bitte Netzwerkverbindung prüfen'
-          };
-        }
+      } catch (e) {
+        parsed = {
+          german: cleanInput,
+          english: 'Translation unavailable',
+          germanExample: `Können Sie „${cleanInput}“ bitte wiederholen?`,
+          englishExample: `Could you please repeat "${cleanInput}"?`,
+          notes: 'Bitte Netzwerkverbindung prüfen',
+          pos: effectivePos !== 'auto' ? effectivePos : 'other'
+        };
       }
     }
+
+    const determinedPos = parsed.pos || (effectivePos !== 'auto' ? effectivePos : (/^(der|die|das)\s+/i.test(parsed.german) ? 'noun' : (parsed.german.endsWith('en') ? 'verb' : 'other')));
 
     const newResult = {
       id: Date.now(),
@@ -349,7 +516,9 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
       germanExample: parsed.germanExample || '',
       englishExample: parsed.englishExample || '',
       notes: parsed.notes || '',
+      pos: determinedPos,
       usedModel: usedModelName,
+      isFromB1List: false,
       wasFallback: fallbackTriggered,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
@@ -370,7 +539,6 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
 
     speakText(newResult.english, 'en-US', () => {
       if (!isMountedRef.current) return;
-      // Brief natural pause between English translation and German example
       setTimeout(() => {
         if (!isMountedRef.current) return;
         setSpeakingSubPhase('de_example');
@@ -421,12 +589,12 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
       if (hasTrigger) {
         // Check if user spoke entire command in one single breath: "Übersetze [word] Halt"
         if (hasStop) {
-          const phrase = cleanSpokenPhrase(text);
+          const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text);
           if (phrase) {
             setPhase('recording');
             setStatusMessage(`Wort erfasst: „${phrase}“. Übersetze...`);
             speakText('In Bearbeitung', 'de-DE', () => {
-              translateWithGemini(phrase);
+              translateWithGemini(phrase, detectedPos);
             });
             return;
           }
@@ -451,7 +619,7 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
     // State 2: RECORDING (Capturing word until "Halt" is heard or silence)
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
-      const currentClean = cleanSpokenPhrase(text);
+      const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text);
       if (currentClean) {
         setLiveTranscript(currentClean);
         setCurrentRecordingText(currentClean);
@@ -461,18 +629,18 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
 
         if (hasStop) {
           setLiveTranscript('');
-          translateWithGemini(currentClean);
+          translateWithGemini(currentClean, detectedPos);
         } else {
           // Auto-translate if user stops speaking for 3.8s (convenient for hands-free listening!)
           silenceTimerRef.current = setTimeout(() => {
             if (phaseRef.current === 'recording') {
-              translateWithGemini(currentClean);
+              translateWithGemini(currentClean, detectedPos);
             }
           }, 3800);
         }
       }
     }
-  }, [speakText]);
+  }, [speakText, searchLocalVocab, posFilter]);
 
   // Keep a stable ref to speech processor
   const processGermanSpeechRef = useRef(processGermanSpeech);
@@ -592,9 +760,10 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
   };
 
   const handleStopRecordingManual = () => {
-    const textToUse = cleanSpokenPhrase(liveTranscript || currentRecordingText || manualInput);
+    const raw = liveTranscript || currentRecordingText || manualInput;
+    const { cleanText: textToUse, detectedPos } = extractSpokenPhraseAndPos(raw);
     if (textToUse) {
-      translateWithGemini(textToUse);
+      translateWithGemini(textToUse, detectedPos || posFilter);
     } else {
       setPhase('idle');
       setStatusMessage('Kein Wort eingegeben.');
@@ -604,8 +773,11 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
   const handleManualSubmit = (e) => {
     if (e) e.preventDefault();
     if (!manualInput.trim()) return;
-    translateWithGemini(manualInput.trim());
-    setManualInput('');
+    const { cleanText, detectedPos } = extractSpokenPhraseAndPos(manualInput.trim());
+    if (cleanText) {
+      translateWithGemini(cleanText, detectedPos || posFilter);
+      setManualInput('');
+    }
   };
 
   // ----------------------------------------------------
@@ -1138,10 +1310,64 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
           ) : null}
         </div>
 
+        {/* Word Type / Part-of-Speech Segmented Control */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          marginTop: '20px',
+          flexWrap: 'wrap'
+        }}>
+          <span style={{ fontSize: '11px', fontWeight: '800', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+            Wortart:
+          </span>
+          <div style={{
+            display: 'inline-flex',
+            background: 'rgba(255, 255, 255, 0.05)',
+            padding: '4px',
+            borderRadius: '14px',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            {[
+              { id: 'auto', label: 'Auto (Erkennen)', icon: '🔍' },
+              { id: 'verb', label: 'Verb', icon: '⚡', hint: 'Nur als Verb suchen/übersetzen (z.B. ansehen)' },
+              { id: 'noun', label: 'Nomen', icon: '📦', hint: 'Nur als Nomen suchen/übersetzen (z.B. das Ansehen)' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPosFilter(tab.id)}
+                style={{
+                  background: posFilter === tab.id
+                    ? (tab.id === 'verb' ? 'linear-gradient(135deg, #3b82f6, #1d4ed8)' : tab.id === 'noun' ? 'linear-gradient(135deg, #f59e0b, #d97706)' : 'linear-gradient(135deg, #8b5cf6, #6d28d9)')
+                    : 'transparent',
+                  border: 'none',
+                  borderRadius: '10px',
+                  color: posFilter === tab.id ? '#fff' : '#94a3b8',
+                  padding: '6px 14px',
+                  fontSize: '12px',
+                  fontWeight: posFilter === tab.id ? '800' : '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  boxShadow: posFilter === tab.id ? '0 2px 8px rgba(0,0,0,0.25)' : 'none',
+                  transition: 'all 0.15s ease'
+                }}
+                title={tab.hint}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Manual Text Input Bar */}
         <form onSubmit={handleManualSubmit} style={{
           maxWidth: '540px',
-          margin: '28px auto 0',
+          margin: '20px auto 0',
           display: 'flex',
           gap: '8px',
           background: 'rgba(255, 255, 255, 0.05)',
@@ -1153,7 +1379,7 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
             type="text"
             value={manualInput}
             onChange={(e) => setManualInput(e.target.value)}
-            placeholder="Oder tippe deutsches Wort/Phrase hier..."
+            placeholder={posFilter === 'verb' ? "Deutsches Verb eintippen (z.B. ansehen)..." : posFilter === 'noun' ? "Deutsches Nomen eintippen (z.B. Ansehen)..." : "Oder tippe deutsches Wort/Phrase hier..."}
             style={{
               flexGrow: 1,
               background: 'transparent',
@@ -1190,21 +1416,54 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
           marginTop: '24px',
           background: 'rgba(20, 22, 33, 0.85)',
           borderRadius: '24px',
-          border: '1px solid rgba(59, 130, 246, 0.35)',
+          border: currentResult.isFromB1List ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(59, 130, 246, 0.35)',
           padding: '28px 24px',
           boxShadow: '0 12px 36px rgba(0,0,0,0.4)',
           position: 'relative'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
             <div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '800' }}>
-                Deutsches Wort / Phrase
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '800' }}>
+                  Deutsches Wort / Phrase
+                </span>
+                {currentResult.pos && currentResult.pos !== 'other' && (
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: '800',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    background: currentResult.pos === 'verb' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                    color: currentResult.pos === 'verb' ? '#93c5fd' : '#fcd34d',
+                    border: currentResult.pos === 'verb' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                  }}>
+                    {currentResult.pos === 'verb' ? '⚡ Verb' : '📦 Nomen'}
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                 <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#fff', margin: 0, letterSpacing: '-0.5px' }}>
                   {currentResult.german}
                 </h2>
-                {currentResult.usedModel && (
+                {currentResult.isFromB1List ? (
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(16, 185, 129, 0.22)',
+                    color: '#34d399',
+                    border: '1px solid rgba(16, 185, 129, 0.45)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <span>📚</span>
+                    <span>B1 Wortschatz (Lokal · Kein Gemini-Call)</span>
+                  </span>
+                ) : currentResult.usedModel ? (
                   <span style={{
                     fontSize: '11px',
                     fontWeight: '700',
@@ -1216,11 +1475,44 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
                   }}>
                     ✨ {currentResult.usedModel} {currentResult.wasFallback ? '(Backup)' : ''}
                   </span>
-                )}
+                ) : null}
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Quick Switch Part of Speech Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const isCurrentlyVerb = currentResult.pos === 'verb' || (currentResult.category === 'verbs' || currentResult.category === 'reflexive') || (!currentResult.german.toLowerCase().startsWith('der ') && !currentResult.german.toLowerCase().startsWith('die ') && !currentResult.german.toLowerCase().startsWith('das ') && currentResult.german.endsWith('en'));
+                  const newPos = isCurrentlyVerb ? 'noun' : 'verb';
+                  setPosFilter(newPos);
+                  translateWithGemini(currentResult.german, newPos);
+                }}
+                title="Als andere Wortart übersetzen"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '12px',
+                  color: '#e2e8f0',
+                  padding: '8px 12px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'background 0.2s ease'
+                }}
+              >
+                <span>🔄</span>
+                <span>
+                  {(currentResult.pos === 'verb' || (currentResult.category === 'verbs' || currentResult.category === 'reflexive') || (!currentResult.german.toLowerCase().startsWith('der ') && !currentResult.german.toLowerCase().startsWith('die ') && !currentResult.german.toLowerCase().startsWith('das ') && currentResult.german.endsWith('en')))
+                    ? 'Als Nomen übersetzen'
+                    : 'Als Verb übersetzen'}
+                </span>
+              </button>
+
               {/* Audio Replay German */}
               <button
                 type="button"
@@ -1450,13 +1742,13 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
             Schalte <strong>Voice Control</strong> ein und sage beim Podcast-Hören: <strong>„Übersetze [Wort] Halt“</strong>!
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minURIComponent(280px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {filteredHistory.map((item) => (
               <div
                 key={item.id}
                 style={{
                   background: 'rgba(20, 22, 33, 0.65)',
-                  border: '1px solid var(--border-color)',
+                  border: item.isFromB1List ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid var(--border-color)',
                   borderRadius: '16px',
                   padding: '16px',
                   display: 'flex',
@@ -1467,8 +1759,24 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontSize: '17px', fontWeight: '800', color: '#fff' }}>
-                      {item.german}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '17px', fontWeight: '800', color: '#fff' }}>
+                        {item.german}
+                      </span>
+                      {item.pos && item.pos !== 'other' && (
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: '800',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          textTransform: 'uppercase',
+                          background: item.pos === 'verb' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
+                          color: item.pos === 'verb' ? '#93c5fd' : '#fcd34d',
+                          border: item.pos === 'verb' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                        }}>
+                          {item.pos === 'verb' ? 'Verb' : 'Nomen'}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: '14px', fontWeight: '700', color: '#10b981', marginTop: '2px' }}>
                       {item.english}
@@ -1518,7 +1826,7 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
                     background: 'rgba(255,255,255,0.02)',
                     padding: '8px 10px',
                     borderRadius: '8px',
-                    borderLeft: '2px solid #3b82f6',
+                    borderLeft: item.isFromB1List ? '2px solid #10b981' : '2px solid #3b82f6',
                     marginTop: '4px'
                   }}>
                     „{item.germanExample}“
@@ -1526,7 +1834,11 @@ ${localMatch ? `(Context hint from student's curriculum: Meaning='${localMatch.m
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '4px' }}>
-                  {item.usedModel ? (
+                  {item.isFromB1List ? (
+                    <span style={{ fontSize: '10px', color: '#34d399', fontWeight: '700' }}>
+                      📚 B1 Wortschatz
+                    </span>
+                  ) : item.usedModel ? (
                     <span style={{ fontSize: '10px', color: item.wasFallback ? '#f59e0b' : '#a78bfa', fontWeight: '600' }}>
                       ✨ {item.usedModel}
                     </span>

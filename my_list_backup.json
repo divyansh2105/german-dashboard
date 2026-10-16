@@ -220,19 +220,6 @@
     "isCustom": false
   },
   {
-    "word": "das Abgas, -e",
-    "meaning": "exhaust, waste gas",
-    "category": "nouns",
-    "conjugation": "",
-    "examples": [
-      {
-        "en": "Exhaust gases from industry and households pollute the air.",
-        "de": "Abgase aus Industrie und Haushalten verschmutzen die Luft."
-      }
-    ],
-    "isCustom": false
-  },
-  {
     "word": "der Erfolg, -e",
     "meaning": "success",
     "category": "nouns",
@@ -326,6 +313,198 @@
       {
         "de": "In der Packung ist nichts mehr drin.",
         "en": "There is nothing left in the pack."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "aussehen",
+    "meaning": "to seem, appear, look",
+    "category": "verbs",
+    "conjugation": "aussehen, sieht aus, sah aus, hat ausgesehen",
+    "examples": [
+      {
+        "de": "Sie sehen wieder besser aus. Sind Sie wieder gesund?",
+        "en": "You look better again. Are you healthy again?"
+      },
+      {
+        "de": "Es sieht so aus, als ob es bald regnet.",
+        "en": "It looks like it's raining soon."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "ankommen",
+    "meaning": "to arrive",
+    "category": "verbs",
+    "conjugation": "ankommen, kommt an, kam an, ist angekommen",
+    "examples": [
+      {
+        "de": "Wann kommt der Zug in Hamburg an?",
+        "en": "When does the train arrive in Hamburg?"
+      },
+      {
+        "en": "It is important that you answer all the questions in the test.",
+        "de": "Es kommt darauf an, dass Sie alle Fragen im Test beantworten."
+      },
+      {
+        "en": "Which grade do I need? That depends on whether you want to study or not.",
+        "de": "Welche Note brauche ich? Das kommt darauf an, ob Sie studieren möchten oder nicht."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "spitz",
+    "meaning": "sharp, pointed",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "The pencil is not pointed.",
+        "de": "Der Bleistift ist nicht spitz."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "entweder ... oder",
+    "meaning": "either ... or",
+    "category": "connectors",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Nur einer kann gewinnen, entweder du oder ich.",
+        "en": "Only one person can win, either you or me."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "sich anziehen",
+    "meaning": "to get dressed",
+    "category": "reflexive",
+    "conjugation": "sich anziehen, zieht sich an, zog sich an, hat sich angezogen",
+    "examples": [
+      {
+        "de": "Du musst dich wärmer anziehen, sonst erkältest du dich.",
+        "en": "You have to dress warmer, otherwise you will catch a cold."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "zusagen",
+    "meaning": "to promise, accept",
+    "category": "verbs",
+    "conjugation": "zusagen, sagt zu, sagte zu, hat zugesagt",
+    "examples": [
+      {
+        "de": "Meine Eltern haben uns zum Essen eingeladen. Ich habe zugesagt.",
+        "en": "My parents invited us to dinner. I have agreed."
+      },
+      {
+        "de": "Sie müssen bis Montag zusagen, wenn Sie die Stelle nehmen.",
+        "en": "You have to promise until Monday when you take the job."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "der Nachteil, -e",
+    "meaning": "disadvantage",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "A disadvantage has the apartment. It is not central.",
+        "de": "Einen Nachteil hat die Wohnung. Sie liegt nicht zentral."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "angenehm",
+    "meaning": "pleasant",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "We wish you a pleasant journey.",
+        "de": "Wir wünschen Ihnen eine angenehme Reise."
+      },
+      {
+        "de": "Welcher Termin wäre Ihnen angenehm?",
+        "en": "Which date would you like?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erholen (sich)",
+    "meaning": "to relax",
+    "category": "verbs",
+    "conjugation": "",
+    "examples": [],
+    "isCustom": true
+  },
+  {
+    "word": "die Stimmung, -en",
+    "meaning": "atmosphere, mood",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "It was a great party. The mood was very good.",
+        "de": "Es war eine tolle Party. Die Stimmung war sehr gut."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "enttäuschen",
+    "meaning": "to disappoint",
+    "category": "verbs",
+    "conjugation": "enttäuschen, enttäuscht, enttäuschte, hat enttäuscht",
+    "examples": [
+      {
+        "en": "The food disappointed us.",
+        "de": "Das Essen hat uns enttäuscht."
+      },
+      {
+        "en": "We were disappointed with the concert.",
+        "de": "Wir waren von dem Konzert sehrenttäuscht."
+      },
+      {
+        "en": "The result was disappointing.",
+        "de": "Das Ergebnis war enttäuschend."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "zurzeit",
+    "meaning": "at the moment",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "I'm very busy at the moment.",
+        "de": "Zurzeit habe ich sehr viel zu tun."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "das Abgas, -e",
+    "meaning": "exhaust, waste gas",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Exhaust gases from industry and households pollute the air.",
+        "de": "Abgase aus Industrie und Haushalten verschmutzen die Luft."
       }
     ],
     "isCustom": false
