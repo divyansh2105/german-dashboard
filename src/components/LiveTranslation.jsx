@@ -602,32 +602,41 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Spoken Phrase Extractors (German & English)
+  // ----------------------------------------------------
+  // Spoken Phrase Extractors (German & English) - supports single words & small phrases
   // ----------------------------------------------------
   const extractGermanPhrase = (rawText) => {
     if (!rawText) return '';
-    return rawText
-      .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
-      .replace(/\b(translate|translation)\b/gi, '')
-      .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
-      .replace(/\b(in process|in progress)\b/gi, '')
-      .replace(/\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b/gi, '')
-      .replace(/\b(wiederhol(e|en|t)?|repeat|nochmal)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    let t = rawText.trim();
+    // 1. Remove trigger words at start ("Übersetze", "Bitte übersetzen", "Translate", etc.)
+    t = t.replace(/^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate|translation)\s*[:,-]?\s*/gi, '');
+    // 2. Remove TTS acknowledgments if picked up by microphone
+    t = t.replace(/\b(in bearbeitung|bearbeitung|in process|in progress)\b/gi, '');
+    // 3. Remove repeat command if present at edges
+    t = t.replace(/^(wiederhol(e|en|t)?|repeat|nochmal)\s*/gi, '');
+    // 4. Remove stop commands at end of phrase ("Halt", "Stopp", "Stop", "Fertig", "Ende")
+    t = t.replace(/\s*[,.-]?\s*\b(halt|halte|stopp|stop|stoppen|fertig|ende|hold|genug)\b[.?!]?\s*$/gi, '');
+    // 5. Cleanup redundant prefix triggers if any remain
+    t = t.replace(/^(bitte\s+)?(über\s*setz(e|en|t|ung|er)?|translate)\b/gi, '');
+    t = t.replace(/\s+/g, ' ').trim();
+    return t;
   };
 
   const extractEnglishPhrase = (rawText) => {
     if (!rawText) return '';
-    return rawText
-      .replace(/\b(translate|translation)\b/gi, '')
-      .replace(/\büber\s*setz(e|en|t|ung|er)?\b/gi, '')
-      .replace(/\b(in process|in progress|process)\b/gi, '')
-      .replace(/\b(in bearbeitung|bearbeitung)\b/gi, '')
-      .replace(/\b(stop|halt|finished|done|finish|end)\b/gi, '')
-      .replace(/\b(repeat|say again)\b/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
+    let t = rawText.trim();
+    // 1. Remove trigger words at start ("Translate", "Please translate", "Übersetze", etc.)
+    t = t.replace(/^(please\s+)?(translate|translation|über\s*setz(e|en|t)?)\s*[:,-]?\s*/gi, '');
+    // 2. Remove TTS acknowledgments if picked up by microphone
+    t = t.replace(/\b(in process|in progress|in bearbeitung|bearbeitung)\b/gi, '');
+    // 3. Remove repeat command if present at edges
+    t = t.replace(/^(repeat|say again|nochmal)\s*/gi, '');
+    // 4. Remove stop commands at end of phrase ("Stop", "Halt", "Finished", "Done", "Finish")
+    t = t.replace(/\s*[,.-]?\s*\b(stop|halt|finished|done|finish|end)\b[.?!]?\s*$/gi, '');
+    // 5. Cleanup redundant prefix triggers if any remain
+    t = t.replace(/^(please\s+)?(translate)\b/gi, '');
+    t = t.replace(/\s+/g, ' ').trim();
+    return t;
   };
 
   const extractSpokenPhraseAndPos = (rawText) => {
@@ -636,19 +645,23 @@ export default function LiveTranslation({
   };
 
   // ----------------------------------------------------
-  // Local B1 Vocabulary Search (Checks verbs, nouns, conjugations, and meanings)
+  // Local B1 Vocabulary Search (Checks verbs, nouns, connectors, idioms, phrases)
   // ----------------------------------------------------
   const searchLocalVocab = useCallback((query, targetPos = 'auto', dir = 'de_en') => {
     if (!query || !vocabData) return null;
     const cleanQ = query.toLowerCase().trim();
     if (!cleanQ) return null;
+    const cleanQNormalized = cleanQ.replace(/\.\.\./g, ' ').replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
 
     const normalizeGerman = (w) => {
       return (w || '')
         .toLowerCase()
         .replace(/^(der\/die\/das|der|die|das|ein|eine|sich)\s+/i, '')
+        .replace(/\.\.\./g, ' ')
         .replace(/\(.*\)/g, '')
         .replace(/,.*$/, '')
+        .replace(/[.,;:!?]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
     };
 
@@ -664,6 +677,7 @@ export default function LiveTranslation({
     // --------------------------------------------------
     if (dir === 'en_de') {
       const cleanEnglish = cleanQ.replace(/^to\s+/i, '').trim();
+      const cleanEnglishNormalized = cleanEnglish.replace(/\.\.\./g, ' ').replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
 
       // Check KNOWN_DUAL_USAGES first for English match
       for (const [key, dual] of Object.entries(KNOWN_DUAL_USAGES)) {
@@ -690,17 +704,29 @@ export default function LiveTranslation({
         }
       }
 
-      // Check all categories in vocabData by meaning
-      const allCategories = ['verbs', 'nouns', 'reflexive', 'adjectives', 'connectors'];
+      // Check all categories in vocabData by meaning (prioritize connectors/idioms for multi-word phrases)
+      const isMultiWord = cleanEnglish.includes(' ') || cleanQ.includes(' ');
+      const allCategories = isMultiWord
+        ? ['connectors', 'verbs', 'reflexive', 'nouns', 'adjectives']
+        : ['verbs', 'nouns', 'reflexive', 'adjectives', 'connectors'];
+
       for (const cat of allCategories) {
         const items = getItemsForCategory(cat);
         const match = items.find(item => {
           const m = (item.meaning || '').toLowerCase();
-          if (m === cleanQ || m === cleanEnglish) return true;
-          const chunks = m.split(/[,;/]+/).map(s => s.trim().replace(/^to\s+/i, ''));
-          if (chunks.includes(cleanEnglish) || chunks.includes(cleanQ)) return true;
-          const wordRegex = new RegExp(`\\b${cleanEnglish.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-          return wordRegex.test(m);
+          const cleanM = m.replace(/\.\.\./g, ' ').replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+          if (m === cleanQ || cleanM === cleanQNormalized || m === cleanEnglish || cleanM === cleanEnglishNormalized) return true;
+
+          const chunks = m.split(/[,;/]+/).map(s => s.trim().replace(/^to\s+/i, '').replace(/\.\.\./g, ' ').replace(/\s+/g, ' '));
+          if (chunks.includes(cleanEnglish) || chunks.includes(cleanQ) || chunks.includes(cleanEnglishNormalized)) return true;
+
+          // For phrases longer than 3 characters, test boundary phrase match
+          if (cleanEnglish.length > 3) {
+            const safePattern = cleanEnglish.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const phraseRegex = new RegExp(`(^|\\b)${safePattern}(\\b|$)`, 'i');
+            if (phraseRegex.test(cleanM)) return true;
+          }
+          return false;
         });
 
         if (match) {
@@ -724,15 +750,16 @@ export default function LiveTranslation({
           }
 
           const primaryExample = match.examples?.[0];
+          const isPhraseOrConn = cat === 'connectors' || (match.word && match.word.includes(' '));
           return {
             hasBothUsages: false,
             german: match.word,
             english: match.meaning,
-            germanExample: primaryExample?.de || `Beispielsatz: „${match.word}“ ist ein wichtiges Wort.`,
+            germanExample: primaryExample?.de || `Beispielsatz: „${match.word}“ ist ein wichtiger Ausdruck.`,
             englishExample: primaryExample?.en || '',
             notes: match.conjugation || match.plural || (match.category ? `B1 Wortschatz (${match.category})` : 'B1 Wortschatz'),
             category: match.category || cat,
-            pos: cat === 'nouns' ? 'noun' : (cat === 'verbs' || cat === 'reflexive' ? 'verb' : 'other'),
+            pos: isPhraseOrConn ? 'phrase' : (cat === 'nouns' ? 'noun' : (cat === 'verbs' || cat === 'reflexive' ? 'verb' : 'other')),
             isFromB1List: true,
             direction: 'en_de'
           };
@@ -784,18 +811,44 @@ export default function LiveTranslation({
       }
     }
 
-    // Step B: Check vocabData for both verb and noun matches
+    // Step B: Check connectors and multi-word phrases first if query contains spaces or dots
+    const connectorItems = getItemsForCategory('connectors');
+    const matchedConnector = connectorItems.find(item => {
+      const normWord = normalizeGerman(item.word);
+      const rawWord = (item.word || '').toLowerCase().replace(/\.\.\./g, ' ').replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+      return normWord === normQ || rawWord === cleanQNormalized || normWord === cleanQNormalized || (item.word || '').toLowerCase() === cleanQ;
+    });
+
+    if (matchedConnector) {
+      const ex = matchedConnector.examples?.[0];
+      return {
+        hasBothUsages: false,
+        german: matchedConnector.word,
+        english: matchedConnector.meaning || 'Bedeutung im B1-Wortschatz',
+        germanExample: ex?.de || `Beispielsatz: „${matchedConnector.word}“.`,
+        englishExample: ex?.en || '',
+        notes: matchedConnector.category ? `B1 Konnektor / Redemittel (${matchedConnector.category})` : 'B1 Redemittel',
+        category: 'connectors',
+        pos: 'phrase',
+        isFromB1List: true,
+        direction: 'de_en'
+      };
+    }
+
+    // Step C: Check vocabData for both verb and noun matches
     const verbItems = [...getItemsForCategory('verbs'), ...getItemsForCategory('reflexive')];
     const nounItems = getItemsForCategory('nouns');
 
     const matchedVerb = verbItems.find(item => {
       const itemNorm = normalizeGerman(item.word);
-      return itemNorm === normQ || (item.word || '').toLowerCase() === cleanQ;
+      const rawWord = (item.word || '').toLowerCase().replace(/\.\.\./g, ' ').replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+      return itemNorm === normQ || rawWord === cleanQNormalized || itemNorm === cleanQNormalized || (item.word || '').toLowerCase() === cleanQ;
     });
 
     const matchedNoun = nounItems.find(item => {
       const itemNorm = normalizeGerman(item.word);
-      return itemNorm === normQ || (item.word || '').toLowerCase() === cleanQ;
+      const rawWord = (item.word || '').toLowerCase().replace(/[.,;:!?]/g, ' ').replace(/\s+/g, ' ').trim();
+      return itemNorm === normQ || rawWord === cleanQNormalized || itemNorm === cleanQNormalized || (item.word || '').toLowerCase() === cleanQ;
     });
 
     // If both exist in B1 dataset, return dual usage!
@@ -829,10 +882,14 @@ export default function LiveTranslation({
       };
     }
 
-    // Step C: Single match in vocabData
+    // Step D: Single match in vocabData
     const singleMatch = matchedVerb || matchedNoun || (() => {
       for (const cat of ['adjectives', 'connectors']) {
-        const match = getItemsForCategory(cat).find(item => normalizeGerman(item.word) === normQ);
+        const match = getItemsForCategory(cat).find(item => {
+          const itemNorm = normalizeGerman(item.word);
+          const rawWord = (item.word || '').toLowerCase().replace(/\.\.\./g, ' ').replace(/\s+/g, ' ').trim();
+          return itemNorm === normQ || rawWord === cleanQNormalized || itemNorm === cleanQNormalized;
+        });
         if (match) return { ...match, category: cat };
       }
       return null;
@@ -842,15 +899,16 @@ export default function LiveTranslation({
       const ex = singleMatch.examples?.[0];
       const isV = singleMatch.category === 'verbs' || singleMatch.category === 'reflexive' || !!singleMatch.conjugation;
       const isN = singleMatch.category === 'nouns';
+      const isPhrase = singleMatch.category === 'connectors' || (singleMatch.word && singleMatch.word.includes(' '));
       return {
         hasBothUsages: false,
         german: singleMatch.word,
         english: singleMatch.meaning || 'Bedeutung im B1-Wortschatz',
-        germanExample: ex?.de || `Beispielsatz: „${singleMatch.word}“ ist ein wichtiges B1-Wort.`,
+        germanExample: ex?.de || `Beispielsatz: „${singleMatch.word}“ ist ein wichtiger B1-Ausdruck.`,
         englishExample: ex?.en || '',
         notes: singleMatch.conjugation || singleMatch.plural || (singleMatch.category ? `B1 Wortschatz (${singleMatch.category})` : 'B1 Wortschatz'),
         category: singleMatch.category,
-        pos: isN ? 'noun' : (isV ? 'verb' : 'other'),
+        pos: isPhrase ? 'phrase' : (isN ? 'noun' : (isV ? 'verb' : 'other')),
         isFromB1List: true,
         direction: 'de_en'
       };
@@ -922,22 +980,29 @@ export default function LiveTranslation({
         : `Nicht im B1-Wortschatz. Gemini übersetzt: „${cleanInput}“...`
     );
 
-    const systemInstruction = `You are a native German language expert and Goethe B1/B2 curriculum language coach.
-Your job is to translate words or phrases between German and English.
+    const isPhraseInput = cleanInput.includes(' ') || cleanInput.split(/\s+/).length > 1;
 
-CRITICAL DUAL USAGE REQUIREMENT:
-You MUST check if the word or concept functions as BOTH a verb and a noun in German (e.g. "ansehen" = to look at / "das Ansehen" = reputation, prestige; "treffen" = to meet / "das Treffen" = meeting; "essen" = to eat / "das Essen" = food, meal; "leben" = to live / "das Leben" = life; "schreiben" = to write / "das Schreiben" = official letter; "versprechen" = to promise / "das Versprechen" = promise; "hoffen" = to hope / "die Hoffnung" = hope).
-If BOTH usages exist in German, you MUST set "hasBothUsages": true, and provide both complete usages under "verbUsage" and "nounUsage".
-If only one usage exists, set "hasBothUsages": false, and leave "verbUsage" and "nounUsage" as null.
+    const systemInstruction = `You are a native German language expert and Goethe B1/B2 curriculum language coach.
+Your job is to translate words, idioms, collocations, and phrases between German and English.
+
+SUPPORT FOR BOTH SINGLE WORDS AND PHRASES:
+1. Single Words (e.g. "ansehen", "treffen", "essen", "leben", "schreiben", "versprechen", "hoffen"):
+   - You MUST check if the single word functions as BOTH a verb and a noun in German.
+   - If BOTH usages exist, you MUST set "hasBothUsages": true, and provide both complete usages under "verbUsage" and "nounUsage".
+   - If only one usage exists, set "hasBothUsages": false, and leave "verbUsage" and "nounUsage" as null.
+
+2. Phrases, Idioms, Collocations & Expressions (e.g. "auf jeden Fall", "in der Regel", "Bescheid geben", "sich Sorgen machen", "zur Verfügung stehen", "by the way", "as well as", "take into account", "piece of cake", "at the end of the day"):
+   - For multi-word phrases and idioms, ALWAYS set "hasBothUsages": false, set "verbUsage": null, "nounUsage": null, and set "pos": "phrase" (or "idiom").
+   - Provide the most natural, authentic B1/B2 German translation and a realistic example sentence illustrating natural usage in workplace, daily life, or podcast contexts.
 
 Always return a clean JSON object with this exact schema:
 {
-  "german": "Correct German word (with article 'der/die/das' if noun, or 'verb / der/die/das Nomen' if both)",
+  "german": "Correct German translation (word with article if noun, or natural phrase/expression)",
   "english": "Concise English translation / meaning",
-  "germanExample": "A realistic B1/B2 German sentence in workplace, daily life or podcast context",
+  "germanExample": "A realistic B1/B2 German sentence using the word or phrase in workplace, daily life or podcast context",
   "englishExample": "English translation of the German example sentence",
-  "notes": "Short grammar note (gender, plural, prepositions, or forms)",
-  "pos": "verb | noun | adjective | other",
+  "notes": "Short grammar or usage note (prepositions, formality, or context)",
+  "pos": "phrase | idiom | verb | noun | adjective | other",
   "hasBothUsages": boolean,
   "verbUsage": {
     "german": "infinitive verb (e.g. 'ansehen')",
@@ -956,8 +1021,8 @@ Always return a clean JSON object with this exact schema:
 }`;
 
     const promptText = isEn
-      ? `English input captured from speech: "${cleanInput}". Translate to German. Check for both verb and noun usages.`
-      : `German input captured from speech: "${cleanInput}". Translate to English. Check for both verb and noun usages.`;
+      ? `English input: "${cleanInput}". Translate accurately to German (supports single words, collocations, idioms, or small phrases). Provide natural German translation and example sentence.`
+      : `German input: "${cleanInput}". Translate accurately to English (supports single words, collocations, idioms, or small phrases). Provide English translation and example sentence.`;
 
     let parsed = null;
     let usedModelName = getStoredGeminiModel();
@@ -1016,10 +1081,10 @@ Always return a clean JSON object with this exact schema:
         parsed = {
           german: isEn ? translation : cleanInput,
           english: isEn ? cleanInput : translation,
-          germanExample: isEn ? `Im Satz: „${translation}“ ist nützlich.` : `Im Podcast wurde das Wort „${cleanInput}“ verwendet.`,
-          englishExample: isEn ? `In sentence: "${translation}" is useful.` : `In the podcast the word "${translation}" was used.`,
-          notes: 'Automatische Schnellübersetzung',
-          pos: 'other',
+          germanExample: isEn ? `Im Satz: „${translation}“ wird oft verwendet.` : `Beispielsatz: „${cleanInput}“ ist eine nützliche Redewendung.`,
+          englishExample: isEn ? `In a sentence: "${translation}" is frequently used.` : `Example sentence: "${translation}" is a useful expression.`,
+          notes: isPhraseInput ? 'Redewendung / Phrase' : 'Automatische Schnellübersetzung',
+          pos: isPhraseInput ? 'phrase' : 'other',
           hasBothUsages: false
         };
       } catch (e) {
@@ -1029,7 +1094,7 @@ Always return a clean JSON object with this exact schema:
           germanExample: `Können Sie das bitte wiederholen?`,
           englishExample: `Could you please repeat that?`,
           notes: 'Bitte Netzwerkverbindung prüfen',
-          pos: 'other',
+          pos: isPhraseInput ? 'phrase' : 'other',
           hasBothUsages: false
         };
       }
@@ -1044,7 +1109,7 @@ Always return a clean JSON object with this exact schema:
       germanExample: parsed.germanExample || '',
       englishExample: parsed.englishExample || '',
       notes: parsed.notes || '',
-      pos: parsed.pos || (hasBoth ? 'verb & noun' : 'other'),
+      pos: parsed.pos || (hasBoth ? 'verb & noun' : (isPhraseInput ? 'phrase' : 'other')),
       hasBothUsages: hasBoth,
       verbUsage: hasBoth ? parsed.verbUsage : null,
       nounUsage: hasBoth ? parsed.nounUsage : null,
@@ -1124,14 +1189,14 @@ Always return a clean JSON object with this exact schema:
         isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        // Check if spoken in one breath: "Translate [word] Stop"
+        // Check if spoken in one breath: "Translate [word or phrase] Stop"
         if (hasEnglishStop) {
           const phrase = extractEnglishPhrase(text);
           if (phrase) {
             setDirection('en_de');
             directionRef.current = 'en_de';
             setPhase('recording');
-            setStatusMessage(`Wort erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
+            setStatusMessage(`Wort / Phrase erfasst (EN ➔ DE): „${phrase}“. Übersetze...`);
             speakText('In Process', 'en-US', () => {
               translateWithDirection(phrase, 'en_de');
             });
@@ -1145,8 +1210,9 @@ Always return a clean JSON object with this exact schema:
         setPhase('recording');
         setCurrentRecordingText('');
         setLiveTranscript('');
+        currentRecordingTextRef.current = '';
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort und sage „Stop“.');
+        setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase und sage „Stop“.');
 
         switchRecognitionLang('en-US');
         speakText('In Process', 'en-US');
@@ -1161,14 +1227,14 @@ Always return a clean JSON object with this exact schema:
         isSpeakingTtsRef.current = false;
         setSpeakingSubPhase(null);
 
-        // Check if spoken in one breath: "Übersetze [word] Halt"
+        // Check if spoken in one breath: "Übersetze [word or phrase] Halt"
         if (hasGermanStop) {
           const phrase = extractGermanPhrase(text);
           if (phrase) {
             setDirection('de_en');
             directionRef.current = 'de_en';
             setPhase('recording');
-            setStatusMessage(`Wort erfasst (DE ➔ EN): „${phrase}“. Übersetze...`);
+            setStatusMessage(`Wort / Phrase erfasst (DE ➔ EN): „${phrase}“. Übersetze...`);
             speakText('In Bearbeitung', 'de-DE', () => {
               translateWithDirection(phrase, 'de_en');
             });
@@ -1182,8 +1248,9 @@ Always return a clean JSON object with this exact schema:
         setPhase('recording');
         setCurrentRecordingText('');
         setLiveTranscript('');
+        currentRecordingTextRef.current = '';
         recordedChunksRef.current = [];
-        setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort und sage „Halt“.');
+        setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase und sage „Halt“.');
 
         switchRecognitionLang('de-DE');
         speakText('In Bearbeitung', 'de-DE');
@@ -1192,48 +1259,39 @@ Always return a clean JSON object with this exact schema:
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING
+    // State 2: RECORDING (Captures single words or multi-word phrases)
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
       const activeDir = directionRef.current || 'de_en';
+      const isEn = activeDir === 'en_de';
+      const clean = isEn ? extractEnglishPhrase(text) : extractGermanPhrase(text);
+      const hasStop = isEn ? hasEnglishStop : hasGermanStop;
 
-      if (activeDir === 'en_de') {
-        const clean = extractEnglishPhrase(text);
-        if (clean) {
-          setLiveTranscript(clean);
-          setCurrentRecordingText(clean);
+      if (clean) {
+        setLiveTranscript(clean);
+        setCurrentRecordingText(clean);
+        currentRecordingTextRef.current = clean;
+      }
 
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      const candidatePhrase = clean || currentRecordingTextRef.current || liveTranscriptRef.current;
 
-          if (hasEnglishStop) {
-            setLiveTranscript('');
-            translateWithDirection(clean, 'en_de');
-          } else {
-            silenceTimerRef.current = setTimeout(() => {
-              if (phaseRef.current === 'recording') {
-                translateWithDirection(clean, 'en_de');
+      if (candidatePhrase) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+        if (hasStop) {
+          setLiveTranscript('');
+          currentRecordingTextRef.current = '';
+          translateWithDirection(candidatePhrase, activeDir);
+        } else {
+          // Automatic silence timer: if user doesn't say "Stop"/"Halt", translate phrase after 3.8s
+          silenceTimerRef.current = setTimeout(() => {
+            if (phaseRef.current === 'recording') {
+              const phraseToRun = currentRecordingTextRef.current || candidatePhrase;
+              if (phraseToRun) {
+                translateWithDirection(phraseToRun, activeDir);
               }
-            }, 3800);
-          }
-        }
-      } else {
-        const clean = extractGermanPhrase(text);
-        if (clean) {
-          setLiveTranscript(clean);
-          setCurrentRecordingText(clean);
-
-          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-          if (hasGermanStop) {
-            setLiveTranscript('');
-            translateWithDirection(clean, 'de_en');
-          } else {
-            silenceTimerRef.current = setTimeout(() => {
-              if (phaseRef.current === 'recording') {
-                translateWithDirection(clean, 'de_en');
-              }
-            }, 3800);
-          }
+            }
+          }, 3800);
         }
       }
     }
@@ -1270,11 +1328,21 @@ Always return a clean JSON object with this exact schema:
         recognition.lang = recognitionLangRef.current || 'de-DE';
 
         recognition.onresult = (event) => {
+          // 1. Reconstruct current full session utterance across all chunks in this recognition run
+          let fullUtterance = '';
+          for (let i = 0; i < event.results.length; i++) {
+            const piece = event.results[i][0]?.transcript?.trim();
+            if (piece) {
+              fullUtterance += (fullUtterance ? ' ' : '') + piece;
+            }
+          }
+
+          // 2. Also find bestTranscript of the newest result for instant command matching
+          let bestNewTranscript = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            let bestTranscript = '';
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
-              if (!bestTranscript) bestTranscript = candidate;
+              if (!bestNewTranscript) bestNewTranscript = candidate;
               const candLower = candidate.toLowerCase();
               if (
                 candLower.includes('übersetz') ||
@@ -1286,16 +1354,17 @@ Always return a clean JSON object with this exact schema:
                 candLower.includes('repeat') ||
                 candLower.includes('stop')
               ) {
-                bestTranscript = candidate;
+                bestNewTranscript = candidate;
                 break;
               }
             }
+          }
 
-            if (bestTranscript) {
-              setLastHeardLive(bestTranscript);
-              if (processLiveSpeechRef.current) {
-                processLiveSpeechRef.current(bestTranscript);
-              }
+          const transcriptToPass = fullUtterance || bestNewTranscript;
+          if (transcriptToPass) {
+            setLastHeardLive(bestNewTranscript || fullUtterance);
+            if (processLiveSpeechRef.current) {
+              processLiveSpeechRef.current(transcriptToPass);
             }
           }
         };
@@ -1358,11 +1427,11 @@ Always return a clean JSON object with this exact schema:
     setLiveTranscript('');
 
     if (chosenDir === 'en_de') {
-      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder tippe unten.');
+      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich das englische Wort oder die Phrase (oder tippe unten).');
       switchRecognitionLang('en-US');
       speakText('In Process', 'en-US');
     } else {
-      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder tippe unten.');
+      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das deutsche Wort oder die Phrase (oder tippe unten).');
       switchRecognitionLang('de-DE');
       speakText('In Bearbeitung', 'de-DE');
     }
@@ -1378,7 +1447,7 @@ Always return a clean JSON object with this exact schema:
       translateWithDirection(textToUse, activeDir);
     } else {
       setPhase('idle');
-      setStatusMessage('Kein Wort eingegeben.');
+      setStatusMessage('Kein Begriff oder Phrase eingegeben.');
     }
   };
 
@@ -2112,11 +2181,27 @@ Always return a clean JSON object with this exact schema:
                     borderRadius: '6px',
                     textTransform: 'uppercase',
                     letterSpacing: '0.5px',
-                    background: currentResult.pos === 'verb' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                    color: currentResult.pos === 'verb' ? '#93c5fd' : '#fcd34d',
-                    border: currentResult.pos === 'verb' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                    background: (currentResult.pos === 'phrase' || currentResult.pos === 'idiom')
+                      ? 'rgba(168, 85, 247, 0.2)'
+                      : currentResult.pos === 'verb'
+                        ? 'rgba(59, 130, 246, 0.2)'
+                        : 'rgba(245, 158, 11, 0.2)',
+                    color: (currentResult.pos === 'phrase' || currentResult.pos === 'idiom')
+                      ? '#c084fc'
+                      : currentResult.pos === 'verb'
+                        ? '#93c5fd'
+                        : '#fcd34d',
+                    border: (currentResult.pos === 'phrase' || currentResult.pos === 'idiom')
+                      ? '1px solid rgba(168, 85, 247, 0.4)'
+                      : currentResult.pos === 'verb'
+                        ? '1px solid rgba(59, 130, 246, 0.4)'
+                        : '1px solid rgba(245, 158, 11, 0.4)'
                   }}>
-                    {currentResult.pos === 'verb' ? '⚡ Verb' : '📦 Nomen'}
+                    {currentResult.pos === 'phrase' || currentResult.pos === 'idiom'
+                      ? '💬 Phrase / Redewendung'
+                      : currentResult.pos === 'verb'
+                        ? '⚡ Verb'
+                        : '📦 Nomen'}
                   </span>
                 )}
               </div>
@@ -2617,11 +2702,23 @@ Always return a clean JSON object with this exact schema:
                           padding: '1px 6px',
                           borderRadius: '4px',
                           textTransform: 'uppercase',
-                          background: item.pos === 'verb' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                          color: item.pos === 'verb' ? '#93c5fd' : '#fcd34d',
-                          border: item.pos === 'verb' ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                          background: (item.pos === 'phrase' || item.pos === 'idiom')
+                            ? 'rgba(168, 85, 247, 0.2)'
+                            : item.pos === 'verb'
+                              ? 'rgba(59, 130, 246, 0.2)'
+                              : 'rgba(245, 158, 11, 0.2)',
+                          color: (item.pos === 'phrase' || item.pos === 'idiom')
+                            ? '#c084fc'
+                            : item.pos === 'verb'
+                              ? '#93c5fd'
+                              : '#fcd34d',
+                          border: (item.pos === 'phrase' || item.pos === 'idiom')
+                            ? '1px solid rgba(168, 85, 247, 0.4)'
+                            : item.pos === 'verb'
+                              ? '1px solid rgba(59, 130, 246, 0.4)'
+                              : '1px solid rgba(245, 158, 11, 0.4)'
                         }}>
-                          {item.pos === 'verb' ? 'Verb' : 'Nomen'}
+                          {item.pos === 'phrase' || item.pos === 'idiom' ? 'Phrase' : item.pos === 'verb' ? 'Verb' : 'Nomen'}
                         </span>
                       )}
                     </div>
