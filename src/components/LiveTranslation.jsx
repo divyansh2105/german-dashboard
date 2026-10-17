@@ -461,8 +461,9 @@ export default function LiveTranslation({
     // 2. Strip leading phone speaker acknowledgment echo ("In Bearbeitung" / "Bearbeitung")
     text = text.replace(/^\s*(?:in\s+bearbeitung|bearbeitung)\b\s*/gi, ' ');
 
-    // 3. Strip trailing stop commands ("... Halt" / "... Stopp")
-    text = text.replace(/\b(?:halt|halte|stopp|stop|stoppen|fertig|ende|genug)\b\s*$/gi, ' ');
+    // 3. Strip trailing stop commands ("... Halt" / "... Stopp" / "... Alt")
+    // Web Speech API frequently transcribes German "Halt" as "alt"
+    text = text.replace(/\b(?:halt|halte|stopp|stop|stoppen|fertig|ende|genug|alt)\b[.!?]?\s*$/gi, ' ');
 
     // 4. Strip repeat commands at boundaries
     text = text.replace(/^\s*(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)\b\s*/gi, ' ');
@@ -478,7 +479,7 @@ export default function LiveTranslation({
       .trim();
 
     // If remaining text was solely an echo or command
-    if (/^(?:in\s+bearbeitung|bearbeitung|übersetzen|uebersetzen|ubersetzen|halt|stopp|wiederholen|wiederhole|nochmal|abbrechen|abbruch)$/i.test(cleanText)) {
+    if (/^(?:in\s+bearbeitung|bearbeitung|übersetzen|uebersetzen|ubersetzen|halt|stopp|wiederholen|wiederhole|nochmal|abbrechen|abbruch|alt)[.!?]?$/i.test(cleanText)) {
       return { cleanText: '', detectedPos };
     }
 
@@ -540,8 +541,12 @@ export default function LiveTranslation({
   // ----------------------------------------------------
   const extractLatestGermanWord = (rawClean) => {
     if (!rawClean) return '';
-    const parts = rawClean.trim().split(/\s+/);
-    if (parts.length <= 1) return rawClean.trim();
+    let parts = rawClean.trim().split(/\s+/);
+    // Strip trailing stop words if present ("Halt", "alt", "stopp")
+    if (parts.length > 1 && ['alt', 'halt', 'stopp', 'stop'].includes(parts[parts.length - 1].toLowerCase())) {
+      parts.pop();
+    }
+    if (parts.length <= 1) return parts.join(' ').trim();
 
     // Check if the last two words form article + noun or reflexive + verb
     if (parts.length >= 2) {
@@ -1091,9 +1096,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     }
 
     // Flexible stop detection: Standalone or at the end of utterance
+    // In German speech recognition, "Halt" is frequently transcribed as "alt"
     const hasGermanStop =
-      /\b(halt|halte|stopp|fertig|ende|genug)\b[.!]?\s*$/i.test(text) ||
-      /^(halt|halte|stopp|fertig|ende|genug)[.!]?$/i.test(lower);
+      /\b(halt|halte|stopp|fertig|ende|genug|alt)\b[.!]?\s*$/i.test(text) ||
+      /^(halt|halte|stopp|fertig|ende|genug|alt)[.!]?$/i.test(lower);
 
     const hasEnglishStop =
       /\b(stop|stopped|stopping|done|finished)\b[.!]?\s*$/i.test(text) ||
@@ -1341,6 +1347,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
                 candLower.includes('uebersetz') ||
                 candLower.includes('ubersetz') ||
                 candLower.includes('halt') ||
+                /\b(alt)\b/i.test(candLower) ||
                 candLower.includes('stopp') ||
                 candLower.includes('stop') ||
                 candLower.includes('translate') ||
