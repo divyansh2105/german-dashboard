@@ -271,20 +271,23 @@ export default function LiveTranslation({
   // Sequential Speaker for Translation Results
   // DE ➔ EN: Speaks English translation ('en-US') -> German example ('de-DE')
   // EN ➔ DE: Speaks German translation ('de-DE') -> German example ('de-DE')
+  // If isRepeat = true: Repeats the queried word FIRST, then translation, then example!
   // ----------------------------------------------------
-  const speakSequentialResult = useCallback((res, dir = 'de_en', onComplete) => {
+  const speakSequentialResult = useCallback((res, dir = 'de_en', onComplete, isRepeat = false) => {
     if (!res) {
       if (onComplete) onComplete();
       return;
     }
 
     if (dir === 'en_de') {
-      // EN -> DE: Read German translation first, then German example sentence
-      setPhase('speaking');
-      setSpeakingSubPhase('de_translation');
-      setStatusMessage(`Lese deutsche Übersetzung vor: „${res.german}“`);
+      // EN -> DE:
+      // Queried English phrase: res.english
+      // German translation: res.german
+      // German example sentence: res.germanExample
 
-      speakText(res.german, 'de-DE', () => {
+      setPhase('speaking');
+
+      const playGermanExample = () => {
         if (!isMountedRef.current) return;
         if (res.germanExample) {
           setTimeout(() => {
@@ -297,7 +300,7 @@ export default function LiveTranslation({
               setSpeakingSubPhase(null);
               setPhase('idle');
               switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
               if (onComplete) onComplete();
             });
           }, 320);
@@ -305,17 +308,45 @@ export default function LiveTranslation({
           setSpeakingSubPhase(null);
           setPhase('idle');
           switchRecognitionLang('de-DE');
-          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
           if (onComplete) onComplete();
         }
-      });
+      };
+
+      const playGermanTranslation = () => {
+        if (!isMountedRef.current) return;
+        setSpeakingSubPhase('de_translation');
+        setStatusMessage(`Lese deutsche Übersetzung vor: „${res.german}“`);
+
+        speakText(res.german, 'de-DE', () => {
+          playGermanExample();
+        });
+      };
+
+      if (isRepeat && res.english) {
+        // Repeat mode: repeat the last queried English word/phrase first!
+        setSpeakingSubPhase('en');
+        setStatusMessage(`Wiederhole gesuchte Phrase: „${res.english}“`);
+
+        speakText(res.english, 'en-US', () => {
+          if (!isMountedRef.current) return;
+          setTimeout(() => {
+            playGermanTranslation();
+          }, 300);
+        });
+      } else {
+        // Normal mode: speak German translation then German example
+        playGermanTranslation();
+      }
     } else {
-      // DE -> EN: Read English translation first, then German example sentence
-      setPhase('speaking');
-      setSpeakingSubPhase('en');
-      setStatusMessage(`Lese Übersetzung vor: „${res.english}“`);
+      // DE -> EN:
+      // Queried German word: res.german
+      // English translation: res.english
+      // German example sentence: res.germanExample
 
-      speakText(res.english, 'en-US', () => {
+      setPhase('speaking');
+
+      const playGermanExample = () => {
         if (!isMountedRef.current) return;
         if (res.germanExample) {
           setTimeout(() => {
@@ -328,7 +359,7 @@ export default function LiveTranslation({
               setSpeakingSubPhase(null);
               setPhase('idle');
               switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
               if (onComplete) onComplete();
             });
           }, 320);
@@ -336,10 +367,36 @@ export default function LiveTranslation({
           setSpeakingSubPhase(null);
           setPhase('idle');
           switchRecognitionLang('de-DE');
-          setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
+          setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
           if (onComplete) onComplete();
         }
-      });
+      };
+
+      const playEnglishTranslation = () => {
+        if (!isMountedRef.current) return;
+        setSpeakingSubPhase('en');
+        setStatusMessage(`Lese Übersetzung vor: „${res.english}“`);
+
+        speakText(res.english, 'en-US', () => {
+          playGermanExample();
+        });
+      };
+
+      if (isRepeat && res.german) {
+        // Repeat mode: repeat the last queried German word first!
+        setSpeakingSubPhase('de_translation');
+        setStatusMessage(`Wiederhole gesuchtes Wort: „${res.german}“`);
+
+        speakText(res.german, 'de-DE', () => {
+          if (!isMountedRef.current) return;
+          setTimeout(() => {
+            playEnglishTranslation();
+          }, 300);
+        });
+      } else {
+        // Normal mode: speak English translation then German example
+        playEnglishTranslation();
+      }
     }
   }, [speakText, switchRecognitionLang]);
 
@@ -400,7 +457,7 @@ export default function LiveTranslation({
       .trim();
 
     // If remaining text was solely an echo or empty
-    if (/^(?:in\s+bearbeitung|bearbeitung|übersetzen|uebersetzen|ubersetzen|halt|stopp)$/i.test(cleanText)) {
+    if (/^(?:in\s+bearbeitung|bearbeitung|übersetzen|uebersetzen|ubersetzen|halt|stopp|wiederholen|wiederhole|nochmal)$/i.test(cleanText)) {
       return { cleanText: '', detectedPos };
     }
 
@@ -443,7 +500,7 @@ export default function LiveTranslation({
       .trim();
 
     // If remaining text was solely an echo or command keyword
-    if (/^(?:in\s+progress|in\s+process|progress|translate|stop|halt)$/i.test(cleanText)) {
+    if (/^(?:in\s+progress|in\s+process|progress|translate|stop|halt|repeat|repiet|ripit|say\s+again)$/i.test(cleanText)) {
       return { cleanText: '', detectedPos };
     }
 
@@ -912,13 +969,19 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
     // Flexible repeat detection ("Wiederholen" for DE, "Repeat" for EN)
     const hasGermanRepeat =
-      /(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      /(?:^|\s|[.,;:!?])(?:bitte\s+)?(?:wiederhol(?:en|e|t)?|noch\s*mal|noch\s*einmal|letztes\s+wort|wort\s+wiederholen)(?=\s|[.,;:!?]|$)/i.test(text) ||
       compact.includes('wiederhol') ||
       compact.includes('nochmal');
 
     const hasEnglishRepeat =
-      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence)?|say\s+again|once\s+more)(?=\s|[.,;:!?]|$)/i.test(text) ||
-      lower.includes('repeat');
+      /(?:^|\s|[.,;:!?])(?:please\s+)?(?:repeat(?:\s+that|\s+sentence|\s+word|\s+last\s+word)?|say\s+again|once\s+more|again)(?=\s|[.,;:!?]|$)/i.test(text) ||
+      lower.includes('repeat') ||
+      lower.includes('repiet') ||
+      lower.includes('ripit') ||
+      compact.includes('repeat') ||
+      compact.includes('repiet') ||
+      compact.includes('rebeat') ||
+      compact.includes('sayagain');
 
     const hasRepeat = hasGermanRepeat || hasEnglishRepeat;
 
@@ -955,29 +1018,29 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         const target = lastResultRef.current || currentResult || (history && history[0]);
         if (!target) {
           if (hasEnglishRepeat) {
-            speakText('No translation to repeat.', 'en-US', () => {
+            speakText('No word or translation to repeat.', 'en-US', () => {
               setPhase('idle');
               switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“.');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
             });
           } else {
-            speakText('Keine Übersetzung zum Wiederholen vorhanden.', 'de-DE', () => {
+            speakText('Kein Wort zum Wiederholen vorhanden.', 'de-DE', () => {
               setPhase('idle');
               switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“.');
+              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
             });
           }
           return;
         }
 
         const targetDir = target.dir || (hasEnglishRepeat ? 'en_de' : 'de_en');
-        if (hasEnglishRepeat) {
-          setStatusMessage(`Repeating translation & sentence: „${target.english || target.german}“...`);
+        if (targetDir === 'en_de') {
+          setStatusMessage(`Wiederhole gesuchte Phrase & Übersetzung: „${target.english || target.german}“...`);
         } else {
-          setStatusMessage(`Wiederhole Übersetzung & Satz: „${target.german}“...`);
+          setStatusMessage(`Wiederhole gesuchtes Wort & Übersetzung: „${target.german}“...`);
         }
 
-        speakSequentialResult(target, targetDir);
+        speakSequentialResult(target, targetDir, null, true);
         return;
       }
 
@@ -1059,7 +1122,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
           const target = lastResultRef.current || currentResult || (history && history[0]);
           if (target) {
             const targetDir = target.dir || (hasEnglishRepeat ? 'en_de' : 'de_en');
-            speakSequentialResult(target, targetDir);
+            speakSequentialResult(target, targetDir, null, true);
           }
           return;
         }
@@ -1161,7 +1224,12 @@ Provide an authentic, natural German example sentence in a real-world scenario (
                 candLower.includes('translat') ||
                 candLower.includes('trenslate') ||
                 candLower.includes('wiederhol') ||
-                candLower.includes('repeat')
+                candLower.includes('nochmal') ||
+                candLower.includes('repeat') ||
+                candLower.includes('repiet') ||
+                candLower.includes('ripit') ||
+                candLower.includes('rebeat') ||
+                candLower.includes('say again')
               ) {
                 latestCandidate = candidate;
                 break;
@@ -1304,18 +1372,18 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     const target = lastResultRef.current || currentResult || (history && history[0]);
     if (!target) {
       const isEnglish = directionRef.current === 'en_de';
-      speakText(isEnglish ? 'No translation to repeat.' : 'Keine Übersetzung zum Wiederholen vorhanden.', isEnglish ? 'en-US' : 'de-DE');
+      speakText(isEnglish ? 'No word or translation to repeat.' : 'Kein Wort zum Wiederholen vorhanden.', isEnglish ? 'en-US' : 'de-DE');
       return;
     }
 
     const targetDir = target.dir || directionRef.current || 'de_en';
     if (targetDir === 'en_de') {
-      setStatusMessage(`Repeating translation & sentence for „${target.german || target.english}“...`);
+      setStatusMessage(`Wiederhole gesuchte Phrase & Übersetzung für „${target.english || target.german}“...`);
     } else {
-      setStatusMessage(`Wiederhole Übersetzung & Satz für „${target.german}“...`);
+      setStatusMessage(`Wiederhole gesuchtes Wort & Übersetzung für „${target.german}“...`);
     }
 
-    speakSequentialResult(target, targetDir);
+    speakSequentialResult(target, targetDir, null, true);
   }, [currentResult, history, speakSequentialResult, speakText, unlockAudio]);
 
   // ----------------------------------------------------
@@ -1523,7 +1591,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             </span>
           </div>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
-            Hände-frei: <strong>„Übersetze“</strong> (DE) → <strong>„Halt“</strong>, <strong>„Translate“</strong> (EN) → <strong>„Stop“</strong>, oder <strong>„Wiederholen“</strong> / <strong>„Repeat“</strong> zum Nochmal-Hören.
+            Hände-frei: <strong>„Übersetze“</strong> (DE) → <strong>„Halt“</strong> | <strong>„Translate“</strong> (EN) → <strong>„Stop“</strong> | <strong>„Wiederholen“</strong> (DE) / <strong>„Repeat“</strong> (EN) wiederholt das letzte gesuchte Wort & Übersetzung.
           </p>
         </div>
 
@@ -2108,7 +2176,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               <button
                 type="button"
                 onClick={handleRepeatTranslation}
-                title="Übersetzung und Beispielsatz wiederholen (Voice: „Wiederholen“ oder „Repeat“)"
+                title={currentResult?.dir === 'en_de' ? "Gesuchte Phrase, Übersetzung und Beispielsatz wiederholen (Voice: „Repeat“ oder „Wiederholen“)" : "Gesuchtes Wort, Übersetzung und Beispielsatz wiederholen (Voice: „Wiederholen“ oder „Repeat“)"}
                 style={{
                   background: 'rgba(168, 85, 247, 0.18)',
                   border: '1px solid rgba(168, 85, 247, 0.45)',
@@ -2125,7 +2193,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
                 }}
               >
                 <span>🔁</span>
-                <span>Wiederholen</span>
+                <span>{currentResult?.dir === 'en_de' ? 'Repeat' : 'Wiederholen'}</span>
               </button>
 
               {/* Star / Add to My List */}
