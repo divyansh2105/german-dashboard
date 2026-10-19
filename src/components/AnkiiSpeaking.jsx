@@ -185,6 +185,15 @@ export default function AnkiiSpeaking({
   // revealedState: 'none' | 'english' | 'context'
   const [revealedState, setRevealedState] = useState('none');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const isSpeakingRef = useRef(false);
+  const lastSpeakingEndTimeRef = useRef(0);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+    if (!isSpeaking) {
+      lastSpeakingEndTimeRef.current = Date.now();
+    }
+  }, [isSpeaking]);
   const [speakingPhase, setSpeakingPhase] = useState(null); // 'de' | 'en' | 'example'
   const [touchFeedback, setTouchFeedback] = useState(null); // 'mastered' | 'english' | 'context' | null
 
@@ -377,10 +386,13 @@ export default function AnkiiSpeaking({
     if (deVoice) utterance.voice = deVoice;
     utterance.rate = 1.0;
 
+    isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('de');
 
     utterance.onend = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -388,6 +400,8 @@ export default function AnkiiSpeaking({
     };
 
     utterance.onerror = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -413,10 +427,13 @@ export default function AnkiiSpeaking({
     if (enVoice) utterance.voice = enVoice;
     utterance.rate = 1.0;
 
+    isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('en');
 
     utterance.onend = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -424,6 +441,8 @@ export default function AnkiiSpeaking({
     };
 
     utterance.onerror = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -447,6 +466,7 @@ export default function AnkiiSpeaking({
     const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
       voices.find(v => v.lang.startsWith('de'));
 
+    isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('en');
 
@@ -466,6 +486,8 @@ export default function AnkiiSpeaking({
         utterDe.rate = 1.0;
 
         utterDe.onend = () => {
+          isSpeakingRef.current = false;
+          lastSpeakingEndTimeRef.current = Date.now();
           if (!isMountedRef.current) return;
           setIsSpeaking(false);
           setSpeakingPhase(null);
@@ -473,6 +495,8 @@ export default function AnkiiSpeaking({
         };
 
         utterDe.onerror = () => {
+          isSpeakingRef.current = false;
+          lastSpeakingEndTimeRef.current = Date.now();
           if (!isMountedRef.current) return;
           setIsSpeaking(false);
           setSpeakingPhase(null);
@@ -484,6 +508,8 @@ export default function AnkiiSpeaking({
     };
 
     utterEn.onerror = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -572,10 +598,13 @@ export default function AnkiiSpeaking({
     if (enVoice) utterance.voice = enVoice;
     utterance.rate = 0.85; // Measured, clear cadence for spelling
 
+    isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('spell');
 
     utterance.onend = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -583,6 +612,8 @@ export default function AnkiiSpeaking({
     };
 
     utterance.onerror = () => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
       if (!isMountedRef.current) return;
       setIsSpeaking(false);
       setSpeakingPhase(null);
@@ -943,12 +974,19 @@ export default function AnkiiSpeaking({
   const handleVoiceCommand = useCallback((rawText) => {
     if (!rawText) return false;
 
+    // While device is speaking out loud or within 500ms cooldown, disable recognizing instructions to prevent self-triggering
+    const isTtsSpeaking = isSpeakingRef.current ||
+      (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) ||
+      (Date.now() - lastSpeakingEndTimeRef.current < 500);
+
+    if (isTtsSpeaking) return false;
+
     const text = rawText.toLowerCase().trim();
     const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
     const timeSinceLastCommand = Date.now() - lastExecutedCommandTimeRef.current;
 
     // 1. Delete (D press / Delete card with 10s undo) - 1.2s card appearance guard to prevent cascading
-    if (/\b(delete|deleted|remove|trash|löschen|loeschen|drop|del)\b/i.test(text)) {
+    if (/\bdelete\b/i.test(text)) {
       if (timeSinceCardAppeared < 1200) return false;
       if (timeSinceLastCommand < 1200) return false;
       lastExecutedCommandTimeRef.current = Date.now();
@@ -958,7 +996,7 @@ export default function AnkiiSpeaking({
     }
 
     // 2. Next (Space press / Mastered or advance next card) - 1.2s card appearance guard to prevent skipping
-    if (/\b(next|continue|skip|forward|space|weiter|necks|nest|nex|next one|go)\b/i.test(text)) {
+    if (/\bnext\b/i.test(text)) {
       if (timeSinceCardAppeared < 1200) return false;
       if (timeSinceLastCommand < 1200) return false;
       lastExecutedCommandTimeRef.current = Date.now();
@@ -971,37 +1009,20 @@ export default function AnkiiSpeaking({
       return true;
     }
 
-    // Informational commands (Translate, More, Repeat, Spell, Favorite):
-    // Zero card appearance delay so user can ask for meaning/context immediately without waiting!
+    // Informational commands (Translate, More, Repeat, Spell/Spelling, Favorite):
+    // Zero card appearance delay so user can ask immediately
     if (timeSinceLastCommand < 250) return false;
 
-    const compactText = text.replace(/[\s\-_]+/g, '');
-
-    // 3. Translate (N press / Reveal English meaning) - Highly tolerant phonetic pattern
-    if (
-      /\b(trans\s*late|translate|translation|translating|translates|translator|transit|transfer|trans|late|relate|english|bedeutung|übersetz|uebersetz|meaning|meanings|means|mean|define|definition|explanation|explain)\b/i.test(text) ||
-      compactText.includes('translate') ||
-      compactText.includes('meaning') ||
-      compactText.includes('english') ||
-      compactText.includes('übersetz') ||
-      compactText.includes('uebersetz')
-    ) {
+    // 3. Translate (N press / Reveal English meaning)
+    if (/\btranslate\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Translate [N]');
       handleForgotEnglish();
       return true;
     }
 
-    // 4. More (M press / Reveal English + Workplace Example) - Highly tolerant phonetic pattern
-    if (
-      /\b(more|moore|mor|mow|mode|moor|context|contexts|contacts|content|example|examples|sample|beispiel|mehr|sentence|sentences|details|workplace|usage)\b/i.test(text) ||
-      text.includes('more') ||
-      text.includes('context') ||
-      text.includes('example') ||
-      text.includes('sentence') ||
-      text.includes('beispiel') ||
-      text.includes('mehr')
-    ) {
+    // 4. More (M press / Reveal English + Workplace Example)
+    if (/\bmore\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('More [M]');
       handleMoreContext();
@@ -1009,15 +1030,15 @@ export default function AnkiiSpeaking({
     }
 
     // 5. Repeat (R press / Replay German word pronunciation)
-    if (/\b(repeat|replay|again|nochmal|wiederholen|wiederhole|play)\b/i.test(text)) {
+    if (/\brepeat\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Repeat [R]');
       replayGerman();
       return true;
     }
 
-    // 6. Spell (P press / Spell German word letter-by-letter in English)
-    if (/\b(spell|spelling|spell it|buchstabieren|buchstabiere|letters|alphabet)\b/i.test(text)) {
+    // 6. Spell / Spelling (P press / Spell German word letter-by-letter in English)
+    if (/\b(spell|spelling)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback('Spell [P]');
       handleSpellWord();
@@ -1025,7 +1046,7 @@ export default function AnkiiSpeaking({
     }
 
     // 7. Favorite (S/F press / Add word to My List)
-    if (/\b(favorite|favourite|favorit|star|starred|stern|save|favoriten|favorisieren)\b/i.test(text)) {
+    if (/\b(favorite|favourite)\b/i.test(text)) {
       lastExecutedCommandTimeRef.current = Date.now();
       triggerVoiceFeedback(isStarred ? 'Unfavorited' : 'Favorited [★]');
       handleToggleStar();
@@ -1069,6 +1090,16 @@ export default function AnkiiSpeaking({
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
+          // While device is speaking out loud or within 500ms cooldown, discard mic input to prevent self-triggering
+          const isTtsSpeaking = isSpeakingRef.current ||
+            (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) ||
+            (Date.now() - lastSpeakingEndTimeRef.current < 500);
+
+          if (isTtsSpeaking) {
+            lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, event.results.length - 1);
+            return;
+          }
+
           for (let i = event.resultIndex; i < event.results.length; i++) {
             // Guard: If this utterance index was already consumed, skip it!
             if (i <= lastProcessedResultIndexRef.current) {
@@ -2390,7 +2421,7 @@ export default function AnkiiSpeaking({
                   } catch (e) {}
                 }
               }}
-              title={isVoiceActive ? (isVoiceReady ? "Voice Control Active (Listening). Click to turn off" : "Voice Control Cooldown (Ready in 2s)") : "Enable Hands-free Voice Control ('Next', 'Translate', 'More', 'Delete', 'Repeat', 'Favorite')"}
+              title={isVoiceActive ? (isVoiceReady ? "Voice Control Active (Listening). Click to turn off" : "Voice Control Cooldown (Ready in 2s)") : "Enable Hands-free Voice Control ('More', 'Next', 'Translate', 'Delete', 'Favorite', 'Spell/Spelling', 'Repeat')"}
               style={{
                 background: isVoiceActive
                   ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(59, 130, 246, 0.28))'
