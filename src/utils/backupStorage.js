@@ -182,7 +182,11 @@ export async function exportBackupFile(filename, data) {
 
   // 2. Try local dev server API if available (running on localhost)
   try {
-    const endpoint = filename === 'deleted_words_backup.json' ? '/api/backup-deleted' : '/api/backup-mylist';
+    const endpoint = filename === 'deleted_words_backup.json' 
+      ? '/api/backup-deleted' 
+      : filename === 'deleted_verbs_backup.json'
+      ? '/api/backup-deleted-verbs'
+      : '/api/backup-mylist';
     const localRes = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

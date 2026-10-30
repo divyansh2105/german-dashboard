@@ -336,11 +336,98 @@ function App() {
     }
   };
 
+  // Persistent deleted verbs for Verb Tenses (synced separately via type=verb_tenses_deleted)
+  const [deletedVerbs, setDeletedVerbs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_verb_tenses_deleted_words');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const deletedVerbsRef = useRef(deletedVerbs);
+  useEffect(() => {
+    deletedVerbsRef.current = deletedVerbs;
+  }, [deletedVerbs]);
+
+  const skipNextDeletedVerbsUploadRef = useRef(false);
+  const isDeletedVerbsMountedRef = useRef(false);
+
+  const syncDeletedVerbsWithCloud = async (codeVal, forceList) => {
+    if (!codeVal || codeVal.trim().length < 3) return { success: false, error: 'Sync code must be at least 3 characters.' };
+    try {
+      const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const res = await fetch(`/api/sync?code=${cleanCode}&type=verb_tenses_deleted&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!res.ok) {
+        return { success: false, error: `Cloud fetch failed: ${res.status}` };
+      }
+      const cloudList = await res.json();
+      const validCloudList = Array.isArray(cloudList) ? cloudList : [];
+
+      const localCandidates = [];
+      if (Array.isArray(forceList)) localCandidates.push(...forceList);
+      if (Array.isArray(deletedVerbsRef.current)) localCandidates.push(...deletedVerbsRef.current);
+      try {
+        const stored = localStorage.getItem('b1_verb_tenses_deleted_words');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) localCandidates.push(...parsed);
+        }
+        const backupStored = localStorage.getItem('b1_verb_tenses_deleted_words_backup');
+        if (backupStored) {
+          const parsedBackup = JSON.parse(backupStored);
+          if (Array.isArray(parsedBackup)) localCandidates.push(...parsedBackup);
+        }
+      } catch (e) {}
+
+      const mergedMap = new Map();
+      const addWord = (w) => {
+        const str = typeof w === 'string' ? w : (w && typeof w.word === 'string' ? w.word : null);
+        if (str && str.trim()) mergedMap.set(str.trim().toLowerCase(), str.trim());
+      };
+      validCloudList.forEach(addWord);
+      localCandidates.forEach(addWord);
+      const finalConfiguredList = Array.from(mergedMap.values());
+
+      if (finalConfiguredList.length > 0) {
+        skipNextDeletedVerbsUploadRef.current = true;
+        setDeletedVerbs(finalConfiguredList);
+        localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(finalConfiguredList));
+        localStorage.setItem('b1_verb_tenses_deleted_words_backup', JSON.stringify(finalConfiguredList));
+        tryAutoSyncToDirectory('deleted_verbs_backup.json', finalConfiguredList);
+
+        const cloudSet = new Set(validCloudList.map(w => typeof w === 'string' ? w.toLowerCase() : (w?.word?.toLowerCase() || '')));
+        const hasNewItemsForCloud = finalConfiguredList.some(w => !cloudSet.has(w.toLowerCase()));
+
+        if (hasNewItemsForCloud || finalConfiguredList.length > validCloudList.length || forceList) {
+          try {
+            await fetch(`/api/sync?code=${cleanCode}&type=verb_tenses_deleted`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(finalConfiguredList),
+              cache: 'no-store'
+            });
+          } catch (postErr) {
+            console.warn("Could not sync deleted verbs back to cloud:", postErr);
+          }
+        }
+      }
+      return { success: true, count: finalConfiguredList.length, cloudCount: validCloudList.length };
+    } catch (err) {
+      console.warn("Cloud deleted verbs sync error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
   // Initial cloud sync on load
   useEffect(() => {
     if (syncCode) {
       syncWithCloud(syncCode);
       syncDeletedWithCloud(syncCode);
+      syncDeletedVerbsWithCloud(syncCode);
     }
 
     // Try loading local backup from project directory if deletedWords is empty on mount
@@ -350,6 +437,23 @@ function App() {
         if (Array.isArray(data) && data.length > 0) {
           skipNextDeletedUploadRef.current = true;
           setDeletedWords(prev => {
+            if (prev.length === 0) return data;
+            const mergedMap = new Map();
+            prev.forEach(w => { if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w); });
+            data.forEach(w => { if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w); });
+            return Array.from(mergedMap.values());
+          });
+        }
+      })
+      .catch(() => {});
+
+    // Try loading local backup from project directory if deletedVerbs is empty on mount
+    fetch('/api/backup-deleted-verbs')
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          skipNextDeletedVerbsUploadRef.current = true;
+          setDeletedVerbs(prev => {
             if (prev.length === 0) return data;
             const mergedMap = new Map();
             prev.forEach(w => { if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w); });
@@ -379,6 +483,7 @@ function App() {
       if (document.visibilityState === 'visible') {
         syncWithCloud(syncCode);
         syncDeletedWithCloud(syncCode);
+        syncDeletedVerbsWithCloud(syncCode);
       }
     };
 
@@ -389,6 +494,7 @@ function App() {
       if (document.visibilityState === 'visible') {
         syncWithCloud(syncCode);
         syncDeletedWithCloud(syncCode);
+        syncDeletedVerbsWithCloud(syncCode);
       }
     }, 45000);
 
@@ -401,8 +507,10 @@ function App() {
 
   // Auto-sync when switching active tab to Ankii Speaking or Verb Tenses
   useEffect(() => {
-    if ((activeTab === 'ankii-speaking' || activeTab === 'verb-tenses') && syncCode && syncCode.trim().length >= 3) {
+    if (activeTab === 'ankii-speaking' && syncCode && syncCode.trim().length >= 3) {
       syncDeletedWithCloud(syncCode);
+    } else if (activeTab === 'verb-tenses' && syncCode && syncCode.trim().length >= 3) {
+      syncDeletedVerbsWithCloud(syncCode);
     }
   }, [activeTab, syncCode]);
 
@@ -476,6 +584,84 @@ function App() {
     if (syncCode && syncCode.trim().length >= 3) {
       const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       fetch(`/api/sync?code=${cleanCode}&type=ankii_deleted`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([]),
+        cache: 'no-store'
+      }).catch(() => {});
+    }
+  };
+
+  // Persistent deleted verbs for Verb Tenses
+  useEffect(() => {
+    localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(deletedVerbs));
+    if (deletedVerbs.length > 0) {
+      localStorage.setItem('b1_verb_tenses_deleted_words_backup', JSON.stringify(deletedVerbs));
+    }
+
+    // Real-time copy kept in project directory (deleted_verbs_backup.json)
+    fetch('/api/backup-deleted-verbs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(deletedVerbs)
+    }).catch(() => {});
+    tryAutoSyncToDirectory('deleted_verbs_backup.json', deletedVerbs);
+
+    if (!isDeletedVerbsMountedRef.current) {
+      isDeletedVerbsMountedRef.current = true;
+      return;
+    }
+
+    if (skipNextDeletedVerbsUploadRef.current) {
+      skipNextDeletedVerbsUploadRef.current = false;
+      return;
+    }
+
+    if (syncCode && syncCode.trim().length >= 3) {
+      const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      fetch(`/api/sync?code=${cleanCode}&type=verb_tenses_deleted`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deletedVerbs),
+        cache: 'no-store'
+      }).catch(err => console.warn("Failed to auto-upload deleted verbs:", err));
+    }
+  }, [deletedVerbs, syncCode]);
+
+  const handleDeleteVerb = (word) => {
+    if (!word) return;
+    setDeletedVerbs(prev => {
+      if (prev.some(w => w.toLowerCase() === word.toLowerCase())) return prev;
+      return [...prev, word];
+    });
+  };
+
+  const handleRestoreVerb = (word) => {
+    if (!word) return;
+    setDeletedVerbs(prev => prev.filter(w => w.toLowerCase() !== word.toLowerCase()));
+  };
+
+  const handleImportDeletedVerbs = (importedList) => {
+    if (!Array.isArray(importedList)) return;
+    setDeletedVerbs(prev => {
+      const mergedMap = new Map();
+      prev.forEach(w => { if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w); });
+      importedList.forEach(w => { if (typeof w === 'string') mergedMap.set(w.toLowerCase(), w); });
+      return Array.from(mergedMap.values());
+    });
+  };
+
+  const handleRestoreAllDeletedVerbs = () => {
+    setDeletedVerbs([]);
+    localStorage.removeItem('b1_verb_tenses_deleted_words');
+    fetch('/api/backup-deleted-verbs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([])
+    }).catch(() => {});
+    if (syncCode && syncCode.trim().length >= 3) {
+      const cleanCode = syncCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      fetch(`/api/sync?code=${cleanCode}&type=verb_tenses_deleted`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([]),
@@ -1733,11 +1919,12 @@ function App() {
             vocabData={vocabData}
             myList={myList}
             onToggleMyList={handleToggleMyList}
-            deletedWords={deletedWords}
-            onDeleteWord={handleDeleteAnkiiWord}
-            onRestoreWord={handleRestoreAnkiiWord}
-            onRestoreAllDeleted={handleRestoreAllAnkiiDeleted}
-            onImportDeletedWords={handleImportDeletedWords}
+            deletedWords={deletedVerbs}
+            onDeleteWord={handleDeleteVerb}
+            onRestoreWord={handleRestoreVerb}
+            onRestoreAllDeleted={handleRestoreAllDeletedVerbs}
+            onImportDeletedWords={handleImportDeletedVerbs}
+            backupFileName="deleted_verbs_backup.json"
             syncCode={syncCode}
             setSyncCode={(code) => {
               const clean = (code || '').trim();
@@ -1745,7 +1932,7 @@ function App() {
               if (clean) {
                 localStorage.setItem('b1_sync_code', clean);
                 syncWithCloud(clean);
-                syncDeletedWithCloud(clean);
+                syncDeletedVerbsWithCloud(clean);
               } else {
                 localStorage.removeItem('b1_sync_code');
               }
@@ -1754,7 +1941,7 @@ function App() {
               const codeToUse = (code || syncCode || '').trim();
               if (!codeToUse || codeToUse.length < 3) return { success: false, error: 'Code too short' };
               const [delRes] = await Promise.all([
-                syncDeletedWithCloud(codeToUse),
+                syncDeletedVerbsWithCloud(codeToUse),
                 syncWithCloud(codeToUse)
               ]);
               return delRes;

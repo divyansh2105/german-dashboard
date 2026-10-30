@@ -79,6 +79,86 @@ function formatEnglishPast(meaning, subject = 'I') {
   return `${subject} ${pastFull} / ${subject} ${hasVerb} ${partFull}`;
 }
 
+// Grammatical rules analyzer to help memorize German Perfekt formation
+export function analyzePerfektRule(rawWord, aux, rawParticiple) {
+  const word = (rawWord || '').toLowerCase().replace(/^sich\s+/, '').trim();
+  const part = (rawParticiple || '').toLowerCase().replace(/^[-(]/, '').replace(/[)-]$/, '').trim();
+
+  // 1. Auxiliary Rule Explanation
+  let auxExplanation = '';
+  const auxType = aux === 'ist' ? 'sein' : 'haben';
+  if (aux === 'ist') {
+    if (['sein', 'bleiben', 'werden'].some(w => word === w || word.endsWith(w))) {
+      auxExplanation = 'Special state verb (sein, bleiben, werden always use "sein")';
+    } else if (['aufstehen', 'einschlafen', 'sterben', 'wachsen', 'passieren', 'geschehen', 'ertrinken', 'vergehen', 'explodieren'].some(w => word.includes(w))) {
+      auxExplanation = 'Change of state / condition (status change verbs use "sein")';
+    } else {
+      auxExplanation = 'Movement / locomotion from A to B (e.g. gehen, fahren, fliegen)';
+    }
+  } else {
+    if (rawWord && (rawWord.toLowerCase().startsWith('sich') || rawWord.toLowerCase().includes(' sich'))) {
+      auxExplanation = 'Reflexive verb (all reflexive verbs in German strictly use "haben")';
+    } else if (['können', 'müssen', 'dürfen', 'sollen', 'wollen', 'mögen'].some(w => word === w)) {
+      auxExplanation = 'Modal verb (always uses "haben")';
+    } else {
+      auxExplanation = 'Transitive or activity/duration without movement (standard uses "haben")';
+    }
+  }
+
+  // 2. Participle Formation Rule
+  const INSEPARABLE_PREFIXES = ['be', 'emp', 'ent', 'er', 'ge', 'miss', 'miß', 'ver', 'zer'];
+  const SEPARABLE_PREFIXES = ['ab', 'an', 'auf', 'aus', 'bei', 'ein', 'fest', 'fort', 'her', 'hin', 'los', 'mit', 'nach', 'vor', 'weg', 'weiter', 'zu', 'zurück', 'zusammen'];
+
+  let partCategory = '';
+  let partFormula = '';
+  let partExplanation = '';
+
+  const matchedInseparable = INSEPARABLE_PREFIXES.find(p => word.startsWith(p) && word.length > p.length + 2);
+  const matchedSeparable = SEPARABLE_PREFIXES.find(p => word.startsWith(p) && word.length > p.length + 2);
+
+  if (word.endsWith('ieren')) {
+    partCategory = 'Verbs ending in -ieren';
+    partFormula = 'Stem + -t (NO ge-)';
+    partExplanation = 'Verbs ending in "-ieren" never take the "ge-" prefix in the Perfekt (e.g. studieren → studiert).';
+  } else if (matchedInseparable) {
+    partCategory = `Inseparable Prefix (${matchedInseparable}-)`;
+    partFormula = 'Prefix + Stem + -t / -en (NO ge-)';
+    partExplanation = `Inseparable prefixes (${matchedInseparable}-) never take "ge-"! (Rule: be-, emp-, ent-, er-, ge-, miss-, ver-, zer- never take ge-).`;
+  } else if (matchedSeparable && part.includes('ge')) {
+    partCategory = `Separable Prefix (${matchedSeparable}-)`;
+    partFormula = `${matchedSeparable} + -ge- + Stem + -t / -en`;
+    partExplanation = `Separable verb: The "-ge-" prefix is inserted directly between "${matchedSeparable}-" and the verb stem.`;
+  } else if (part.endsWith('en') && part.startsWith('ge')) {
+    partCategory = 'Strong / Irregular Verb';
+    partFormula = 'ge- + Stem (often vowel change) + -en';
+    partExplanation = 'Strong verb: keeps the "-en" ending, often changing the stem vowel (Ablaut).';
+  } else if (part.endsWith('t') && part.startsWith('ge')) {
+    const infStem = word.replace(/e?n$/, '');
+    const partStem = part.slice(2).replace(/e?t$/, '');
+    if (infStem === partStem || word.startsWith(partStem)) {
+      partCategory = 'Regular Weak Verb';
+      partFormula = 'ge- + Stem + -(e)t';
+      partExplanation = 'Regular verb: Add "ge-" at the beginning and "-t" (or "-et") at the end of the stem.';
+    } else {
+      partCategory = 'Mixed Verb (Vowel Change + -t)';
+      partFormula = 'ge- + Changed Stem + -t';
+      partExplanation = 'Mixed verb: stem vowel changes like an irregular verb, but takes regular "-t" ending.';
+    }
+  } else {
+    partCategory = 'Verb Pattern';
+    partFormula = part.includes('ge') ? 'Uses ge- prefix' : 'No ge- prefix';
+    partExplanation = `Formed with auxiliary "${auxType}" and participle "${part}".`;
+  }
+
+  return {
+    auxType,
+    auxExplanation,
+    partCategory,
+    partFormula,
+    partExplanation
+  };
+}
+
 export function parseVerbPerfekt(verbItem) {
   if (!verbItem) return null;
   const word = verbItem.word || '';
@@ -93,7 +173,9 @@ export function parseVerbPerfekt(verbItem) {
       perfektDe: 'Es hat geregnet',
       thirdPersonDe: 'hat geregnet',
       perfektEn: formatEnglishPast(verbItem.meaning || 'rain', 'It'),
-      perfektExample: findPerfektExample(verbItem, 'geregnet')
+      perfektExample: findPerfektExample(verbItem, 'geregnet'),
+      simpleExample: (verbItem.examples && verbItem.examples.length > 0) ? verbItem.examples[0] : null,
+      rules: analyzePerfektRule(word, 'hat', 'geregnet')
     };
   }
   if (word === 'schneien') {
@@ -104,7 +186,9 @@ export function parseVerbPerfekt(verbItem) {
       perfektDe: 'Es hat geschneit',
       thirdPersonDe: 'hat geschneit',
       perfektEn: formatEnglishPast(verbItem.meaning || 'snow', 'It'),
-      perfektExample: findPerfektExample(verbItem, 'geschneit')
+      perfektExample: findPerfektExample(verbItem, 'geschneit'),
+      simpleExample: (verbItem.examples && verbItem.examples.length > 0) ? verbItem.examples[0] : null,
+      rules: analyzePerfektRule(word, 'hat', 'geschneit')
     };
   }
   if (word === 'geschieden sein') {
@@ -115,7 +199,9 @@ export function parseVerbPerfekt(verbItem) {
       perfektDe: 'Ich bin geschieden gewesen',
       thirdPersonDe: 'ist geschieden gewesen',
       perfektEn: 'I was divorced / I have been divorced',
-      perfektExample: findPerfektExample(verbItem, 'geschieden')
+      perfektExample: findPerfektExample(verbItem, 'geschieden'),
+      simpleExample: (verbItem.examples && verbItem.examples.length > 0) ? verbItem.examples[0] : null,
+      rules: analyzePerfektRule(word, 'ist', 'geschieden gewesen')
     };
   }
 
@@ -152,6 +238,8 @@ export function parseVerbPerfekt(verbItem) {
 
   const perfektEn = formatEnglishPast(verbItem.meaning, 'I');
   const perfektExample = findPerfektExample(verbItem, participle);
+  const simpleExample = (verbItem.examples && verbItem.examples.length > 0) ? verbItem.examples[0] : null;
+  const rules = analyzePerfektRule(word, aux, participle);
 
   return {
     auxiliary: aux,
@@ -160,7 +248,9 @@ export function parseVerbPerfekt(verbItem) {
     perfektDe,
     thirdPersonDe,
     perfektEn,
-    perfektExample
+    perfektExample,
+    simpleExample,
+    rules
   };
 }
 
@@ -203,6 +293,7 @@ export default function VerbTenses({
   onRestoreWord,
   onRestoreAllDeleted,
   onImportDeletedWords,
+  backupFileName = 'deleted_verbs_backup.json',
   syncCode,
   setSyncCode,
   onSyncDeletedNow,
@@ -296,10 +387,10 @@ export default function VerbTenses({
     }
   };
 
-  // Persistent Deleted Words
+  // Persistent Deleted Words for Verb Tenses
   const [localDeletedWords, setLocalDeletedWords] = useState(() => {
     try {
-      const saved = localStorage.getItem('b1_anki_speaking_deleted_words');
+      const saved = localStorage.getItem('b1_verb_tenses_deleted_words');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       return [];
@@ -317,6 +408,65 @@ export default function VerbTenses({
   }, [deletedWords]);
 
   const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleImportBackupFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target?.result);
+        const list = Array.isArray(parsed)
+          ? parsed
+          : (parsed.deletedWords || parsed.deletedVerbs || parsed.words || []);
+        if (Array.isArray(list) && list.length > 0) {
+          if (onImportDeletedWords) {
+            onImportDeletedWords(list);
+          } else {
+            setLocalDeletedWords(prev => {
+              const combined = Array.from(new Set([...prev, ...list]));
+              localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(combined));
+              return combined;
+            });
+          }
+          alert(`Imported ${list.length} deleted verbs.`);
+        } else {
+          alert('No valid verb list found in JSON file.');
+        }
+      } catch (err) {
+        alert('Failed to parse backup JSON file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const exportDeletedBackup = () => {
+    exportBackupFile(backupFileName || 'deleted_verbs_backup.json', deletedWords);
+  };
+
+  const handleRestoreWordFromModal = (wordKey) => {
+    if (onRestoreWord) {
+      onRestoreWord(wordKey);
+    } else {
+      setLocalDeletedWords(prev => {
+        const updated = prev.filter(w => w.toLowerCase() !== wordKey.toLowerCase());
+        localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(updated));
+        return updated;
+      });
+    }
+  };
+
+  const handleRestoreAll = () => {
+    if (!window.confirm('Are you sure you want to restore all deleted verbs?')) return;
+    if (onRestoreAllDeleted) {
+      onRestoreAllDeleted();
+    } else {
+      setLocalDeletedWords([]);
+      localStorage.removeItem('b1_verb_tenses_deleted_words');
+    }
+  };
 
   // 10-Second Undo Toast State
   const [undoToast, setUndoToast] = useState(null);
@@ -657,7 +807,9 @@ export default function VerbTenses({
       setSessionResults(prev => [...prev, { card: currentCard, result: 'context' }]);
     }
     setRevealedState('context');
-    const exDe = perfektInfo.perfektExample ? perfektInfo.perfektExample.de : '';
+    const exDe = perfektInfo.perfektExample
+      ? perfektInfo.perfektExample.de
+      : (perfektInfo.simpleExample ? perfektInfo.simpleExample.de : '');
     speakSequentialPerfekt(perfektInfo.perfektDe, perfektInfo.perfektEn, exDe);
   }, [currentCard, perfektInfo, revealedState, onReview, speakSequentialPerfekt]);
 
@@ -687,7 +839,7 @@ export default function VerbTenses({
     } else {
       setLocalDeletedWords(prev => {
         const updated = prev.includes(wordKey) ? prev : [...prev, wordKey];
-        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+        localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(updated));
         return updated;
       });
     }
@@ -754,7 +906,7 @@ export default function VerbTenses({
     } else {
       setLocalDeletedWords(prev => {
         const updated = prev.filter(w => w.toLowerCase() !== restoredWord.toLowerCase());
-        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+        localStorage.setItem('b1_verb_tenses_deleted_words', JSON.stringify(updated));
         return updated;
       });
     }
@@ -1437,7 +1589,7 @@ export default function VerbTenses({
 
         </div>
 
-        {/* Modal: Deleted Verbs */}
+        {/* MODAL: Manage / Restore Deleted Verbs */}
         {showDeletedModal && (
           <div style={{
             position: 'fixed',
@@ -1459,8 +1611,8 @@ export default function VerbTenses({
               flexDirection: 'column'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0 }}>
-                  🗑️ Deleted Verbs ({deletedWords.length})
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🗑️</span> Deleted Verbs ({deletedWords.length})
                 </h3>
                 <button
                   type="button"
@@ -1470,31 +1622,271 @@ export default function VerbTenses({
                   ✕
                 </button>
               </div>
-              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                These verbs will not appear in practice sessions. Click <b>Restore</b> to re-add them.
+
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.4' }}>
+                These verbs will never appear in Verb Tenses sessions. Click <b>Restore</b> on any verb to add it back to practice.
               </p>
-              <div style={{ overflowY: 'auto', flex: 1, maxHeight: '300px' }}>
-                {deletedWords.map(w => (
-                  <div key={w} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                    <span style={{ color: '#fff', fontWeight: '600' }}>{w}</span>
+
+              {/* Cloud Sync Status & Actions inside Modal */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border-color)',
+                marginBottom: '16px',
+                flexWrap: 'wrap',
+                gap: '8px'
+              }}>
+                {syncCode && !isEditingSyncCode ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap' }}>
+                    <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' }}>
+                      <span style={{ display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%', background: '#10b981' }}></span>
+                      Cloud Sync:
+                    </span>
+                    <code style={{ color: '#60a5fa', fontWeight: '700', background: 'rgba(59, 130, 246, 0.12)', padding: '2px 6px', borderRadius: '4px' }}>
+                      {syncCode}
+                    </code>
                     <button
                       type="button"
-                      onClick={() => onRestoreWord ? onRestoreWord(w) : setLocalDeletedWords(prev => prev.filter(x => x !== w))}
-                      style={{ background: 'rgba(34, 197, 94, 0.2)', border: '1px solid #22c55e', color: '#22c55e', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}
+                      onClick={() => {
+                        setInputSyncCode(syncCode);
+                        setIsEditingSyncCode(true);
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
                     >
-                      Restore
+                      Change
                     </button>
                   </div>
-                ))}
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', flexWrap: 'wrap', width: '100%' }}>
+                    <span style={{ color: '#f59e0b', fontWeight: '600' }}>⚠️ Cloud Sync Not Connected</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        type="text"
+                        placeholder="Enter sync code"
+                        value={inputSyncCode}
+                        onChange={(e) => setInputSyncCode(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSyncCode(inputSyncCode); }}
+                        style={{
+                          background: 'rgba(0,0,0,0.3)',
+                          border: '1px solid var(--border-color)',
+                          color: '#fff',
+                          fontSize: '11px',
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          width: '160px'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSyncCode(inputSyncCode)}
+                        style={{
+                          background: 'rgba(59, 130, 246, 0.25)',
+                          border: '1px solid rgba(59, 130, 246, 0.4)',
+                          color: '#60a5fa',
+                          borderRadius: '6px',
+                          padding: '4px 10px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Connect & Sync
+                      </button>
+                      {isEditingSyncCode && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingSyncCode(false)}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {syncCode && !isEditingSyncCode && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+                    {syncFeedback && (
+                      <span style={{ fontSize: '11px', color: syncFeedback.startsWith('✅') ? '#10b981' : '#f59e0b', fontWeight: '600' }}>
+                        {syncFeedback}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleTriggerSync}
+                      disabled={isSyncing}
+                      style={{
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        border: '1px solid rgba(59, 130, 246, 0.35)',
+                        color: '#60a5fa',
+                        borderRadius: '6px',
+                        padding: '4px 10px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: isSyncing ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        opacity: isSyncing ? 0.6 : 1
+                      }}
+                    >
+                      <span>🔄</span>
+                      <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div style={{ marginTop: '16px', textAlign: 'right' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowDeletedModal(false)}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid var(--border-color)', color: '#fff', borderRadius: '8px', padding: '8px 16px', fontSize: '12px', cursor: 'pointer' }}
-                >
-                  Done
-                </button>
+
+              <div style={{ flexGrow: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', paddingRight: '4px' }}>
+                {deletedWords.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    No deleted verbs.
+                  </div>
+                ) : (
+                  deletedWords.map((item, idx) => {
+                    const wordStr = typeof item === 'string' ? item : (item && item.word ? item.word : String(item));
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 14px',
+                          borderRadius: '10px',
+                          background: 'rgba(255,255,255,0.03)',
+                          border: '1px solid var(--border-color)'
+                        }}
+                      >
+                        <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
+                          {wordStr}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreWordFromModal(wordStr)}
+                          style={{
+                            background: 'rgba(34, 197, 94, 0.15)',
+                            border: '1px solid rgba(34, 197, 94, 0.35)',
+                            color: '#22c55e',
+                            borderRadius: '8px',
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ↩ Restore
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer with Disaster Recovery and Restore Controls */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={exportDeletedBackup}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      color: '#60a5fa',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title={`Download and update ${backupFileName || 'deleted_verbs_backup.json'} directly`}
+                  >
+                    💾 Export Backup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={chooseBackupDirectory}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-secondary)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Connect or re-select your local 'german-dashboard' project directory"
+                  >
+                    📁 Set Folder
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid var(--border-color)',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                    title="Import or restore verbs from JSON backup file"
+                  >
+                    📥 Recover from Backup
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackupFile}
+                    style={{ display: 'none' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto' }}>
+                  {deletedWords.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleRestoreAll}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#ef4444',
+                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Restore All
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowDeletedModal(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.1)',
+                      border: '1px solid var(--border-color)',
+                      color: '#fff',
+                      borderRadius: '8px',
+                      padding: '8px 16px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1755,42 +2147,40 @@ export default function VerbTenses({
         }}
       >
         {/* Top Cue: More / Example */}
-        {hasPerfektExample && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleMoreContext();
-            }}
-            className={`ankii-layout-cue ankii-card-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
-            style={{
-              position: 'absolute',
-              top: '-15px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backdropFilter: 'blur(10px)',
-              WebkitBackdropFilter: 'blur(10px)',
-              background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(15, 23, 42, 0.85)',
-              border: '1px solid rgba(59, 130, 246, 0.45)',
-              color: 'var(--color-verb)',
-              padding: '5px 15px',
-              borderRadius: '16px',
-              fontSize: '11px',
-              fontWeight: '800',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
-              zIndex: 10,
-              cursor: 'pointer'
-            }}
-            title="More Context (Example Sentence) [M]"
-          >
-            <span style={{ fontSize: '9px' }}>▲</span>
-            <span>More</span>
-            <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>[M]</kbd>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMoreContext();
+          }}
+          className={`ankii-layout-cue ankii-card-cue-top ${touchFeedback === 'context' ? 'active-cue' : ''}`}
+          style={{
+            position: 'absolute',
+            top: '-15px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            background: touchFeedback === 'context' ? 'rgba(59, 130, 246, 0.35)' : 'rgba(15, 23, 42, 0.85)',
+            border: '1px solid rgba(59, 130, 246, 0.45)',
+            color: 'var(--color-verb)',
+            padding: '5px 15px',
+            borderRadius: '16px',
+            fontSize: '11px',
+            fontWeight: '800',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+            zIndex: 10,
+            cursor: 'pointer'
+          }}
+          title="More Context (Example Sentence) [M]"
+        >
+          <span style={{ fontSize: '9px' }}>▲</span>
+          <span>More</span>
+          <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.1)', padding: '1px 5px', borderRadius: '4px', color: 'rgba(255,255,255,0.7)' }}>[M]</kbd>
+        </button>
 
         {/* Bottom Cue: Delete */}
         <button
@@ -2057,17 +2447,17 @@ export default function VerbTenses({
             </div>
           )}
 
-          {/* REVEALED CONTENT: German Perfekt Form & English Past */}
+          {/* REVEALED CONTENT: German Perfekt Form, Rules & English Past */}
           {revealedState !== 'none' && perfektInfo && (
             <div className="animate-fade-in" style={{
-              marginTop: '22px',
-              padding: '18px 22px',
+              marginTop: '20px',
+              padding: '18px 20px',
               borderRadius: '18px',
               background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(139, 92, 246, 0.12))',
               border: '1px solid rgba(59, 130, 246, 0.35)',
               width: '100%',
-              maxWidth: '500px',
-              margin: '22px auto 0'
+              maxWidth: '520px',
+              margin: '20px auto 0'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{
@@ -2124,20 +2514,105 @@ export default function VerbTenses({
               {perfektInfo.perfektEn && (
                 <div style={{
                   marginTop: '10px',
-                  paddingTop: '10px',
+                  paddingTop: '8px',
                   borderTop: '1px dashed rgba(255,255,255,0.12)',
-                  fontSize: '16px',
+                  fontSize: '15px',
                   fontWeight: '600',
                   color: 'var(--color-adj)'
                 }}>
                   🇬🇧 {perfektInfo.perfektEn}
                 </div>
               )}
+
+              {/* English Translation of the Verb */}
+              <div style={{
+                marginTop: '10px',
+                paddingTop: '8px',
+                borderTop: '1px dashed rgba(255,255,255,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                fontSize: '13px',
+                color: 'var(--text-secondary)',
+                flexWrap: 'wrap',
+                gap: '6px'
+              }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: '700' }}>
+                  Verb Translation:
+                </span>
+                <span style={{ color: '#fff', fontWeight: '700' }}>
+                  {currentCard.word} → {currentCard.meaning || 'to ' + currentCard.word}
+                </span>
+              </div>
+
+              {/* Educational Perfekt Formation Rules */}
+              {perfektInfo.rules && (
+                <div style={{
+                  marginTop: '14px',
+                  padding: '12px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  textAlign: 'left'
+                }}>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    color: '#60a5fa',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.8px',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>💡</span> Perfekt Formation Rules
+                  </div>
+
+                  {/* Auxiliary Rule */}
+                  <div style={{ fontSize: '12px', color: '#fff', marginBottom: '8px', lineHeight: '1.4' }}>
+                    <span style={{
+                      fontWeight: '800',
+                      color: perfektInfo.rules.auxType === 'sein' ? '#f59e0b' : '#38bdf8',
+                      background: perfektInfo.rules.auxType === 'sein' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      marginRight: '6px'
+                    }}>
+                      ⚡ {perfektInfo.rules.auxType.toUpperCase()}
+                    </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {perfektInfo.rules.auxExplanation}
+                    </span>
+                  </div>
+
+                  {/* Participle Rule */}
+                  <div style={{ fontSize: '12px', color: '#fff', lineHeight: '1.4' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '2px' }}>
+                      <span style={{
+                        fontWeight: '800',
+                        color: '#a78bfa',
+                        background: 'rgba(167, 139, 250, 0.15)',
+                        padding: '2px 6px',
+                        borderRadius: '4px'
+                      }}>
+                        🧩 {perfektInfo.rules.partCategory}
+                      </span>
+                      <code style={{ fontSize: '11px', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '1px 6px', borderRadius: '4px' }}>
+                        {perfektInfo.rules.partFormula}
+                      </code>
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      {perfektInfo.rules.partExplanation}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* REVEALED CONTENT: Example sentence (ONLY if Perfekt example exists) */}
-          {revealedState === 'context' && perfektInfo && perfektInfo.perfektExample && (
+          {/* REVEALED CONTENT: Example sentence (Perfekt example or simple sentence fallback) */}
+          {revealedState === 'context' && (
             <div className="animate-fade-in" style={{
               marginTop: '16px',
               padding: '16px 20px',
@@ -2145,29 +2620,61 @@ export default function VerbTenses({
               background: 'rgba(59, 130, 246, 0.08)',
               border: '1px solid rgba(59, 130, 246, 0.3)',
               width: '100%',
-              maxWidth: '500px',
+              maxWidth: '520px',
               margin: '16px auto 0',
               textAlign: 'left'
             }}>
-              <div style={{
-                fontSize: '11px',
-                fontWeight: '800',
-                color: 'var(--color-verb)',
-                textTransform: 'uppercase',
-                letterSpacing: '1px',
-                marginBottom: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}>
-                <span>📖</span> Perfekt Example Sentence
-              </div>
-              <div style={{ fontSize: '15px', fontWeight: '600', color: '#fff', lineHeight: '1.4' }}>
-                🇩🇪 {perfektInfo.perfektExample.de}
-              </div>
-              {perfektInfo.perfektExample.en && (
-                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
-                  🇬🇧 {perfektInfo.perfektExample.en}
+              {perfektInfo?.perfektExample ? (
+                <>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    color: 'var(--color-verb)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    marginBottom: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>📖</span> Perfekt Example Sentence
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: '600', color: '#fff', lineHeight: '1.4' }}>
+                    🇩🇪 {perfektInfo.perfektExample.de}
+                  </div>
+                  {perfektInfo.perfektExample.en && (
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                      🇬🇧 {perfektInfo.perfektExample.en}
+                    </div>
+                  )}
+                </>
+              ) : perfektInfo?.simpleExample ? (
+                <>
+                  <div style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    color: 'var(--color-adj)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px',
+                    marginBottom: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>📝</span> Example Sentence
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: '600', color: '#fff', lineHeight: '1.4' }}>
+                    🇩🇪 {perfektInfo.simpleExample.de}
+                  </div>
+                  {perfektInfo.simpleExample.en && (
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                      🇬🇧 {perfektInfo.simpleExample.en}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  No example sentence available for "{currentCard.word}".
                 </div>
               )}
             </div>
@@ -2366,43 +2873,25 @@ export default function VerbTenses({
             <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '4px' }}>[T]</kbd>
           </button>
 
-          {hasPerfektExample ? (
-            <button
-              type="button"
-              onClick={handleMoreContext}
-              style={{
-                padding: '12px 10px',
-                borderRadius: '14px',
-                background: revealedState === 'context' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.1)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                color: 'var(--color-verb)',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              <span style={{ fontSize: '12px', fontWeight: '800' }}>▲ Example</span>
-              <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '4px' }}>[M]</kbd>
-            </button>
-          ) : (
-            <div style={{
+          <button
+            type="button"
+            onClick={handleMoreContext}
+            style={{
               padding: '12px 10px',
               borderRadius: '14px',
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              color: 'var(--text-muted)',
+              background: revealedState === 'context' ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+              color: 'var(--color-verb)',
+              cursor: 'pointer',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '11px',
-              opacity: 0.5
-            }}>
-              <span>No Example</span>
-            </div>
-          )}
+              gap: '4px'
+            }}
+          >
+            <span style={{ fontSize: '12px', fontWeight: '800' }}>▲ Example</span>
+            <kbd style={{ fontSize: '9px', background: 'rgba(255,255,255,0.08)', padding: '1px 5px', borderRadius: '4px' }}>[M]</kbd>
+          </button>
 
           <button
             type="button"

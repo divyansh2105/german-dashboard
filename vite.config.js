@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const backupFilePath = path.resolve(__dirname, 'deleted_words_backup.json')
+const deletedVerbsBackupPath = path.resolve(__dirname, 'deleted_verbs_backup.json')
 const myListBackupPath = path.resolve(__dirname, 'my_list_backup.json')
 
 function localBackupPlugin() {
@@ -14,6 +15,43 @@ function localBackupPlugin() {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const urlPath = req.url ? req.url.split('?')[0] : ''
+        if (urlPath === '/api/backup-deleted-verbs') {
+          if (req.method === 'POST') {
+            let body = ''
+            req.on('data', chunk => { body += chunk })
+            req.on('end', () => {
+              try {
+                const list = JSON.parse(body)
+                if (Array.isArray(list)) {
+                  fs.writeFileSync(deletedVerbsBackupPath, JSON.stringify(list, null, 2), 'utf-8')
+                  res.writeHead(200, { 'Content-Type': 'application/json' })
+                  res.end(JSON.stringify({ success: true, count: list.length, path: 'deleted_verbs_backup.json' }))
+                  return
+                }
+              } catch (err) {
+                console.error('Local deleted verbs backup write failed:', err)
+              }
+              res.writeHead(400, { 'Content-Type': 'application/json' })
+              res.end(JSON.stringify({ error: 'Invalid payload' }))
+            })
+            return
+          } else if (req.method === 'GET') {
+            try {
+              if (fs.existsSync(deletedVerbsBackupPath)) {
+                const content = fs.readFileSync(deletedVerbsBackupPath, 'utf-8')
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(content || '[]')
+                return
+              }
+            } catch (err) {
+              console.error('Local deleted verbs backup read failed:', err)
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' })
+            res.end('[]')
+            return
+          }
+        }
+
         if (urlPath === '/api/backup-deleted') {
           if (req.method === 'POST') {
             let body = ''
