@@ -8,6 +8,7 @@ const TRANSLATION_TOPICS = [
   { id: 'future', label: '🚀 Future Tense', desc: 'Futur I (werden + Infinitiv) and expressing plans' },
   { id: 'prepositions', label: '📍 Prepositions & Cases', desc: 'Wechselpräpositionen, two-way prepositions, Dativ & Akkusativ' },
   { id: 'subordinate', label: '🔗 Subordinate Clauses', desc: 'Nebensätze (weil, dass, obwohl, wenn, als, da - Verb at end)' },
+  { id: 'zu_infinitive', label: '🎯 Zu + Infinitive', desc: 'Infinitivsätze (um...zu, ohne...zu, anstatt...zu, Lust/Zeit haben zu, vorhaben zu)' },
   { id: 'modal', label: '🛠️ Modal Verbs', desc: 'Modalverben (können, müssen, dürfen, sollen, wollen, möchten)' },
   { id: 'passive', label: '⚙️ Passive Voice', desc: 'Vorgangspassiv (werden + Partizip II)' },
   { id: 'relative', label: '👥 Relative Clauses', desc: 'Relativsätze (der, die, das, welcher, dessen, denen)' },
@@ -70,11 +71,21 @@ const TOPIC_SUB_FOCUSES = {
     "Genitiv prepositions common at B1 (während, trotz, wegen, innerhalb)"
   ],
   subordinate: [
-    "Double connectors (nicht nur ... sondern auch, sowohl ... als auch, entweder ... oder)",
-    "Concessive clauses with 'obwohl' followed by main clause inversion",
-    "Infinitive clauses with 'um ... zu' vs causal clause with 'damit'",
-    "Infinitive with 'ohne ... zu' or 'anstatt ... zu'",
-    "Indirect questions using 'ob' or interrogative pronouns (wann, wie, warum)"
+    "Causal clauses with 'weil' or 'da' followed by verb-final word order",
+    "Concessive clauses with 'obwohl' followed by main clause subject-verb inversion",
+    "Conditional clauses with 'wenn' or 'falls'",
+    "Temporal sequences using 'nachdem', 'während', 'bevor', or 'seitdem'",
+    "Indirect questions using 'ob' or interrogative pronouns (wann, wie, warum)",
+    "Double connectors (nicht nur ... sondern auch, sowohl ... als auch, zwar ... aber, entweder ... oder)"
+  ],
+  zu_infinitive: [
+    "Final clause expressing purpose: 'um ... zu + Infinitiv' (in order to do something)",
+    "Negative consequence or omitted action: 'ohne ... zu + Infinitiv' (without doing something)",
+    "Alternative action: 'anstatt / statt ... zu + Infinitiv' (instead of doing something)",
+    "Verbs taking Infinitiv mit zu (z.B. vorhaben, planen, versuchen, vergessen, beschließen, bitten, versprechen)",
+    "Impersonal expressions with 'es ist': 'Es ist wichtig/schwer/verboten/möglich, ... zu + Infinitiv'",
+    "Noun + haben expressions: 'Lust/Zeit/die Absicht/Angst haben, ... zu + Infinitiv'",
+    "Separable verbs in infinitive clauses: prefix + '-zu-' + verb stem (z.B. einzukaufen, anzurufen, mitzubringen, aufzustehen)"
   ],
   modal: [
     "Polite request or subjective permission using Konjunktiv II / Modalverben (dürfte, könnte, müsste)",
@@ -203,6 +214,36 @@ const OFFLINE_EXERCISES = [
       "Wir müssen heute den Finanzbericht abgeben."
     ]
   },
+  {
+    english: "It is important to learn German every day.",
+    topic: "zu_infinitive",
+    topicName: "Zu + Infinitive (es ist wichtig ... zu)",
+    scenarioDomain: "University, Language & Study",
+    grammarFocus: "Infinitivsatz mit 'zu': Unpersönlicher Ausdruck 'es ist wichtig' verlangt 'zu + Infinitiv' am Satzende.",
+    hints: [
+      { english: "important", german: "wichtig" },
+      { english: "every day", german: "jeden Tag (Akkusativ)" }
+    ],
+    referenceTranslations: [
+      "Es ist wichtig, jeden Tag Deutsch zu lernen.",
+      "Es ist von Bedeutung, täglich Deutsch zu üben."
+    ]
+  },
+  {
+    english: "I plan to visit my parents this weekend.",
+    topic: "zu_infinitive",
+    topicName: "Zu + Infinitive (vorhaben / planen)",
+    scenarioDomain: "Social Gatherings & Friendships",
+    grammarFocus: "Verb 'vorhaben' / 'planen' mit Infinitivgruppe ('zu besuchen').",
+    hints: [
+      { english: "to plan / intend", german: "vorhaben (hat vorgehabt) / planen" },
+      { english: "this weekend", german: "dieses Wochenende (Akkusativ)" }
+    ],
+    referenceTranslations: [
+      "Ich habe vor, meine Eltern dieses Wochenende zu besuchen.",
+      "Ich plane, dieses Wochenende zu meinen Eltern zu fahren."
+    ]
+  },
   // Medium exercises (10-16 words)
   {
     english: "Yesterday I had to cancel the doctor's appointment because my train was delayed.",
@@ -314,6 +355,37 @@ const OFFLINE_EXERCISES = [
       "Ich suche nach einer Kollegin, die fundierte Erfahrungen mit internationalen Vertragsverhandlungen besitzt."
     ]
   },
+  {
+    english: "She went to the supermarket without writing a shopping list beforehand.",
+    topic: "zu_infinitive",
+    topicName: "Zu + Infinitive (ohne ... zu)",
+    scenarioDomain: "Shopping, Consumer & Services",
+    grammarFocus: "Infinitivsatz mit 'ohne ... zu' drückt das Fehlen einer begleitenden Handlung aus.",
+    hints: [
+      { english: "shopping list", german: "der Einkaufszettel (-)" },
+      { english: "beforehand", german: "vorher / im Voraus" }
+    ],
+    referenceTranslations: [
+      "Sie ging zum Supermarkt, ohne vorher einen Einkaufszettel zu schreiben.",
+      "Sie ist in den Supermarkt gegangen, ohne sich vorher eine Einkaufsliste zu machen."
+    ]
+  },
+  {
+    english: "We need more time to carefully check all technical details of the contract.",
+    topic: "zu_infinitive",
+    topicName: "Zu + Infinitive (um ... zu / Zeit brauchen zu)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Infinitivsatz mit 'um ... zu' (Finalsatz / Zweck) mit einfachem oder trennbarem Verb.",
+    hints: [
+      { english: "to check / examine", german: "prüfen / überprüfen" },
+      { english: "carefully", german: "sorgfältig / gründlich" },
+      { english: "contract", german: "der Vertrag (-träge)" }
+    ],
+    referenceTranslations: [
+      "Wir brauchen mehr Zeit, um alle technischen Details des Vertrags sorgfältig zu prüfen.",
+      "Wir benötigen mehr Zeit, um die technischen Einzelheiten des Vertrages genau zu überprüfen."
+    ]
+  },
   // Long exercises (17-26 words)
   {
     english: "Since I have lived in Germany for two years, I can understand most conversations at work without any major difficulties.",
@@ -377,6 +449,23 @@ const OFFLINE_EXERCISES = [
     referenceTranslations: [
       "Bevor Sie den Arbeitsvertrag offiziell unterschreiben, sollten Sie alle wichtigen Bedingungen bezüglich Überstunden und Homeoffice mit Ihrem Teamleiter besprechen.",
       "Ehe Sie den Vertrag unterzeichnen, sollten Sie alle wesentlichen Regelungen über Überstunden und Remotearbeit mit der Teamleitung klären."
+    ]
+  },
+  {
+    english: "Instead of calling the customer support hotline right away, he tried to fix the internet router by himself by reading the online instructions.",
+    topic: "zu_infinitive",
+    topicName: "Zu + Infinitive (anstatt ... zu & versuchen zu)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Infinitivkonstruktionen mit 'anstatt ... zu' (Gegensatz) und 'versuchen, ... zu reparieren'.",
+    hints: [
+      { english: "instead of", german: "anstatt ... zu / statt ... zu" },
+      { english: "customer support", german: "der Kundenservice / die Hotline" },
+      { english: "by himself", german: "selbst / alleine" },
+      { english: "instructions", german: "die Anleitung (-en)" }
+    ],
+    referenceTranslations: [
+      "Anstatt sofort die Kundenhotline anzurufen, versuchte er, den Internet-Router selbst zu reparieren, indem er die Online-Anleitung las.",
+      "Statt direkt beim Kundendienst anzurufen, hat er versucht, den WLAN-Router eigenständig mithilfe der Online-Bedienungsanleitung einzurichten."
     ]
   }
 ];
@@ -768,7 +857,7 @@ The user has provided a custom English sentence that they want to practice trans
 User's English Sentence: "${sentenceToUse}"
 
 Your task is to:
-1. Identify the primary B1/B2 German grammatical topic and structure needed to translate this sentence (e.g., "Subordinate Clauses (obwohl / weil)", "Passive Voice (Vorgangspassiv)", "Two-way Prepositions (Wechselpräpositionen)", "Konjunktiv II", "Modal Verbs", "Relative Clauses", etc.).
+1. Identify the primary B1/B2 German grammatical topic and structure needed to translate this sentence (e.g., "Subordinate Clauses (obwohl / weil)", "Zu + Infinitive (um...zu / ohne...zu / anstatt...zu)", "Passive Voice (Vorgangspassiv)", "Two-way Prepositions (Wechselpräpositionen)", "Konjunktiv II", "Modal Verbs", "Relative Clauses", etc.).
 2. Extract key nouns, difficult verbs, and specialized prepositions/phrases from the sentence and provide high-quality vocabulary hints in German:
    - For nouns: include the definite article (der/die/das) and plural form (e.g., "das Flugzeug (-e)").
    - For verbs: include the infinitive and if irregular or takes a preposition/case, provide that (e.g., "buchen (hat gebucht)", "warten auf + Akk", "sich verspäten").
