@@ -1236,4 +1236,35 @@ h2.section-title {
   animation: pulseVoice 1.4s infinite ease-in-out;
 }
 
+/* Others Dropdown Menu */
+.others-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.others-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  transform: translateX(3px);
+}
+
+.others-menu-item.active {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3));
+  border: 1px solid rgba(139, 92, 246, 0.5);
+  color: #fff;
+  font-weight: 700;
+}
+
 

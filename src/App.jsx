@@ -12,6 +12,7 @@ import Stats from './components/Stats';
 import SpeakingPractice from './components/SpeakingPractice';
 import GrammarPractice from './components/GrammarPractice';
 import TranslationPractice from './components/TranslationPractice';
+import VerbTenses from './components/VerbTenses';
 import './index.css';
 import { tryAutoSyncToDirectory } from './utils/backupStorage';
 
@@ -32,6 +33,44 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('explorer');
   const [reviews, setReviews] = useState([]);
+
+  // Others dropdown state and coords
+  const [othersOpen, setOthersOpen] = useState(false);
+  const othersBtnRef = useRef(null);
+  const [dropdownCoords, setDropdownCoords] = useState({ top: 0, right: 0 });
+
+  const isOthersActive = useMemo(() => {
+    return ['practice', 'cloze', 'reorder', 'dictation', 'stats'].includes(activeTab);
+  }, [activeTab]);
+
+  const toggleOthers = () => {
+    if (!othersOpen && othersBtnRef.current) {
+      const rect = othersBtnRef.current.getBoundingClientRect();
+      setDropdownCoords({
+        top: rect.bottom + 8,
+        right: Math.max(12, window.innerWidth - rect.right)
+      });
+    }
+    setOthersOpen(prev => !prev);
+  };
+
+  useEffect(() => {
+    if (!othersOpen) return;
+    const handleClickOutside = (e) => {
+      if (othersBtnRef.current && !othersBtnRef.current.contains(e.target) && !e.target.closest('.others-dropdown-menu')) {
+        setOthersOpen(false);
+      }
+    };
+    const handleScroll = () => setOthersOpen(false);
+    window.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('touchstart', handleClickOutside);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('touchstart', handleClickOutside);
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [othersOpen]);
 
   // Ref to prevent background pulls/syncs from triggering a duplicate cloud upload
   const skipNextUploadRef = useRef(false);
@@ -360,9 +399,9 @@ function App() {
     };
   }, [syncCode]);
 
-  // Auto-sync when switching active tab to Ankii Speaking
+  // Auto-sync when switching active tab to Ankii Speaking or Verb Tenses
   useEffect(() => {
-    if (activeTab === 'ankii-speaking' && syncCode && syncCode.trim().length >= 3) {
+    if ((activeTab === 'ankii-speaking' || activeTab === 'verb-tenses') && syncCode && syncCode.trim().length >= 3) {
       syncDeletedWithCloud(syncCode);
     }
   }, [activeTab, syncCode]);
@@ -625,7 +664,7 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
+      if (activeTab === 'ankii-speaking' || activeTab === 'verb-tenses' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
         return;
       }
       if (e.target.closest('button') || e.target.closest('.sound-btn') || e.target.closest('#double-click-popover')) {
@@ -700,7 +739,7 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
+      if (activeTab === 'ankii-speaking' || activeTab === 'verb-tenses' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
         return;
       }
       if (e.target.closest('#double-click-popover') || e.target.closest('#popover-backdrop')) {
@@ -749,7 +788,7 @@ function App() {
       if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') {
         return;
       }
-      if (activeTab === 'ankii-speaking' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
+      if (activeTab === 'ankii-speaking' || activeTab === 'verb-tenses' || e.target.closest('.ankii-speaking-card') || e.target.closest('.ankii-speaking-container')) {
         return;
       }
       if (e.target.closest('#double-click-popover')) {
@@ -1521,16 +1560,16 @@ function App() {
             📖 Word List
           </button>
           <button
-            className={`nav-button ${activeTab === 'practice' ? 'active' : ''}`}
-            onClick={() => setActiveTab('practice')}
-          >
-            🗂️ Ankii
-          </button>
-          <button
             className={`nav-button ${activeTab === 'ankii-speaking' ? 'active' : ''}`}
             onClick={() => setActiveTab('ankii-speaking')}
           >
             🗣️ Ankii Speaking
+          </button>
+          <button
+            className={`nav-button ${activeTab === 'verb-tenses' ? 'active' : ''}`}
+            onClick={() => setActiveTab('verb-tenses')}
+          >
+            ⏱️ Verb Tenses
           </button>
           <button
             className={`nav-button ${activeTab === 'live-translation' ? 'active' : ''}`}
@@ -1539,28 +1578,10 @@ function App() {
             🎙️ Live Translation
           </button>
           <button
-            className={`nav-button ${activeTab === 'cloze' ? 'active' : ''}`}
-            onClick={() => setActiveTab('cloze')}
-          >
-            📝 Fill in blanks
-          </button>
-          <button
-            className={`nav-button ${activeTab === 'reorder' ? 'active' : ''}`}
-            onClick={() => setActiveTab('reorder')}
-          >
-            🧩 Reorder
-          </button>
-          <button
             className={`nav-button ${activeTab === 'creator' ? 'active' : ''}`}
             onClick={() => setActiveTab('creator')}
           >
             ✍️ Creator
-          </button>
-          <button
-            className={`nav-button ${activeTab === 'dictation' ? 'active' : ''}`}
-            onClick={() => setActiveTab('dictation')}
-          >
-            🎧 Listening
           </button>
           <button
             className={`nav-button ${activeTab === 'speaking' ? 'active' : ''}`}
@@ -1586,20 +1607,129 @@ function App() {
           >
             ⭐ My List
           </button>
-          <button
-            className={`nav-button ${activeTab === 'stats' ? 'active' : ''}`}
-            onClick={() => setActiveTab('stats')}
-          >
-            📈 Stats
-          </button>
+
+          {/* Rightmost "Others" Dropdown */}
+          <div className="others-dropdown-wrapper" style={{ position: 'relative', display: 'inline-flex' }}>
+            <button
+              ref={othersBtnRef}
+              type="button"
+              className={`nav-button ${isOthersActive ? 'active' : ''}`}
+              onClick={toggleOthers}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              title="More Practice Tools"
+            >
+              <span>⋯ Others</span>
+              <span style={{ fontSize: '10px', transform: othersOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}>▾</span>
+            </button>
+          </div>
         </nav>
       </header>
+
+      {/* Floating Others Dropdown Menu */}
+      {othersOpen && (
+        <div
+          className="glass-card others-dropdown-menu animate-fade-in"
+          style={{
+            position: 'fixed',
+            top: `${dropdownCoords.top}px`,
+            right: `${dropdownCoords.right}px`,
+            zIndex: 10000,
+            minWidth: '190px',
+            padding: '8px',
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.65), 0 0 1px 1px rgba(255,255,255,0.1)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.14)'
+          }}
+        >
+          <button
+            type="button"
+            className={`others-menu-item ${activeTab === 'practice' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('practice'); setOthersOpen(false); }}
+          >
+            <span style={{ fontSize: '15px' }}>🗂️</span>
+            <span>Ankii</span>
+          </button>
+          <button
+            type="button"
+            className={`others-menu-item ${activeTab === 'cloze' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('cloze'); setOthersOpen(false); }}
+          >
+            <span style={{ fontSize: '15px' }}>📝</span>
+            <span>Fill in blanks</span>
+          </button>
+          <button
+            type="button"
+            className={`others-menu-item ${activeTab === 'reorder' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('reorder'); setOthersOpen(false); }}
+          >
+            <span style={{ fontSize: '15px' }}>🧩</span>
+            <span>Reorder</span>
+          </button>
+          <button
+            type="button"
+            className={`others-menu-item ${activeTab === 'dictation' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('dictation'); setOthersOpen(false); }}
+          >
+            <span style={{ fontSize: '15px' }}>🎧</span>
+            <span>Listening</span>
+          </button>
+          <button
+            type="button"
+            className={`others-menu-item ${activeTab === 'stats' ? 'active' : ''}`}
+            onClick={() => { setActiveTab('stats'); setOthersOpen(false); }}
+          >
+            <span style={{ fontSize: '15px' }}>📈</span>
+            <span>Stats</span>
+          </button>
+        </div>
+      )}
 
       <main style={{ flexGrow: 1 }}>
         {activeTab === 'explorer' && <WordList vocabData={vocabData} myList={myList} onToggleMyList={handleToggleMyList} isAnonymous={isAnonymous} />}
         {activeTab === 'practice' && <Flashcards vocabData={vocabData} onReview={handleReviewWord} />}
         {activeTab === 'ankii-speaking' && (
           <AnkiiSpeaking
+            vocabData={vocabData}
+            myList={myList}
+            onToggleMyList={handleToggleMyList}
+            deletedWords={deletedWords}
+            onDeleteWord={handleDeleteAnkiiWord}
+            onRestoreWord={handleRestoreAnkiiWord}
+            onRestoreAllDeleted={handleRestoreAllAnkiiDeleted}
+            onImportDeletedWords={handleImportDeletedWords}
+            syncCode={syncCode}
+            setSyncCode={(code) => {
+              const clean = (code || '').trim();
+              setSyncCode(clean);
+              if (clean) {
+                localStorage.setItem('b1_sync_code', clean);
+                syncWithCloud(clean);
+                syncDeletedWithCloud(clean);
+              } else {
+                localStorage.removeItem('b1_sync_code');
+              }
+            }}
+            onSyncDeletedNow={async (code) => {
+              const codeToUse = (code || syncCode || '').trim();
+              if (!codeToUse || codeToUse.length < 3) return { success: false, error: 'Code too short' };
+              const [delRes] = await Promise.all([
+                syncDeletedWithCloud(codeToUse),
+                syncWithCloud(codeToUse)
+              ]);
+              return delRes;
+            }}
+            onReview={handleReviewWord}
+            isAnonymous={isAnonymous}
+          />
+        )}
+        {activeTab === 'verb-tenses' && (
+          <VerbTenses
             vocabData={vocabData}
             myList={myList}
             onToggleMyList={handleToggleMyList}
@@ -1737,7 +1867,7 @@ function App() {
       </main>
 
       {/* Double click / Long press quick-add popover */}
-      {doubleClickedText && activeTab !== 'ankii-speaking' && (
+      {doubleClickedText && activeTab !== 'ankii-speaking' && activeTab !== 'verb-tenses' && (
         <>
           {/* Mobile backdrop */}
           {isMobileOrTablet && (

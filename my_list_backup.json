@@ -508,5 +508,727 @@
       }
     ],
     "isCustom": false
+  },
+  {
+    "word": "halten",
+    "meaning": "to keep",
+    "category": "verbs",
+    "conjugation": "halten, hält, hielt, hat gehalten",
+    "examples": [
+      {
+        "en": "Can you just hold my handbag for a moment?",
+        "de": "Kannst du mal kurz meine Handtasche halten?"
+      },
+      {
+        "de": "Entschuldigung, hält dieser Zug auch in Darmstadt?",
+        "en": "Sorry, does this train also stop in Darmstadt?"
+      },
+      {
+        "de": "Halten Sie bitte im Keller die Fenster geschlossen.",
+        "en": "Please keep the windows closed in the basement."
+      },
+      {
+        "de": "Alle Mieter müssen sich an die Hausordnung halten.",
+        "en": "All tenants must comply with the house rules."
+      },
+      {
+        "de": "Die Stadt will einen neuen Flughafen bauen. Was halten Sie davon?",
+        "en": "The city wants to build a new airport. What do you make of it?"
+      },
+      {
+        "de": "Halt, Polizei! Fahren Sie bitte an den Straßenrand.",
+        "en": "Stop, police! Please drive to the side of the road."
+      },
+      {
+        "de": "Die Wurst hält sich noch ein paar Tage.",
+        "en": "The sausage lasts a few more days."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "werfen",
+    "meaning": "to throw",
+    "category": "verbs",
+    "conjugation": "werfen, wirft, warf, hat geworfen",
+    "examples": [
+      {
+        "de": "Die Kinder haben Steine ins Wasser geworfen.",
+        "en": "The children threw stones into the water."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "schließlich",
+    "meaning": "finally",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Ich musste lange warten. Aber schließlich habe ich den Job doch noch bekommen.",
+        "en": "I had to wait a long time. But finally I got the job."
+      },
+      {
+        "de": "Ich helfe dir natürlich. Du bist schließlich mein Freund.",
+        "en": "I'll help you, of course. You are my friend after all."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "umtauschen",
+    "meaning": "to exchange",
+    "category": "verbs",
+    "conjugation": "umtauschen, tauscht um, tauschte um, hat umgetauscht",
+    "examples": [
+      {
+        "de": "Ich möchte diese Bluse umtauschen. Sie passt mir nicht.",
+        "en": "I want to exchange this blouse. She does not suit me."
+      },
+      {
+        "en": "Where can I exchange money?",
+        "de": "Wo kann ich Geld umtauschen?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erhöhen",
+    "meaning": "to increase, raise",
+    "category": "verbs",
+    "conjugation": "erhöhen, erhöht, erhöhte, hat erhöht",
+    "examples": [
+      {
+        "en": "The government is sure to raise taxes soon.",
+        "de": "Die Regierung wird sicher bald wieder die Steuern erhöhen."
+      },
+      {
+        "en": "The number of victims has increased to 122.",
+        "de": "Die Zahl der Opfer hat sich auf 122 erhöht."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "jetzig",
+    "meaning": "Current",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [],
+    "isCustom": true
+  },
+  {
+    "word": "gering",
+    "meaning": "slight, small, low, short",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Our team had only a small chance.",
+        "de": "Unsere Mannschaft hatte nur eine geringe Chance."
+      },
+      {
+        "de": "Wenn Sie ein geringes Einkommen haben, zahlen Sie nur wenig Steuern.",
+        "en": "If you have a low income, you pay very little tax."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "sich lohnen",
+    "meaning": "be worth it, to be profitable",
+    "category": "verbs",
+    "conjugation": "sich lohnen, lohnt sich, lohnte sich, hat sich gelohnt",
+    "examples": [
+      {
+        "de": "Für drei Tage zu meinen Eltern fahren lohnt sich nicht. Es ist zu weit.",
+        "en": "It's not worth to drive to my parents for three days. It's too far."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "fangen",
+    "meaning": "to catch",
+    "category": "verbs",
+    "conjugation": "fangen, fängt, fing, hat gefangen",
+    "examples": [
+      {
+        "de": "Das Kind hat den Ball gefangen.",
+        "en": "The child has caught the ball."
+      },
+      {
+        "en": "Our cat has caught a mouse.",
+        "de": "Unsere Katze hat eine Maus gefangen."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "besprechen",
+    "meaning": "discuss",
+    "category": "verbs",
+    "conjugation": "besprechen, bespricht, besprach, hat besprochen",
+    "examples": [
+      {
+        "de": "Wir müssen noch genau besprechen, wann wir losfahren und was wir mitnehmen.",
+        "en": "We still have to discuss exactly when to leave and what to take."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "aufhören",
+    "meaning": "to stop",
+    "category": "verbs",
+    "conjugation": "aufhören, hört auf, hörte auf, hat aufgehört",
+    "examples": [
+      {
+        "en": "It does not stop snowing.",
+        "de": "Es hört nicht auf zu schneien."
+      },
+      {
+        "de": "Wann hört ihr mit der Arbeit auf?",
+        "en": "When do you stop working?"
+      },
+      {
+        "de": "Hier hört die Hauptstraße auf.",
+        "en": "This is where the main street ends."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "soviel",
+    "meaning": "as fas as",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Soviel ich weiß, hat dieses Restaurant heute Ruhetag.",
+        "en": "As far as I know, this restaurant is closed today."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "knapp",
+    "meaning": "tight, scarce, short, just",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Mach schnell. Die Zeit ist knapp.",
+        "en": "Make it quick. Time is short."
+      },
+      {
+        "de": "Unser Geld wird knapp. Wir müssen sparen.",
+        "en": "Our money is getting short. We have to save."
+      },
+      {
+        "de": "Die Fahrt war kurz. Nur knapp eine Stunde.",
+        "en": "The ride was short. Just under an hour."
+      },
+      {
+        "de": "Die Wohnung hat nur knapp 30 m².",
+        "en": "The apartment has only 30 m²."
+      },
+      {
+        "de": "Der Tisch hat nur knapp 50 Euro gekostet.",
+        "en": "The table has cost just under 50 euros."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "beschreiben",
+    "meaning": "to describe, write on",
+    "category": "verbs",
+    "conjugation": "beschreiben, beschreibt, beschrieb, hat beschrieben",
+    "examples": [
+      {
+        "de": "Kannst du mir den Weg zum Flughafen beschreiben?",
+        "en": "Can you describe the way to the airport for me?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "sogar",
+    "meaning": "Even",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [],
+    "isCustom": true
+  },
+  {
+    "word": "verbringen",
+    "meaning": "to spend",
+    "category": "verbs",
+    "conjugation": "verbringen, verbringt, verbrachte, hat verbracht",
+    "examples": [
+      {
+        "en": "How did you spend your vacation?",
+        "de": "Wie haben Sie Ihren Urlaub verbracht?"
+      },
+      {
+        "de": "Die Feiertage haben wir mit der Familie verbracht.",
+        "en": "The holidays we spent with the family."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "einzig",
+    "meaning": "only, unique",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "We were the only guests.",
+        "de": "Wir waren die einzigen Gäste."
+      },
+      {
+        "de": "Das war das einzige Mal, dass ich ihn gesehen habe.",
+        "en": "That was the only time I saw him."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "wohl",
+    "meaning": "well",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Can I go home? I do not feel comfortable.",
+        "de": "Kann ich nach Hause gehen? Ich fühle mich nicht wohl."
+      },
+      {
+        "de": "Wo ist deine Schwester? Sie wird wohl noch in der Schule sein.",
+        "en": "Where is your sister? She will probably still be at school."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erkennen",
+    "meaning": "to recognise",
+    "category": "verbs",
+    "conjugation": "erkennen, erkennt, erkannte, hat erkannt",
+    "examples": [
+      {
+        "en": "I immediately recognized Roberto by his voice.",
+        "de": "Ich habe Roberto gleich an seiner Stimme erkannt."
+      },
+      {
+        "de": "Auf dem Foto kann man kaum etwas erkennen.",
+        "en": "You can hardly see anything in the photo."
+      },
+      {
+        "en": "I realized that it was a mistake not to finish the course.",
+        "de": "Ich habe erkannt, dass es ein Fehler war, den Kurs nicht fertigzumachen."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "neulich",
+    "meaning": "recently, the other day",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Imagine seeing the teacher the other day.",
+        "de": "Stell dir vor, ich habe neulich unseren Lehrer gesehen."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "aktuell",
+    "meaning": "current (now)",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Umweltschutz ist ein aktuelles Thema.",
+        "en": "Environmental protection is a current topic."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "kürzlich",
+    "meaning": "Recently",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [],
+    "isCustom": true
+  },
+  {
+    "word": "nebenbei",
+    "meaning": "at the same time",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Mein Freund studiert Geschichte. Und nebenbei arbeitet er in einer Kneipe.",
+        "en": "My friend is studying history. And by the way, he works in a pub."
+      },
+      {
+        "en": "I do the housework and incidentally I listen to the radio.",
+        "de": "Ich mache die Hausarbeit und nebenbei höre ich Radio."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "eilen",
+    "meaning": "to hurry",
+    "category": "verbs",
+    "conjugation": "eilen, eilt, eilte, ist geeilt/hat geeilt",
+    "examples": [
+      {
+        "de": "Es eilt sehr. Bitte machen Sie schnell.",
+        "en": "It is very urgent. Please move quickly."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "während",
+    "meaning": "while",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Ich habe während dem Arbeiten gestanden",
+        "en": "I was standing during the work"
+      }
+    ],
+    "isCustom": true
+  },
+  {
+    "word": "riechen",
+    "meaning": "to smell",
+    "category": "verbs",
+    "conjugation": "riechen, riecht, roch, hat gerochen",
+    "examples": [
+      {
+        "de": "Dieses Parfüm riecht sehr gut.",
+        "en": "This perfume smells very good."
+      },
+      {
+        "en": "The whole house smells of color.",
+        "de": "Im ganzen Haus riecht es nach Farbe."
+      },
+      {
+        "en": "I have a cold. I can not smell anything.",
+        "de": "Ich bin erkältet. Ich kann nichts riechen."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "der Angestellte, -n",
+    "meaning": "employee",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Björn ist Angestellter in einem Reisebüro.",
+        "en": "Björn is a clerk in a travel agency."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "seitdem",
+    "meaning": "since (then)",
+    "category": "connectors",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Ich bin vor zwei Jahren nach Deutschland gekommen. Seitdem lerne ich Deutsch.",
+        "en": "I came to Germany two years ago. Since then I learn German."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "ständig",
+    "meaning": "permanent, constant",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Ich habe schon ein paar Mal bei meiner Freundin angerufen. Es ist ständig besetzt.",
+        "en": "I've called my girlfriend a couple of times. It is constantly occupied."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "miteinander",
+    "meaning": "together, with one another",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Sprechen Sie bitte miteinander.",
+        "en": "Please talk to each other."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "Kommt darauf an",
+    "meaning": "It depends",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Kommt darauf an, wer es ist",
+        "en": "Its depends on who it is"
+      }
+    ],
+    "isCustom": true
+  },
+  {
+    "word": "gespannt",
+    "meaning": "tense, strained, curious, eager",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "I'm curious who will win this game.",
+        "de": "Ich bin gespannt, wer bei diesem Spiel gewinnt."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "der Arbeitgeber, -",
+    "meaning": "employer",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Wer ist Ihr Arbeitgeber?",
+        "en": "Who is your employer?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "überhaupt",
+    "meaning": "at all",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "The soup does not taste good at all.",
+        "de": "Die Suppe schmeckt mir überhaupt nicht."
+      },
+      {
+        "en": "I know nobody here at all.",
+        "de": "Ich kenne hier überhaupt niemand."
+      },
+      {
+        "de": "Tut mir leid. Ich habe überhaupt keine Zeit.",
+        "en": "I'm sorry. I have no time at all."
+      },
+      {
+        "en": "You want to drive my car? Do you even have a driver's license?",
+        "de": "Du willst mit meinem Auto fahren? Hast du überhaupt einen Führerschein?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "nützlich",
+    "meaning": "useful",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Danke für den Tipp. Das war sehr nützlich.",
+        "en": "Thanks for the tip. That was very useful."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "verlangen",
+    "meaning": "to demand, want, ask for",
+    "category": "verbs",
+    "conjugation": "verlangen, verlangt, verlangte, hat verlangt",
+    "examples": [
+      {
+        "de": "Jeden Tag Überstunden? Das können Sie nicht verlangen.",
+        "en": "Overtime every day? You can not ask for that."
+      },
+      {
+        "de": "Wie viel verlangen Sie für das Auto?",
+        "en": "How much do you charge for the car?"
+      },
+      {
+        "en": "Mrs. Müller, you are being asked on the phone.",
+        "de": "Frau Müller, Sie werden am Telefon verlangt."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "ausmachen",
+    "meaning": "to turn off",
+    "category": "verbs",
+    "conjugation": "ausmachen, macht aus, machte aus, hat ausgemacht",
+    "examples": [
+      {
+        "de": "Machen Sie bitte das Licht aus!",
+        "en": "Turn off the light, please!"
+      },
+      {
+        "en": "We had agreed that you get the drinks.",
+        "de": "Wir hatten doch ausgemacht, dass du die Getränke besorgst."
+      },
+      {
+        "en": "Did you make an appointment?",
+        "de": "Haben Sie einen Termin ausgemacht?"
+      },
+      {
+        "de": "Sie müssen leider warten. Kein Problem. Das macht mir nichts aus.",
+        "en": "You'll have to wait. No problem. I do not mind."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "verwenden",
+    "meaning": "to use",
+    "category": "verbs",
+    "conjugation": "verwenden, verwendet, verwendete, hat verwendet",
+    "examples": [
+      {
+        "de": "Dieses Wort wird oft verwendet.",
+        "en": "This word is often used."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "schwach",
+    "meaning": "weak",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "I'm not healthy yet. I still feel very weak.",
+        "de": "Ich bin noch nicht gesund. Ich fühle mich noch sehr schwach."
+      },
+      {
+        "en": "The tablets are too weak. They do not help.",
+        "de": "Die Tabletten sind zu schwach. Sie helfen nicht."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "möglichst",
+    "meaning": "as...as possible",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Sagen Sie mir bitte möglichst bald, ob Ihnen der Termin passt.",
+        "en": "Please let me know as soon as possible, if the appointment will suit you."
+      },
+      {
+        "de": "Wir suchen eine Wohnung, möglichst im Erdgeschoss.",
+        "en": "We are looking for an apartment, if possible on the ground floor."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "erleichtern",
+    "meaning": "to make easier, lighten",
+    "category": "verbs",
+    "conjugation": "erleichtern, erleichtert, erleichterte, hat erleichtert",
+    "examples": [
+      {
+        "de": "Ich bin erleichtert, dass alles so gut geklappt hat.",
+        "en": "I am relieved that everything went so well."
+      },
+      {
+        "en": "The internet makes my job a lot easier.",
+        "de": "Das Internet erleichtert mir die Arbeit sehr."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "das Zeugnis, -se",
+    "meaning": "certificate, report, reference",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Wenn Sie die Prüfung schaffen, bekommen Sie ein Zeugnis.",
+        "en": "If you pass the exam, you will receive a certificate."
+      },
+      {
+        "en": "Bring your certificates to the appointment.",
+        "de": "Bringen Sie bitte Ihre Zeugnisse zum Termin mit."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "plötzlich",
+    "meaning": "suddenly",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "It was so nice at first. Suddenly it started to rain.",
+        "de": "Es war zuerst so schön. Plötzlich hat es angefangen zu regnen."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "wütend",
+    "meaning": "angry",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Warum bist du so wütend?",
+        "en": "Why are you so angry?"
+      },
+      {
+        "en": "I am angry with my brother. He did not wait for me again.",
+        "de": "Ich bin wütend auf meinen Bruder. Er hat wieder nicht auf mich gewartet."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "günstig",
+    "meaning": "good value",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "I am looking for a cheap apartment.",
+        "de": "Ich suche eine günstige Ferienwohnung."
+      }
+    ],
+    "isCustom": false
   }
 ]
