@@ -16,6 +16,9 @@ const TRANSLATION_TOPICS = [
   { id: 'everyday', label: '☕ Everyday & Work', desc: 'B1 exam scenarios (work, appointments, doctor, housing, travel)' }
 ];
 
+// The 10 core B1 grammar topics covered systematically in Mixed B1 mode
+const SYLLABUS_TOPICS = TRANSLATION_TOPICS.filter(t => t.id !== 'mixed');
+
 // Sentence length configurations
 const SENTENCE_LENGTHS = [
   { id: 'auto', label: '⚡ Auto', desc: 'Natural balanced B1 length (~10-18 words)', wordRange: '10 to 18 words' },
@@ -115,7 +118,9 @@ const TOPIC_SUB_FOCUSES = {
     "Dealing with an unexpected delay, rescheduling an appointment with apologies",
     "Filing a polite complaint about a defective item or service issue",
     "Explaining requirements or asking for advice at a public administrative office",
-    "Navigating a small conflict or negotiation with a neighbor, colleague, or landlord"
+    "Navigating a small conflict or negotiation with a neighbor, colleague, or landlord",
+    "Inquiring about public transport disruptions, ticket cancellations, or travel changes",
+    "Formal communication regarding job interview availability or apartment handover (Wohnungsübergabe)"
   ]
 };
 
@@ -242,6 +247,51 @@ const OFFLINE_EXERCISES = [
     referenceTranslations: [
       "Ich habe vor, meine Eltern dieses Wochenende zu besuchen.",
       "Ich plane, dieses Wochenende zu meinen Eltern zu fahren."
+    ]
+  },
+  {
+    english: "Although it was raining, we walked home.",
+    topic: "subordinate",
+    topicName: "Subordinate Clauses (obwohl)",
+    scenarioDomain: "Leisure, Outdoors & Nature",
+    grammarFocus: "Konzessivsatz mit 'obwohl' (Verb am Satzende im Nebensatz) und Inversion im Hauptsatz.",
+    hints: [
+      { english: "although", german: "obwohl (Konnektor Nebensatz)" },
+      { english: "to walk home", german: "zu Fuß nach Hause gehen" }
+    ],
+    referenceTranslations: [
+      "Obwohl es regnete, gingen wir zu Fuß nach Hause.",
+      "Obwohl es geregnet hat, sind wir zu Fuß nach Hause gegangen."
+    ]
+  },
+  {
+    english: "Here is the doctor who treated my knee.",
+    topic: "relative",
+    topicName: "Relative Clauses (der / die / das)",
+    scenarioDomain: "Health, Doctor & Pharmacy",
+    grammarFocus: "Relativsatz im Nominativ Maskulinum ('der ... behandelt hat') mit Verbletztstellung.",
+    hints: [
+      { english: "to treat", german: "behandeln (hat behandelt)" },
+      { english: "knee", german: "das Knie (-)" }
+    ],
+    referenceTranslations: [
+      "Hier ist der Arzt, der mein Knie behandelt hat.",
+      "Das ist der Arzt, welcher mein Knie behandelt hat."
+    ]
+  },
+  {
+    english: "Could we postpone our appointment until Friday afternoon?",
+    topic: "everyday",
+    topicName: "Everyday & Appointments",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Höfliche Terminanfrage mit Konjunktiv II ('Könnten wir ... verschieben auf').",
+    hints: [
+      { english: "to postpone", german: "verschieben auf (hat verschoben)" },
+      { english: "appointment", german: "der Termin (-e)" }
+    ],
+    referenceTranslations: [
+      "Könnten wir unseren Termin auf Freitagnachmittag verschieben?",
+      "Können wir den Termin auf Freitagnachmittag verlegen?"
     ]
   },
   // Medium exercises (10-16 words)
@@ -386,6 +436,54 @@ const OFFLINE_EXERCISES = [
       "Wir benötigen mehr Zeit, um die technischen Einzelheiten des Vertrages genau zu überprüfen."
     ]
   },
+  {
+    english: "You are not allowed to park here because this area is reserved for delivery vehicles.",
+    topic: "modal",
+    topicName: "Modal Verbs & Rules (nicht dürfen)",
+    scenarioDomain: "Official Bureaucracy & Admin",
+    grammarFocus: "Verbot mit Modalverb 'dürfen' ('Sie dürfen nicht') und Kausalsatz mit 'weil' (Passiv am Ende).",
+    hints: [
+      { english: "to be allowed to", german: "dürfen (darf, durfte, hat gedurft)" },
+      { english: "delivery vehicle", german: "das Lieferfahrzeug (-e)" },
+      { english: "reserved", german: "reserviert sein" }
+    ],
+    referenceTranslations: [
+      "Sie dürfen hier nicht parken, weil dieser Bereich für Lieferfahrzeuge reserviert ist.",
+      "Hier darf man nicht parken, da diese Fläche für Lieferfahrzeuge freigehalten werden muss."
+    ]
+  },
+  {
+    english: "We decided to stay in the office until the critical software update was completed.",
+    topic: "subordinate",
+    topicName: "Subordinate Clauses (bis ...)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Temporalsatz mit 'bis' (Verb-Endstellung) und Passiv im Nebensatz ('abgeschlossen war').",
+    hints: [
+      { english: "to decide", german: "beschließen (beschloss, hat beschlossen)" },
+      { english: "until", german: "bis (temporale Konjunktion)" },
+      { english: "completed", german: "abgeschlossen / fertiggestellt" }
+    ],
+    referenceTranslations: [
+      "Wir haben beschlossen, im Büro zu bleiben, bis das wichtige Software-Update abgeschlossen war.",
+      "Wir blieben im Büro, bis die Aktualisierung der Software fertiggestellt war."
+    ]
+  },
+  {
+    english: "I would like to apply for the advertised position in your customer service department.",
+    topic: "everyday",
+    topicName: "Everyday & Job Application",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Bewerbungsschreiben mit 'möchte sich bewerben um/auf' + Akkusativ.",
+    hints: [
+      { english: "to apply for", german: "sich bewerben um/auf (bewirbt sich, hat sich beworben)" },
+      { english: "advertised position", german: "die ausgeschriebene Stelle (-n)" },
+      { english: "customer service", german: "der Kundenservice" }
+    ],
+    referenceTranslations: [
+      "Ich möchte mich für die ausgeschriebene Stelle in Ihrer Kundenserviceabteilung bewerben.",
+      "Hiermit bewerbe ich mich auf die ausgeschriebene Position im Kundendienst."
+    ]
+  },
   // Long exercises (17-26 words)
   {
     english: "Since I have lived in Germany for two years, I can understand most conversations at work without any major difficulties.",
@@ -467,6 +565,121 @@ const OFFLINE_EXERCISES = [
       "Anstatt sofort die Kundenhotline anzurufen, versuchte er, den Internet-Router selbst zu reparieren, indem er die Online-Anleitung las.",
       "Statt direkt beim Kundendienst anzurufen, hat er versucht, den WLAN-Router eigenständig mithilfe der Online-Bedienungsanleitung einzurichten."
     ]
+  },
+  {
+    english: "When we lived in Berlin three years ago, we frequently took part in language meetups and met people from many different countries.",
+    topic: "past",
+    topicName: "Past Tenses (Perfekt & Präteritum)",
+    scenarioDomain: "Social Gatherings & Friendships",
+    grammarFocus: "Temporalsatz mit 'als' für abgeschlossene Vergangenheit sowie Perfekt mit 'haben'.",
+    hints: [
+      { english: "to take part in", german: "teilnehmen an (nimmt teil, hat teilgenommen + Dativ)" },
+      { english: "frequently", german: "häufig / regelmäßig" },
+      { english: "to meet / get to know", german: "kennenlernen (hat kennengelernt)" }
+    ],
+    referenceTranslations: [
+      "Als wir vor drei Jahren in Berlin lebten, haben wir regelmäßig an Sprachtreffen teilgenommen und Menschen aus vielen verschiedenen Ländern kennengelernt.",
+      "Als wir vor drei Jahren in Berlin wohnten, nahmen wir oft an Sprachtreffen teil und lernten viele internationale Leute kennen."
+    ]
+  },
+  {
+    english: "As soon as the city council approves the construction plan next month, the engineers will begin modernizing the regional railway network.",
+    topic: "future",
+    topicName: "Future Tense (Futur I & Temporalsatz)",
+    scenarioDomain: "Travel & Public Transportation",
+    grammarFocus: "Temporalsatz mit 'sobald' (Präsens mit Zukunftsbedeutung) und Futur I mit 'werden + Infinitiv'.",
+    hints: [
+      { english: "as soon as", german: "sobald (Nebensatz-Konnektor)" },
+      { english: "city council", german: "der Stadtrat (-räte)" },
+      { english: "to approve", german: "genehmigen (hat genehmigt)" },
+      { english: "railway network", german: "das Bahnnetz (-e)" }
+    ],
+    referenceTranslations: [
+      "Sobald der Stadtrat nächsten Monat den Bauplan genehmigt, werden die Ingenieure mit der Modernisierung des regionalen Bahnnetzes beginnen.",
+      "Sobald der Stadtrat den Bauplan im kommenden Monat bewilligt, wird das Ingenieurteam mit dem Umbau des Bahnnetzes anfangen."
+    ]
+  },
+  {
+    english: "Despite the heavy morning rain, my colleagues waited patiently at the bus stop in front of the municipal registration office.",
+    topic: "prepositions",
+    topicName: "Prepositions & Cases (trotz + Genitiv, vor + Dativ)",
+    scenarioDomain: "Official Bureaucracy & Admin",
+    grammarFocus: "Genitiv-Präposition 'trotz' und lokale Wechselpräposition 'vor' mit Dativ.",
+    hints: [
+      { english: "despite", german: "trotz (+ Genitiv)" },
+      { english: "patiently", german: "geduldig" },
+      { english: "bus stop", german: "die Bushaltestelle (-n)" },
+      { english: "registration office", german: "das Bürgeramt / das Einwohnermeldeamt" }
+    ],
+    referenceTranslations: [
+      "Trotz des starken Morgenregens warteten meine Kollegen geduldig an der Bushaltestelle vor dem Bürgeramt.",
+      "Trotz des heftigen Regens am Morgen haben meine Kollegen geduldig an der Haltestelle vor dem Meldeamt gewartet."
+    ]
+  },
+  {
+    english: "Because all participants must bring their identity cards to the exam room, you should remind everyone about this requirement beforehand.",
+    topic: "modal",
+    topicName: "Modal Verbs (müssen & sollen)",
+    scenarioDomain: "University, Language & Study",
+    grammarFocus: "Modalverb 'müssen' am Ende des Kausalsatzes ('mitbringen müssen') und Empfehlung mit Konjunktiv II ('sollten').",
+    hints: [
+      { english: "identity card", german: "der Personalausweis (-e) / der Ausweis" },
+      { english: "exam room", german: "der Prüfungsraum (-räume)" },
+      { english: "to remind of", german: "erinnern an (+ Akkusativ)" }
+    ],
+    referenceTranslations: [
+      "Weil alle Teilnehmer ihren Ausweis in den Prüfungsraum mitbringen müssen, sollten Sie jeden vorher an diese Vorgabe erinnern.",
+      "Da alle Prüflinge ihren Personalausweis dabeihaben müssen, solltest du alle rechtzeitig daran erinnern."
+    ]
+  },
+  {
+    english: "All safety regulations at the factory must be carefully inspected every month so that potential work accidents can be prevented.",
+    topic: "passive",
+    topicName: "Passive Voice with Modals (Passiv + Modalverb)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Passiv mit Modalverb im Hauptsatz ('müssen überprüft werden') und Finalsatz mit 'damit' ('verhindert werden können').",
+    hints: [
+      { english: "safety regulation", german: "die Sicherheitsvorschrift (-en)" },
+      { english: "carefully", german: "sorgfältig / gründlich" },
+      { english: "to prevent", german: "verhindern (hat verhindert)" },
+      { english: "accident", german: "der Arbeitsunfall (-unfälle)" }
+    ],
+    referenceTranslations: [
+      "Alle Sicherheitsvorschriften in der Fabrik müssen jeden Monat sorgfältig überprüft werden, damit mögliche Arbeitsunfälle verhindert werden können.",
+      "Sämtliche Sicherheitsregeln im Werk müssen monatlich genau kontrolliert werden, sodass Betriebsunfälle vermieden werden können."
+    ]
+  },
+  {
+    english: "The project manager with whom we discussed the new schedule yesterday has sent an updated summary to all team members.",
+    topic: "relative",
+    topicName: "Relative Clauses (Präposition + Dativ)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Relativsatz mit Präposition + Dativ ('mit dem wir ... besprochen haben') mit Verbletztstellung.",
+    hints: [
+      { english: "with whom", german: "mit dem / mit welcher (Dativ)" },
+      { english: "schedule", german: "der Zeitplan (-pläne) / der Terminplan" },
+      { english: "updated summary", german: "die aktualisierte Zusammenfassung (-en)" }
+    ],
+    referenceTranslations: [
+      "Der Projektleiter, mit dem wir gestern den neuen Zeitplan besprochen haben, hat eine aktualisierte Zusammenfassung an alle Teammitglieder geschickt.",
+      "Die Projektleiterin, mit der wir gestern den Ablaufplan besprochen haben, hat allen Mitarbeitern eine Zusammenfassung gesendet."
+    ]
+  },
+  {
+    english: "If our team had received all necessary project files earlier, we would have finished the quarterly financial presentation without any overtime.",
+    topic: "konjunktiv2",
+    topicName: "Konjunktiv II (Vergangenheit / Irrealer Konditionalsatz)",
+    scenarioDomain: "Workplace & Technology",
+    grammarFocus: "Konjunktiv II der Vergangenheit: 'erhalten hätte' im Wenn-Satz und 'hätten abgeschlossen' im Hauptsatz.",
+    hints: [
+      { english: "project files / documents", german: "die Projektunterlagen (Plural)" },
+      { english: "quarterly presentation", german: "die Quartalspräsentation (-en)" },
+      { english: "overtime", german: "die Überstunden (Plural)" }
+    ],
+    referenceTranslations: [
+      "Wenn unser Team alle notwendigen Projektunterlagen früher erhalten hätte, hätten wir die Quartalspräsentation ohne Überstunden abgeschlossen.",
+      "Hätte unsere Gruppe alle erforderlichen Projektdaten rechtzeitig bekommen, hätten wir den Bericht ohne Überstunden fertiggestellt."
+    ]
   }
 ];
 
@@ -514,6 +727,7 @@ export default function TranslationPractice() {
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
   const recentSentencesRef = useRef([]);
+  const recentMixedTopicIdsRef = useRef([]);
 
   // Custom English sentence practice states
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -674,21 +888,52 @@ export default function TranslationPractice() {
     const targetTopicObj = TRANSLATION_TOPICS.find(t => t.id === topicId) || TRANSLATION_TOPICS[0];
     const targetLengthObj = SENTENCE_LENGTHS.find(l => l.id === lengthId) || SENTENCE_LENGTHS[0];
 
-    // Pick randomized variation vectors (Scenario domain, rhetorical style, topic sub-focus)
+    const isMixed = topicId === 'mixed';
+    let effectiveTopicObj = targetTopicObj;
+    let effectiveSubFocus = null;
+
+    if (isMixed) {
+      // Systematically rotate through all 10 syllabus topics without repeating recently seen ones
+      const unvisitedTopics = SYLLABUS_TOPICS.filter(
+        t => !recentMixedTopicIdsRef.current.includes(t.id)
+      );
+      const candidatePool = unvisitedTopics.length > 0 ? unvisitedTopics : SYLLABUS_TOPICS;
+      effectiveTopicObj = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+
+      recentMixedTopicIdsRef.current = [
+        ...recentMixedTopicIdsRef.current.filter(id => id !== effectiveTopicObj.id),
+        effectiveTopicObj.id
+      ];
+      if (recentMixedTopicIdsRef.current.length >= SYLLABUS_TOPICS.length) {
+        recentMixedTopicIdsRef.current = [effectiveTopicObj.id];
+      }
+
+      const subFocusList = TOPIC_SUB_FOCUSES[effectiveTopicObj.id] || [];
+      effectiveSubFocus = subFocusList.length > 0
+        ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
+        : null;
+    } else {
+      const subFocusList = TOPIC_SUB_FOCUSES[topicId] || [];
+      effectiveSubFocus = subFocusList.length > 0
+        ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
+        : null;
+    }
+
+    const displayTopicName = isMixed
+      ? `🎲 Mixed B1 • ${effectiveTopicObj.label}`
+      : effectiveTopicObj.label;
+
+    // Pick randomized variation vectors (Scenario domain, rhetorical style)
     const randomScenario = SCENARIO_DOMAINS[Math.floor(Math.random() * SCENARIO_DOMAINS.length)];
     const randomPerspective = PERSPECTIVE_STYLES[Math.floor(Math.random() * PERSPECTIVE_STYLES.length)];
-    const subFocusList = TOPIC_SUB_FOCUSES[topicId] || [];
-    const randomSubFocus = subFocusList.length > 0
-      ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
-      : null;
 
-    // If no API key is provided, choose from curated offline collection
-    if (!apiKey) {
-      let filtered = topicId === 'mixed'
-        ? OFFLINE_EXERCISES
-        : OFFLINE_EXERCISES.filter(ex => ex.topic === topicId);
+    // Curated offline selection helper that respects topic rotation and length filtering
+    const pickOfflineExercise = (targetTopicId, isMixedMode = false) => {
+      let filtered = OFFLINE_EXERCISES.filter(ex => ex.topic === targetTopicId);
+      if (filtered.length === 0) {
+        filtered = OFFLINE_EXERCISES;
+      }
 
-      // Filter by length if specified
       if (lengthId !== 'auto') {
         const lengthFiltered = filtered.filter(ex => {
           const count = ex.english.trim().split(/\s+/).length;
@@ -702,14 +947,29 @@ export default function TranslationPractice() {
         }
       }
 
-      const pool = filtered.length > 0 ? filtered : OFFLINE_EXERCISES;
-      // Avoid immediate repeats of recently visited exercises
-      const unvisited = pool.filter(ex => !recentSentencesRef.current.includes(ex.english));
-      const finalPool = unvisited.length > 0 ? unvisited : pool;
-      const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
-      if (pick) {
-        recentSentencesRef.current = [pick.english, ...recentSentencesRef.current.filter(s => s !== pick.english)].slice(0, 10);
+      const unvisited = filtered.filter(ex => !recentSentencesRef.current.includes(ex.english));
+      const pool = unvisited.length > 0 ? unvisited : filtered;
+      const selected = pool[Math.floor(Math.random() * pool.length)];
+      if (selected) {
+        recentSentencesRef.current = [
+          selected.english,
+          ...recentSentencesRef.current.filter(s => s !== selected.english)
+        ].slice(0, 10);
+
+        if (isMixedMode) {
+          const topicObj = SYLLABUS_TOPICS.find(t => t.id === selected.topic);
+          return {
+            ...selected,
+            topicName: `🎲 Mixed B1 • ${topicObj ? topicObj.label : selected.topicName}`
+          };
+        }
       }
+      return selected;
+    };
+
+    // If no API key is provided, choose from curated offline collection
+    if (!apiKey) {
+      const pick = pickOfflineExercise(isMixed ? effectiveTopicObj.id : topicId, isMixed);
       setCurrentExercise(pick);
       setIsGenerating(false);
       return;
@@ -733,8 +993,9 @@ export default function TranslationPractice() {
     const systemInstruction = `You are an expert German teacher creating varied, dynamic B1 Goethe/Telc certification translation exercises.
 The user wants to practice translating an English sentence into natural, grammatically correct German at B1 level.
 
-Topic required: "${targetTopicObj.label}: ${targetTopicObj.desc}".
-${randomSubFocus ? `Specific Grammar Nuance to test: "${randomSubFocus}".` : ''}
+Topic required: "${effectiveTopicObj.label}: ${effectiveTopicObj.desc}".
+${effectiveSubFocus ? `Specific Grammar Nuance to test: "${effectiveSubFocus}".` : ''}
+${isMixed ? `CRITICAL "MIXED B1" ROTATION MANDATE: Although the user selected "Mixed B1", this generation MUST specifically and unambiguously test "${effectiveTopicObj.label}" (${effectiveTopicObj.desc}). Do not generate a generic sentence; strictly enforce the grammatical structure of "${effectiveTopicObj.label}".` : ''}
 Required Scenario Domain: "${randomScenario.domain}" (Aspects: ${randomScenario.details}).
 Required Sentence Style / Perspective: "${randomPerspective}".
 
@@ -755,7 +1016,7 @@ Instructions:
 You MUST respond strictly with a valid JSON object matching this schema:
 {
   "english": "English sentence here",
-  "topicName": "${targetTopicObj.label}",
+  "topicName": "${displayTopicName}",
   "lengthType": "${lengthId}",
   "scenarioDomain": "${randomScenario.domain}",
   "grammarFocus": "Brief German explanation of what grammar pattern is being tested",
@@ -775,7 +1036,7 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        prompt: `Generate a new, distinct B1 German translation exercise for topic: ${targetTopicObj.label}.
+        prompt: `Generate a new, distinct B1 German translation exercise for topic: ${effectiveTopicObj.label}${isMixed ? ' (Mixed B1 Rotation)' : ''}.
 Context Domain: ${randomScenario.domain}.
 Sentence Style: ${randomPerspective}.
 Target length: ${targetLengthObj.label} (${targetLengthObj.wordRange}).
@@ -800,6 +1061,9 @@ Ensure the sentence is creative, natural, and completely different from standard
       if (!parsed.english || !parsed.referenceTranslations) {
         throw new Error("Invalid exercise structure returned.");
       }
+      if (isMixed && (!parsed.topicName || !parsed.topicName.includes('•'))) {
+        parsed.topicName = displayTopicName;
+      }
       recentSentencesRef.current = [
         parsed.english,
         ...recentSentencesRef.current.filter(s => s !== parsed.english)
@@ -807,17 +1071,8 @@ Ensure the sentence is creative, natural, and completely different from standard
       setCurrentExercise(parsed);
     } catch (err) {
       console.error("Failed to generate exercise with Gemini:", err);
-      // Fallback to offline collection on error
-      const filtered = topicId === 'mixed'
-        ? OFFLINE_EXERCISES
-        : OFFLINE_EXERCISES.filter(ex => ex.topic === topicId);
-      const pool = filtered.length > 0 ? filtered : OFFLINE_EXERCISES;
-      const unvisited = pool.filter(ex => !recentSentencesRef.current.includes(ex.english));
-      const finalPool = unvisited.length > 0 ? unvisited : pool;
-      const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
-      if (pick) {
-        recentSentencesRef.current = [pick.english, ...recentSentencesRef.current.filter(s => s !== pick.english)].slice(0, 10);
-      }
+      // Fallback to offline collection on error with fair rotation and length handling
+      const pick = pickOfflineExercise(isMixed ? effectiveTopicObj.id : topicId, isMixed);
       setCurrentExercise(pick);
       setFallbackNotice("⚠️ Offline-Übung geladen, da keine Verbindung zu Gemini möglich war.");
     } finally {
