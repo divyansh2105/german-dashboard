@@ -1772,7 +1772,9 @@ Output raw JSON only.`;
                     color: currentExercise.lengthType === 'custom' ? '#fbbf24' : 'var(--color-conn)',
                     border: currentExercise.lengthType === 'custom' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)'
                   }}>
-                    {currentExercise.topicName || 'B1 German Exercise'}
+                    {selectedTopic === 'mixed' && !evaluation
+                      ? '🎲 Mixed B1'
+                      : (currentExercise.topicName || 'B1 German Exercise')}
                   </span>
                   {currentExercise.scenarioDomain && (
                     <span style={{
@@ -2069,6 +2071,19 @@ Output raw JSON only.`;
                     }}>
                       {evaluation.score}/100
                     </span>
+                    {selectedTopic === 'mixed' && currentExercise.topicName && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '2px 9px',
+                        borderRadius: '10px',
+                        background: 'rgba(139, 92, 246, 0.2)',
+                        color: 'var(--color-conn)',
+                        fontWeight: '700',
+                        border: '1px solid rgba(139, 92, 246, 0.35)'
+                      }}>
+                        Thema: {currentExercise.topicName.replace('🎲 Mixed B1 • ', '')}
+                      </span>
+                    )}
                   </div>
 
                   {/* Audio button for best translation */}
