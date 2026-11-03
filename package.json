@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "pull-backup": "node scripts/pull-backup.js"
+    "pull-backup": "node scripts/pull-backup.js",
+    "deploy": "vite build && npx -y wrangler pages deploy dist --project-name german-dashboard --commit-dirty=true",
+    "deploy:pages": "vite build && npx -y wrangler pages deploy dist --project-name german-dashboard --commit-dirty=true"
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",

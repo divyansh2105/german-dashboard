@@ -24,7 +24,7 @@ and updates both deleted_words_backup.json and my_list_backup.json locally.
 }
 
 const cleanCode = codeArg.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-const baseUrl = 'https://german-dashboard-five.vercel.app';
+const baseUrl = process.env.PAGES_URL || process.env.VERCEL_URL || 'https://german-dashboard.pages.dev';
 
 async function syncBackup() {
   console.log(`Connecting to cloud database with sync code: "${cleanCode}"...`);
