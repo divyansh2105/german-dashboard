@@ -176,54 +176,84 @@ export default function GrammarPractice() {
     localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(refilled));
   };
 
-  const handleUpdatePrepWeight = (prep, delta) => {
-    const currentW = prepWeights[prep] ?? 2;
-    const newW = Math.max(0, Math.min(20, currentW + delta));
-    const nextWeights = { ...prepWeights, [prep]: newW };
-    setPrepWeights(nextWeights);
-    localStorage.setItem('b1_grammar_prep_weights', JSON.stringify(nextWeights));
+  const [tempWeights, setTempWeights] = useState({ ...DEFAULT_PREP_WEIGHTS });
+  const [setAllVal, setSetAllVal] = useState('2');
 
-    // Also adjust deckRemaining proportionally or clamp
-    setDeckRemaining(prev => {
-      const nextRemaining = {
-        ...prev,
-        [prep]: Math.min(newW, (prev[prep] ?? currentW) + (delta > 0 ? delta : 0))
-      };
-      localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(nextRemaining));
-      return nextRemaining;
-    });
+  const handleOpenWeightsModal = () => {
+    setTempWeights({ ...prepWeights });
+    setShowDeckModal(true);
   };
 
-  const handleApplyPreset = (presetType) => {
-    let newWeights = {};
+  const handleTempWeightChange = (prep, valStr) => {
+    const val = valStr === '' ? 0 : parseInt(valStr, 10);
+    setTempWeights(prev => ({
+      ...prev,
+      [prep]: isNaN(val) ? 0 : Math.max(0, val)
+    }));
+  };
+
+  const handleTempWeightDelta = (prep, delta) => {
+    setTempWeights(prev => ({
+      ...prev,
+      [prep]: Math.max(0, (prev[prep] ?? 0) + delta)
+    }));
+  };
+
+  const handleApplySetAll = () => {
+    const val = parseInt(setAllVal, 10);
+    if (!isNaN(val) && val >= 0) {
+      const next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, val]));
+      setTempWeights(next);
+    }
+  };
+
+  const handlePresetInDialog = (presetType) => {
+    let next = {};
     if (presetType === 'balanced_2') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 2]));
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 2]));
     } else if (presetType === 'balanced_1') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 1]));
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 1]));
     } else if (presetType === 'genitiv_focus') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
         p,
         PREPOSITION_GROUPS.Genitiv.includes(p) ? 4 : 1
       ]));
     } else if (presetType === 'dativ_focus') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
         p,
         PREPOSITION_GROUPS.Dativ.includes(p) ? 3 : 1
       ]));
     } else if (presetType === 'wechsel_focus') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
         p,
         PREPOSITION_GROUPS.Wechsel.includes(p) ? 3 : 1
       ]));
     } else if (presetType === 'akkusativ_focus') {
-      newWeights = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
+      next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [
         p,
         PREPOSITION_GROUPS.Akkusativ.includes(p) ? 3 : 1
       ]));
     }
-    setPrepWeights(newWeights);
-    localStorage.setItem('b1_grammar_prep_weights', JSON.stringify(newWeights));
-    handleRefillDeck(newWeights);
+    setTempWeights(next);
+  };
+
+  const handleSaveWeightsModal = (shouldRefill = false) => {
+    setPrepWeights(tempWeights);
+    localStorage.setItem('b1_grammar_prep_weights', JSON.stringify(tempWeights));
+
+    if (shouldRefill) {
+      handleRefillDeck(tempWeights);
+    } else {
+      setDeckRemaining(prev => {
+        const next = { ...prev };
+        Object.keys(tempWeights).forEach(p => {
+          next[p] = Math.min(tempWeights[p] ?? 0, next[p] ?? (tempWeights[p] ?? 0));
+        });
+        localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(next));
+        return next;
+      });
+    }
+    setShowDeckModal(false);
   };
 
   const generateQuestion = async () => {
@@ -418,23 +448,23 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
   const allTotalRemaining = ALL_PREPOSITIONS.reduce((acc, p) => acc + (deckRemaining[p] || 0), 0);
 
   return (
-    <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '820px', width: '100%', gap: '18px' }}>
+    <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '1040px', width: '100%', gap: '22px' }}>
       
       {/* Settings bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '4px', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
             📝 Grammar Preposition Challenge
           </div>
           <button
             type="button"
-            onClick={() => setShowDeckModal(prev => !prev)}
+            onClick={handleOpenWeightsModal}
             style={{
-              padding: '4px 10px',
+              padding: '5px 12px',
               borderRadius: '8px',
-              fontSize: '11.5px',
+              fontSize: '12px',
               fontWeight: '600',
-              background: showDeckModal ? 'rgba(59, 130, 246, 0.25)' : 'rgba(59, 130, 246, 0.12)',
+              background: 'rgba(59, 130, 246, 0.15)',
               border: '1px solid rgba(59, 130, 246, 0.4)',
               color: '#60a5fa',
               cursor: 'pointer',
@@ -443,10 +473,10 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               gap: '6px',
               transition: 'all 0.2s ease'
             }}
-            title="Präpositionen-Gewichtung & Fragen-Deck anpassen"
+            title="Präpositionen-Gewichtung manuell bearbeiten"
           >
-            <span>⚖️ Deck: <strong>{totalRemainingForSelected}/{totalWeightsForSelected}</strong> übrig</span>
-            <span style={{ fontSize: '10px' }}>{showDeckModal ? '▲ Schließen' : '⚙️ Gewichte'}</span>
+            <span>⚖️ Edit Weights</span>
+            <span style={{ fontSize: '11px', opacity: 0.85 }}>({totalRemainingForSelected}/{totalWeightsForSelected} left)</span>
           </button>
         </div>
 
@@ -487,187 +517,276 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         </div>
       </div>
 
-      {/* Deck & Weights Customization Card */}
+      {/* Floating Modal Overlay for Editing Weights */}
       {showDeckModal && (
-        <div className="glass-card animate-fade-in" style={{
-          width: '100%',
-          padding: '18px 20px',
-          background: 'rgba(15, 20, 35, 0.95)',
-          border: '1px solid rgba(59, 130, 246, 0.4)',
-          borderRadius: '14px',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '14px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <div>
-              <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>⚖️ Präpositionen-Deck & Gewichtung</span>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(5, 7, 15, 0.8)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowDeckModal(false);
+          }}
+        >
+          <div
+            className="glass-card animate-fade-in"
+            style={{
+              width: '100%',
+              maxWidth: '740px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              background: 'rgba(16, 20, 36, 0.98)',
+              border: '1px solid rgba(59, 130, 246, 0.45)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            {/* Dialog Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>⚖️ Edit Preposition Weights</span>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                  Lege für jede Präposition ein manuelles Gewicht fest. Du kannst <strong>beliebige Zahlen</strong> eingeben (sie müssen sich nicht zu einer bestimmten Summe addieren).
+                </p>
               </div>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-                Jede Frage zieht eine Präposition aus dem Pool und verringert deren Zähler um 1. Passe hier die Quoten an.
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => handleRefillDeck()}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  background: 'rgba(59, 130, 246, 0.2)',
-                  border: '1px solid rgba(59, 130, 246, 0.4)',
-                  color: '#93c5fd',
-                  fontSize: '11.5px',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-                title="Füllt alle Zähler wieder auf die eingestellten Gewichte auf"
-              >
-                🔄 Deck auffüllen ({allTotalRemaining}/{allTotalWeights})
-              </button>
               <button
                 type="button"
                 onClick={() => setShowDeckModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  fontSize: '16px',
-                  cursor: 'pointer',
-                  padding: '0 4px'
-                }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
               >
                 ✕
               </button>
             </div>
-          </div>
 
-          {/* Quick Presets */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Presets:</span>
-            {[
-              { id: 'balanced_2', label: 'Ausgeglichen (2x = 56)' },
-              { id: 'balanced_1', label: 'Kompakt (1x = 28)' },
-              { id: 'genitiv_focus', label: 'Genitiv-Fokus (4x)' },
-              { id: 'dativ_focus', label: 'Dativ-Fokus (3x)' },
-              { id: 'wechsel_focus', label: 'Wechselpräp.-Fokus (3x)' },
-              { id: 'akkusativ_focus', label: 'Akkusativ-Fokus (3x)' }
-            ].map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => handleApplyPreset(p.id)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  borderRadius: '12px',
-                  padding: '3px 10px',
-                  fontSize: '11px',
-                  color: '#e2e8f0',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+            {/* Quick controls: Set All + Presets */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>Alle setzen auf:</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="999"
+                  value={setAllVal}
+                  onChange={(e) => setSetAllVal(e.target.value)}
+                  style={{
+                    width: '60px',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(0,0,0,0.4)',
+                    color: '#fff',
+                    fontSize: '12px',
+                    textAlign: 'center'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplySetAll}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.25)',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    color: '#93c5fd',
+                    fontSize: '11.5px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Auf alle anwenden
+                </button>
+              </div>
 
-          {/* Category prepositions weight adjustment list */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
-            {Object.keys(PREPOSITION_GROUPS).map(groupName => {
-              const preps = PREPOSITION_GROUPS[groupName];
-              let groupColor = 'var(--color-conn)';
-              if (groupName === 'Akkusativ') groupColor = 'var(--color-noun)';
-              if (groupName === 'Dativ') groupColor = 'var(--color-verb)';
-              if (groupName === 'Wechsel') groupColor = 'var(--color-adj)';
-              if (groupName === 'Genitiv') groupColor = 'var(--color-reflexive)';
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Vorlagen:</span>
+                {[
+                  { id: 'balanced_2', label: 'Ausgeglichen (je 2)' },
+                  { id: 'balanced_1', label: 'Kompakt (je 1)' },
+                  { id: 'genitiv_focus', label: 'Genitiv-Fokus' },
+                  { id: 'dativ_focus', label: 'Dativ-Fokus' },
+                  { id: 'wechsel_focus', label: 'Wechselpräp.-Fokus' },
+                  { id: 'akkusativ_focus', label: 'Akkusativ-Fokus' }
+                ].map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handlePresetInDialog(p.id)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      padding: '2px 8px',
+                      fontSize: '11px',
+                      color: '#e2e8f0',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-              return (
-                <div key={groupName} style={{
-                  background: 'rgba(0, 0, 0, 0.25)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: '10px',
-                  padding: '10px'
-                }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: groupColor, marginBottom: '8px' }}>
-                    {groupName}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    {preps.map(prep => {
-                      const w = prepWeights[prep] ?? 2;
-                      const rem = deckRemaining[prep] ?? w;
-                      return (
-                        <div key={prep} style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '3px 6px',
-                          borderRadius: '6px',
-                          background: rem === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255,255,255,0.02)'
-                        }}>
-                          <span style={{ fontSize: '12px', fontWeight: '600', color: rem === 0 ? 'var(--text-muted)' : '#fff' }}>
-                            {prep}
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '10.5px', color: rem === 0 ? '#ef4444' : 'var(--text-secondary)' }}>
-                              {rem}/{w}
+            {/* Grid of groups with manual number input */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', maxHeight: '360px', overflowY: 'auto', paddingRight: '4px' }}>
+              {Object.keys(PREPOSITION_GROUPS).map(groupName => {
+                const preps = PREPOSITION_GROUPS[groupName];
+                let groupColor = 'var(--color-conn)';
+                if (groupName === 'Akkusativ') groupColor = 'var(--color-noun)';
+                if (groupName === 'Dativ') groupColor = 'var(--color-verb)';
+                if (groupName === 'Wechsel') groupColor = 'var(--color-adj)';
+                if (groupName === 'Genitiv') groupColor = 'var(--color-reflexive)';
+
+                return (
+                  <div key={groupName} style={{
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: '10px',
+                    padding: '10px'
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: groupColor, marginBottom: '8px' }}>
+                      {groupName} ({preps.length})
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {preps.map(prep => {
+                        const val = tempWeights[prep] ?? 0;
+                        return (
+                          <div key={prep} style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '3px 6px',
+                            borderRadius: '6px',
+                            background: val === 0 ? 'rgba(239, 68, 68, 0.06)' : 'rgba(255,255,255,0.02)'
+                          }}>
+                            <span style={{ fontSize: '12.5px', fontWeight: '600', color: val === 0 ? 'var(--text-muted)' : '#fff' }}>
+                              {prep}
                             </span>
-                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
                               <button
                                 type="button"
-                                onClick={() => handleUpdatePrepWeight(prep, -1)}
+                                onClick={() => handleTempWeightDelta(prep, -1)}
                                 style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '4px',
+                                  width: '20px',
+                                  height: '22px',
+                                  borderRadius: '4px 0 0 4px',
                                   border: '1px solid rgba(255,255,255,0.15)',
                                   background: 'rgba(255,255,255,0.06)',
                                   color: '#fff',
                                   fontSize: '11px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: 0
+                                  cursor: 'pointer'
                                 }}
                               >
                                 -
                               </button>
-                              <span style={{ fontSize: '11px', fontWeight: '700', minWidth: '16px', textAlign: 'center', color: '#fff' }}>
-                                {w}
-                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="999"
+                                value={val}
+                                onChange={(e) => handleTempWeightChange(prep, e.target.value)}
+                                style={{
+                                  width: '42px',
+                                  height: '22px',
+                                  padding: '0 2px',
+                                  textAlign: 'center',
+                                  borderRadius: 0,
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  borderLeft: 'none',
+                                  borderRight: 'none',
+                                  background: 'rgba(0,0,0,0.5)',
+                                  color: '#fff',
+                                  fontSize: '12px',
+                                  fontWeight: '700'
+                                }}
+                              />
                               <button
                                 type="button"
-                                onClick={() => handleUpdatePrepWeight(prep, 1)}
+                                onClick={() => handleTempWeightDelta(prep, 1)}
                                 style={{
-                                  width: '18px',
-                                  height: '18px',
-                                  borderRadius: '4px',
+                                  width: '20px',
+                                  height: '22px',
+                                  borderRadius: '0 4px 4px 0',
                                   border: '1px solid rgba(255,255,255,0.15)',
                                   background: 'rgba(255,255,255,0.06)',
                                   color: '#fff',
                                   fontSize: '11px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  padding: 0
+                                  cursor: 'pointer'
                                 }}
                               >
                                 +
                               </button>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {/* Dialog Footer */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                Gesamte Deck-Summe: <strong style={{ color: '#fff' }}>{Object.values(tempWeights).reduce((a, b) => a + (b || 0), 0)}</strong>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDeckModal(false)}
+                  className="nav-button"
+                  style={{ padding: '8px 14px', fontSize: '12px' }}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveWeightsModal(true)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(59, 130, 246, 0.25)',
+                    border: '1px solid rgba(59, 130, 246, 0.5)',
+                    color: '#93c5fd',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔄 Speichern & Deck auffüllen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveWeightsModal(false)}
+                  className="feedback-btn good"
+                  style={{
+                    padding: '8px 18px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    width: 'auto',
+                    maxWidth: 'none',
+                    minHeight: 'auto'
+                  }}
+                >
+                  💾 Speichern
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -691,26 +810,26 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         </div>
       )}
 
-      {/* Main interface layout splits into selector on left/top and exercise on right/bottom */}
-      <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', width: '100%', flexWrap: 'wrap' }}>
+      {/* Main interface layout: Left compact selector and Right large question layout */}
+      <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', width: '100%', alignItems: 'stretch' }}>
         
-        {/* Left Side: Prepositions filter list */}
-        <div className="glass-card" style={{ flex: '1 1 250px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+        {/* Left Side: Prepositions filter list (compact) */}
+        <div className="glass-card" style={{ flex: '0 0 250px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
             <div>
-              <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>Präpositionen</span>
-              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Deck: {totalRemainingForSelected} Fragen übrig
+              <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#fff' }}>Präpositionen</span>
+              <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
+                {totalRemainingForSelected} im Deck aktiv
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px' }}>
               <span onClick={selectAllPreps} style={{ fontSize: '11px', color: 'var(--color-verb)', cursor: 'pointer', fontWeight: '600' }}>All</span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>|</span>
               <span onClick={selectNonePreps} style={{ fontSize: '11px', color: '#ef4444', cursor: 'pointer', fontWeight: '600' }}>None</span>
             </div>
           </div>
 
-          <div style={{ overflowY: 'auto', maxHeight: '380px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ overflowY: 'auto', maxHeight: '420px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {Object.keys(PREPOSITION_GROUPS).map(groupName => {
               const preps = PREPOSITION_GROUPS[groupName];
               const groupSelected = preps.every(p => selectedPreps.includes(p));
@@ -723,7 +842,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               if (groupName === 'Genitiv') groupColor = 'var(--color-reflexive)';
 
               return (
-                <div key={groupName} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div key={groupName} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <div 
                     onClick={() => toggleGroup(groupName)}
                     style={{ 
@@ -731,7 +850,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       alignItems: 'center', 
                       gap: '8px', 
                       cursor: 'pointer', 
-                      fontSize: '12.5px', 
+                      fontSize: '12px', 
                       fontWeight: '700', 
                       color: groupColor
                     }}
@@ -742,52 +861,34 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       ref={el => {
                         if (el) el.indeterminate = someSelected;
                       }}
-                      onChange={() => {}} // handled by parent onClick
+                      onChange={() => {}}
                       style={{ cursor: 'pointer', accentColor: groupColor }}
                     />
                     {groupName} ({preps.length})
                   </div>
                   
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingLeft: '20px' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', paddingLeft: '18px' }}>
                     {preps.map(prep => {
                       const active = selectedPreps.includes(prep);
-                      const rem = deckRemaining[prep] ?? (prepWeights[prep] || 2);
                       const isLastPicked = lastTargetPrep === prep;
                       return (
                         <button
                           key={prep}
                           type="button"
                           onClick={() => togglePrep(prep)}
-                          title={`${prep}: ${rem} im Deck übrig`}
                           style={{
                             padding: '4px 8px',
                             borderRadius: '6px',
                             border: '1px solid',
                             borderColor: isLastPicked ? '#f59e0b' : (active ? groupColor : 'var(--border-color)'),
-                            background: active 
-                              ? (rem === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(255, 255, 255, 0.04)')
-                              : 'transparent',
-                            color: active ? (rem === 0 ? 'var(--text-muted)' : '#fff') : 'var(--text-muted)',
-                            fontSize: '11px',
+                            background: active ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
+                            color: active ? '#fff' : 'var(--text-muted)',
+                            fontSize: '11.5px',
                             cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
                             transition: 'all 0.15s ease'
                           }}
                         >
-                          <span>{prep}</span>
-                          {active && (
-                            <span style={{
-                              fontSize: '9.5px',
-                              padding: '1px 4px',
-                              borderRadius: '4px',
-                              background: rem === 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                              color: rem === 0 ? '#ef4444' : 'var(--text-secondary)'
-                            }}>
-                              {rem}
-                            </span>
-                          )}
+                          {prep}
                         </button>
                       );
                     })}
@@ -798,8 +899,8 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           </div>
         </div>
 
-        {/* Right Side: Generated sentence and input challenge */}
-        <div className="glass-card" style={{ flex: '2 1 450px', padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '350px', position: 'relative' }}>
+        {/* Right Side: Large Question Card */}
+        <div className="glass-card" style={{ flex: '1 1 500px', minWidth: '320px', padding: '36px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '440px', position: 'relative' }}>
           
           {isLoading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', width: '100%', height: '100%', minHeight: '260px' }}>

@@ -778,31 +778,45 @@ export default function TranslationPractice() {
     localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(refilled));
   };
 
-  const handleUpdateTopicWeight = (tId, delta) => {
-    const currentW = topicWeights[tId] ?? 5;
-    const newW = Math.max(0, Math.min(30, currentW + delta));
-    const nextWeights = { ...topicWeights, [tId]: newW };
-    setTopicWeights(nextWeights);
-    localStorage.setItem('b1_translation_topic_weights', JSON.stringify(nextWeights));
+  const [tempTopicWeights, setTempTopicWeights] = useState({ ...DEFAULT_TOPIC_WEIGHTS });
+  const [setAllTopicVal, setSetAllTopicVal] = useState('5');
 
-    setDeckRemaining(prev => {
-      const nextRemaining = {
-        ...prev,
-        [tId]: Math.min(newW, (prev[tId] ?? currentW) + (delta > 0 ? delta : 0))
-      };
-      localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(nextRemaining));
-      return nextRemaining;
-    });
+  const handleOpenWeightsModal = () => {
+    setTempTopicWeights({ ...topicWeights });
+    setShowDeckModal(true);
   };
 
-  const handleApplyTopicPreset = (presetType) => {
+  const handleTempTopicWeightChange = (topicId, valStr) => {
+    const val = valStr === '' ? 0 : parseInt(valStr, 10);
+    setTempTopicWeights(prev => ({
+      ...prev,
+      [topicId]: isNaN(val) ? 0 : Math.max(0, val)
+    }));
+  };
+
+  const handleTempTopicWeightDelta = (topicId, delta) => {
+    setTempTopicWeights(prev => ({
+      ...prev,
+      [topicId]: Math.max(0, (prev[topicId] ?? 0) + delta)
+    }));
+  };
+
+  const handleApplySetAllTopics = () => {
+    const val = parseInt(setAllTopicVal, 10);
+    if (!isNaN(val) && val >= 0) {
+      const next = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, val]));
+      setTempTopicWeights(next);
+    }
+  };
+
+  const handleTopicPresetInDialog = (presetType) => {
     let newWeights = {};
-    if (presetType === 'equal_50') {
+    if (presetType === 'equal_5') {
       newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 5]));
-    } else if (presetType === 'equal_30') {
-      newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 3]));
-    } else if (presetType === 'equal_100') {
+    } else if (presetType === 'equal_10') {
       newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 10]));
+    } else if (presetType === 'equal_3') {
+      newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 3]));
     } else if (presetType === 'clauses_focus') {
       newWeights = {
         relative: 10,
@@ -830,9 +844,26 @@ export default function TranslationPractice() {
         everyday: 3
       };
     }
-    setTopicWeights(newWeights);
-    localStorage.setItem('b1_translation_topic_weights', JSON.stringify(newWeights));
-    handleRefillDeck(newWeights);
+    setTempTopicWeights(newWeights);
+  };
+
+  const handleSaveTopicWeightsModal = (shouldRefill = false) => {
+    setTopicWeights(tempTopicWeights);
+    localStorage.setItem('b1_translation_topic_weights', JSON.stringify(tempTopicWeights));
+
+    if (shouldRefill) {
+      handleRefillDeck(tempTopicWeights);
+    } else {
+      setDeckRemaining(prev => {
+        const next = { ...prev };
+        Object.keys(tempTopicWeights).forEach(tId => {
+          next[tId] = Math.min(tempTopicWeights[tId] ?? 0, next[tId] ?? (tempTopicWeights[tId] ?? 0));
+        });
+        localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(next));
+        return next;
+      });
+    }
+    setShowDeckModal(false);
   };
 
   // Voice-to-Text Recognition states
@@ -1598,29 +1629,25 @@ Output raw JSON only.`;
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
-              onClick={() => setShowDeckModal(prev => !prev)}
+              onClick={handleOpenWeightsModal}
               style={{
                 padding: '5px 12px',
                 borderRadius: '8px',
                 fontSize: '12px',
                 fontWeight: '600',
-                background: showDeckModal 
-                  ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))' 
-                  : 'rgba(139, 92, 246, 0.12)',
-                border: showDeckModal ? '1px solid #c084fc' : '1px solid rgba(139, 92, 246, 0.4)',
+                background: 'rgba(139, 92, 246, 0.15)',
+                border: '1px solid rgba(139, 92, 246, 0.4)',
                 color: '#c084fc',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                transition: 'all 0.2s ease',
-                boxShadow: showDeckModal ? '0 0 10px rgba(139, 92, 246, 0.25)' : 'none'
+                transition: 'all 0.2s ease'
               }}
-              title="Themen-Gewichtung & Fragen-Deck anpassen"
+              title="Themen-Gewichtung manuell bearbeiten"
             >
-              <span>⚖️</span>
-              <span>Deck: <strong>{deckRemainingTotal}/{deckWeightsTotal}</strong> übrig</span>
-              <span style={{ fontSize: '10px' }}>{showDeckModal ? '▲ Schließen' : '⚙️ Gewichte'}</span>
+              <span>⚖️ Edit Weights</span>
+              <span style={{ fontSize: '11px', opacity: 0.85 }}>({deckRemainingTotal}/{deckWeightsTotal} left)</span>
             </button>
 
             <button
@@ -1671,164 +1698,258 @@ Output raw JSON only.`;
           </div>
         </div>
 
-        {/* Deck & Weights Customization Card */}
+        {/* Floating Modal Overlay for Editing Translation Weights */}
         {showDeckModal && (
-          <div className="glass-card animate-fade-in" style={{
-            width: '100%',
-            padding: '18px 20px',
-            background: 'rgba(20, 18, 35, 0.95)',
-            border: '1px solid rgba(139, 92, 246, 0.45)',
-            borderRadius: '14px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '14px'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span>⚖️ B1 Übersetzungs-Deck & Themen-Gewichtung</span>
+          <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9999,
+              background: 'rgba(5, 7, 15, 0.8)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px'
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowDeckModal(false);
+            }}
+          >
+            <div
+              className="glass-card animate-fade-in"
+              style={{
+                width: '100%',
+                maxWidth: '720px',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                background: 'rgba(20, 18, 35, 0.98)',
+                border: '1px solid rgba(139, 92, 246, 0.45)',
+                borderRadius: '16px',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+              }}
+            >
+              {/* Dialog Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>⚖️ Edit Translation Topic Weights</span>
+                  </div>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                    Lege für jedes B1-Thema ein manuelles Kontingent fest. Du kannst <strong>beliebige Zahlen</strong> eingeben (sie müssen sich nicht zu 50 oder einer bestimmten Summe addieren). Im Mixed-Modus wird nach diesen Quoten trainiert.
+                  </p>
                 </div>
-                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
-                  Definiere, wie viele Fragen pro Thema in deinem Deck sind (z.B. 10 Relativsätze in 50 Fragen). Im Mixed-Modus wird jedes Thema nach Quota abgearbeitet.
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={() => handleRefillDeck()}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    background: 'rgba(139, 92, 246, 0.2)',
-                    border: '1px solid rgba(139, 92, 246, 0.4)',
-                    color: '#c084fc',
-                    fontSize: '11.5px',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                  title="Füllt alle Themen-Zähler wieder auf die eingestellten Gewichte auf"
-                >
-                  🔄 Deck auffüllen ({deckRemainingTotal}/{deckWeightsTotal})
-                </button>
                 <button
                   type="button"
                   onClick={() => setShowDeckModal(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    padding: '0 4px'
-                  }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
                 >
                   ✕
                 </button>
               </div>
-            </div>
 
-            {/* Presets */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Presets:</span>
-              {[
-                { id: 'equal_50', label: 'Ausgeglichen (50 Fragen - 5 je Thema)' },
-                { id: 'equal_30', label: 'Kompakt (30 Fragen - 3 je Thema)' },
-                { id: 'equal_100', label: 'Groß (100 Fragen - 10 je Thema)' },
-                { id: 'clauses_focus', label: 'Relativ- & Nebensätze Fokus' },
-                { id: 'verbs_tenses_focus', label: 'Zeiten & Verben Fokus' }
-              ].map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleApplyTopicPreset(p.id)}
-                  style={{
-                    background: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    borderRadius: '12px',
-                    padding: '3px 10px',
-                    fontSize: '11px',
-                    color: '#e2e8f0',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+              {/* Quick controls: Set All + Presets */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>Alle Themen setzen auf:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="999"
+                    value={setAllTopicVal}
+                    onChange={(e) => setSetAllTopicVal(e.target.value)}
+                    style={{
+                      width: '60px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      background: 'rgba(0,0,0,0.4)',
+                      color: '#fff',
+                      fontSize: '12px',
+                      textAlign: 'center'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplySetAllTopics}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(139, 92, 246, 0.25)',
+                      border: '1px solid rgba(139, 92, 246, 0.4)',
+                      color: '#c084fc',
+                      fontSize: '11.5px',
+                      fontWeight: '600',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Auf alle anwenden
+                  </button>
+                </div>
 
-            {/* Topic Quota Adjusters */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', maxHeight: '340px', overflowY: 'auto' }}>
-              {SYLLABUS_TOPICS.map(topic => {
-                const w = topicWeights[topic.id] ?? 5;
-                const rem = deckRemaining[topic.id] ?? w;
-                return (
-                  <div key={topic.id} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    background: rem === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.25)',
-                    border: '1px solid rgba(255, 255, 255, 0.06)'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '12px', fontWeight: '700', color: rem === 0 ? 'var(--text-muted)' : '#fff' }}>
-                        {topic.label}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Vorlagen:</span>
+                  {[
+                    { id: 'equal_5', label: 'Ausgeglichen (je 5)' },
+                    { id: 'equal_10', label: 'Groß (je 10)' },
+                    { id: 'equal_3', label: 'Kompakt (je 3)' },
+                    { id: 'clauses_focus', label: 'Relativ- & Nebensätze' },
+                    { id: 'verbs_tenses_focus', label: 'Zeiten & Verben' }
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleTopicPresetInDialog(p.id)}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        padding: '2px 8px',
+                        fontSize: '11px',
+                        color: '#e2e8f0',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid of 10 syllabus topics with manual input */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px', maxHeight: '380px', overflowY: 'auto' }}>
+                {SYLLABUS_TOPICS.map(topic => {
+                  const val = tempTopicWeights[topic.id] ?? 0;
+                  return (
+                    <div key={topic.id} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      background: val === 0 ? 'rgba(239, 68, 68, 0.06)' : 'rgba(0, 0, 0, 0.25)',
+                      border: '1px solid rgba(255, 255, 255, 0.06)'
+                    }}>
+                      <div>
+                        <div style={{ fontSize: '12.5px', fontWeight: '700', color: val === 0 ? 'var(--text-muted)' : '#fff' }}>
+                          {topic.label}
+                        </div>
+                        <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {topic.desc}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '10.5px', color: rem === 0 ? '#ef4444' : 'var(--text-secondary)' }}>
-                        {rem}/{w} Fragen im Deck
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleTempTopicWeightDelta(topic.id, -1)}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '4px 0 0 4px',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: 'rgba(255,255,255,0.06)',
+                            color: '#fff',
+                            fontSize: '12px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          -
+                        </button>
+                        <input
+                          type="number"
+                          min="0"
+                          max="999"
+                          value={val}
+                          onChange={(e) => handleTempTopicWeightChange(topic.id, e.target.value)}
+                          style={{
+                            width: '46px',
+                            height: '24px',
+                            padding: '0 2px',
+                            textAlign: 'center',
+                            borderRadius: 0,
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            borderLeft: 'none',
+                            borderRight: 'none',
+                            background: 'rgba(0,0,0,0.5)',
+                            color: '#fff',
+                            fontSize: '12.5px',
+                            fontWeight: '700'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleTempTopicWeightDelta(topic.id, 1)}
+                          style={{
+                            width: '24px',
+                            height: '24px',
+                            borderRadius: '0 4px 4px 0',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            background: 'rgba(255,255,255,0.06)',
+                            color: '#fff',
+                            fontSize: '12px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTopicWeight(topic.id, -1)}
-                        style={{
-                          width: '22px',
-                          height: '22px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          background: 'rgba(255,255,255,0.06)',
-                          color: '#fff',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0
-                        }}
-                      >
-                        -
-                      </button>
-                      <span style={{ fontSize: '12px', fontWeight: '700', minWidth: '20px', textAlign: 'center', color: '#fff' }}>
-                        {w}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateTopicWeight(topic.id, 1)}
-                        style={{
-                          width: '22px',
-                          height: '22px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(255,255,255,0.15)',
-                          background: 'rgba(255,255,255,0.06)',
-                          color: '#fff',
-                          fontSize: '12px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: 0
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+
+              {/* Dialog Footer */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  Gesamte Deck-Summe: <strong style={{ color: '#fff' }}>{Object.values(tempTopicWeights).reduce((a, b) => a + (b || 0), 0)} Fragen</strong>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowDeckModal(false)}
+                    className="nav-button"
+                    style={{ padding: '8px 14px', fontSize: '12px' }}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveTopicWeightsModal(true)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: 'rgba(139, 92, 246, 0.25)',
+                      border: '1px solid rgba(139, 92, 246, 0.5)',
+                      color: '#c084fc',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔄 Speichern & Deck auffüllen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveTopicWeightsModal(false)}
+                    className="feedback-btn good"
+                    style={{
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      width: 'auto',
+                      maxWidth: 'none',
+                      minHeight: 'auto'
+                    }}
+                  >
+                    💾 Speichern
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
