@@ -1473,6 +1473,9 @@ Output raw JSON only.`;
     }
   };
 
+  const deckWeightsTotal = SYLLABUS_TOPICS.reduce((acc, t) => acc + (topicWeights[t.id] || 0), 0);
+  const deckRemainingTotal = SYLLABUS_TOPICS.reduce((acc, t) => acc + (deckRemaining[t.id] || 0), 0);
+
   return (
     <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '850px', width: '100%', gap: '20px' }}>
       
