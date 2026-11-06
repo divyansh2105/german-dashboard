@@ -87,7 +87,15 @@ export default function GrammarPractice() {
   });
 
   const [showDeckModal, setShowDeckModal] = useState(false);
-  const [lastTargetPrep, setLastTargetPrep] = useState('');
+  const [questionMode, setQuestionMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_grammar_question_mode');
+      if (saved && ['all', 'situational', 'verbs'].includes(saved)) {
+        return saved;
+      }
+    } catch (e) {}
+    return 'situational';
+  });
 
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [userInput, setUserInput] = useState('');
@@ -308,7 +316,6 @@ export default function GrammarPractice() {
     };
     setDeckRemaining(updatedDeck);
     localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(updatedDeck));
-    setLastTargetPrep(targetPrep);
 
     // Anti-repetition context
     const recentHistoryList = recentHistory.slice(0, 10);
@@ -318,17 +325,34 @@ Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. 
 ${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
       : '';
 
+    let modeConstraint = '';
+    if (questionMode === 'situational') {
+      modeConstraint = `CRITICAL FOCUS: SIMPLER SITUATIONAL PREPOSITION (NOT VERB-DEPENDENT).
+The sentence MUST use "${targetPrep}" purely for situational context:
+- Spatial / Location & Direction (Wo? / Wohin? e.g. location of an object or destination of movement in a room, city, street, or building)
+- Temporal (Wann? / Wie lange? e.g. times of day, before/after an appointment, days, months, seasons, duration)
+- Modal / Means / Cause / Circumstance (Wie? / Womit? / Warum? e.g. travel with a vehicle, food with/without ingredients, weather/circumstances)
+STRICT REQUIREMENT: DO NOT use fixed verb-preposition idioms ("Verben mit festen Präpositionen" like 'warten auf', 'denken an', 'sich freuen über', 'hoffen auf', 'abhängen von', 'teilnehmen an', 'gehören zu', etc.). The verb itself must be a normal action (e.g. schlafen, arbeiten, essen, gehen, fahren, ankommen, wohnen, stellen, liegen) that does NOT require this preposition. The preposition must be freely used to express place, time, manner, or reason.`;
+    } else if (questionMode === 'verbs') {
+      modeConstraint = `CRITICAL FOCUS: FIXED VERB-PREPOSITION COLLOCATION (VERBEN MIT PRÄPOSITIONEN).
+The sentence MUST specifically test a fixed verb-preposition combination (e.g. warten auf, denken an, sich freuen auf/über, träumen von, sich interessieren für, sich erinnern an, teilnehmen an, gehören zu, etc.) where "${targetPrep}" is governed directly by the verb idiom.`;
+    } else {
+      modeConstraint = `SENTENCE FOCUS: BALANCED MIX.
+You may generate either a simple situational preposition (Lokal: Wo/Wohin, Temporal: Wann, or Modal/Kausal) OR a fixed verb collocation (Verb mit Präposition). Vary the sentence structure naturally.`;
+    }
+
     const randomSeed = Math.floor(Math.random() * 1000000);
     const promptText = `Generate a single B1-level German sentence.
 CRITICAL TARGET PREPOSITION: The sentence MUST specifically and unambiguously test the preposition: "${targetPrep}".
 Replace "${targetPrep}" in the sentence with three underscores '___' for a blank challenge.
 The only natural and grammatically correct solution for the blank must be "${targetPrep}".
+${modeConstraint}
 ${recentAvoidBlock}
 Requirements:
 1. Provide a diverse, natural, real-life B1 sentence representing everyday scenarios (work, appointments, apartment, travel, conversations, hobbies).
-2. DO NOT use generic textbook clichés (like putting a book on the table or waiting for a train).
+2. DO NOT use generic textbook clichés (like putting a book on the table).
 3. Vary sentence structure and grammatical subjects (use 'wir', 'der Kollege', 'die Nachbarin', formal 'Sie', etc.).
-4. Do NOT excessively use reflexive verbs. Mix spatial, temporal, modal, and causal uses.
+4. Do NOT excessively use reflexive verbs.
 
 Seed: ${randomSeed}`;
 
@@ -338,7 +362,8 @@ You must return a raw JSON object matching this schema exactly:
   "sentence": "German sentence with a single '___' blank representing the missing preposition.",
   "correctPreposition": "${targetPrep}",
   "translation": "English translation of the German sentence.",
-  "explanation": "A grammatical explanation in English detailing why '${targetPrep}' is correct, which case it governs in this context (Accusative, Dative, Genitive), and if it is part of a verb-preposition idiom (Verben mit Präpositionen)."
+  "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
+  "explanation": "A concise grammatical explanation in English detailing why '${targetPrep}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage (e.g. Lokalangabe, Temporalangabe) or a fixed verb-preposition combination."
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
@@ -454,7 +479,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '4px', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
-            📝 Grammar Preposition Challenge
+            📝 Grammar Prepositions
           </div>
           <button
             type="button"
@@ -478,6 +503,39 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             <span>⚖️ Edit Weights</span>
             <span style={{ fontSize: '11px', opacity: 0.85 }}>({totalRemainingForSelected}/{totalWeightsForSelected} left)</span>
           </button>
+
+          {/* Question Mode: Situational (Non-verb) vs Verbs vs Mixed */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Typ:</span>
+            <select
+              value={questionMode}
+              onChange={(e) => {
+                setQuestionMode(e.target.value);
+                localStorage.setItem('b1_grammar_question_mode', e.target.value);
+              }}
+              style={{
+                fontSize: '11.5px',
+                padding: '3px 8px',
+                height: '28px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-color)',
+                color: '#fff',
+                borderRadius: '8px',
+                cursor: 'pointer'
+              }}
+              title="Wähle den Fragestil: Einfach/Situativ, Feste Verben oder Gemischt"
+            >
+              <option value="situational" style={{ background: '#090a0f', color: '#fff' }}>
+                📍 Einfach / Situativ (Lokal, Temporal, Modal)
+              </option>
+              <option value="verbs" style={{ background: '#090a0f', color: '#fff' }}>
+                🔗 Feste Verbverbindungen (warten auf...)
+              </option>
+              <option value="all" style={{ background: '#090a0f', color: '#fff' }}>
+                🎲 Gemischt (Alle Typen)
+              </option>
+            </select>
+          </div>
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -870,7 +928,6 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', paddingLeft: '18px' }}>
                     {preps.map(prep => {
                       const active = selectedPreps.includes(prep);
-                      const isLastPicked = lastTargetPrep === prep;
                       return (
                         <button
                           key={prep}
@@ -880,7 +937,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                             padding: '4px 8px',
                             borderRadius: '6px',
                             border: '1px solid',
-                            borderColor: isLastPicked ? '#f59e0b' : (active ? groupColor : 'var(--border-color)'),
+                            borderColor: active ? groupColor : 'var(--border-color)',
                             background: active ? 'rgba(255, 255, 255, 0.05)' : 'transparent',
                             color: active ? '#fff' : 'var(--text-muted)',
                             fontSize: '11.5px',
@@ -1026,16 +1083,34 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                 {/* Feedback panel post validation */}
                 {hasChecked && (
                   <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px', animation: 'fadeIn 0.3s ease' }}>
-                    {/* Badge */}
+                    {/* Badge and Category */}
                     <div style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
-                      gap: '8px', 
-                      fontSize: '14px', 
-                      fontWeight: '700',
-                      color: isCorrect ? 'var(--color-noun)' : '#ef4444'
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px'
                     }}>
-                      {isCorrect ? '✅ Richtig!' : `❌ Falsch! Richtig ist: ${currentQuestion.correctPreposition}`}
+                      <div style={{ 
+                        fontSize: '14px', 
+                        fontWeight: '700',
+                        color: isCorrect ? 'var(--color-noun)' : '#ef4444'
+                      }}>
+                        {isCorrect ? '✅ Richtig!' : `❌ Falsch! Richtig ist: ${currentQuestion.correctPreposition}`}
+                      </div>
+                      {currentQuestion.category && (
+                        <span style={{
+                          fontSize: '11px',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          border: '1px solid rgba(59, 130, 246, 0.35)',
+                          color: '#93c5fd',
+                          fontWeight: '600'
+                        }}>
+                          📌 {currentQuestion.category}
+                        </span>
+                      )}
                     </div>
 
                     {/* Explanatory notes */}
