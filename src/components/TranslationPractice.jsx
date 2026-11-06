@@ -19,6 +19,20 @@ const TRANSLATION_TOPICS = [
 // The 10 core B1 grammar topics covered systematically in Mixed B1 mode
 const SYLLABUS_TOPICS = TRANSLATION_TOPICS.filter(t => t.id !== 'mixed');
 
+// Default quotas for weighted translation topic deck (sum = 50 questions)
+const DEFAULT_TOPIC_WEIGHTS = {
+  past: 5,
+  future: 5,
+  prepositions: 5,
+  subordinate: 5,
+  zu_infinitive: 5,
+  modal: 5,
+  passive: 5,
+  relative: 5,
+  konjunktiv2: 5,
+  everyday: 5
+};
+
 // Sentence length configurations
 const SENTENCE_LENGTHS = [
   { id: 'auto', label: '⚡ Auto', desc: 'Natural balanced B1 length (~10-18 words)', wordRange: '10 to 18 words' },
@@ -721,13 +735,111 @@ export default function TranslationPractice() {
   const [evaluation, setEvaluation] = useState(null);
   const [fallbackNotice, setFallbackNotice] = useState('');
 
+  // Weighted Topic Deck & Anti-Repetition States
+  const [topicWeights, setTopicWeights] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_translation_topic_weights');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_TOPIC_WEIGHTS, ...parsed };
+      }
+    } catch (e) {}
+    return DEFAULT_TOPIC_WEIGHTS;
+  });
+
+  const [deckRemaining, setDeckRemaining] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_translation_deck_remaining');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_TOPIC_WEIGHTS;
+  });
+
+  const [recentHistory, setRecentHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_translation_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.slice(0, 10);
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [showDeckModal, setShowDeckModal] = useState(false);
+
+  // Deck Management Helpers
+  const handleRefillDeck = (customWeights = topicWeights) => {
+    const refilled = { ...customWeights };
+    setDeckRemaining(refilled);
+    localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(refilled));
+  };
+
+  const handleUpdateTopicWeight = (tId, delta) => {
+    const currentW = topicWeights[tId] ?? 5;
+    const newW = Math.max(0, Math.min(30, currentW + delta));
+    const nextWeights = { ...topicWeights, [tId]: newW };
+    setTopicWeights(nextWeights);
+    localStorage.setItem('b1_translation_topic_weights', JSON.stringify(nextWeights));
+
+    setDeckRemaining(prev => {
+      const nextRemaining = {
+        ...prev,
+        [tId]: Math.min(newW, (prev[tId] ?? currentW) + (delta > 0 ? delta : 0))
+      };
+      localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(nextRemaining));
+      return nextRemaining;
+    });
+  };
+
+  const handleApplyTopicPreset = (presetType) => {
+    let newWeights = {};
+    if (presetType === 'equal_50') {
+      newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 5]));
+    } else if (presetType === 'equal_30') {
+      newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 3]));
+    } else if (presetType === 'equal_100') {
+      newWeights = Object.fromEntries(SYLLABUS_TOPICS.map(t => [t.id, 10]));
+    } else if (presetType === 'clauses_focus') {
+      newWeights = {
+        relative: 10,
+        subordinate: 10,
+        zu_infinitive: 8,
+        konjunktiv2: 6,
+        past: 3,
+        future: 3,
+        prepositions: 4,
+        modal: 3,
+        passive: 4,
+        everyday: 3
+      };
+    } else if (presetType === 'verbs_tenses_focus') {
+      newWeights = {
+        past: 10,
+        modal: 10,
+        passive: 10,
+        future: 8,
+        relative: 3,
+        subordinate: 3,
+        zu_infinitive: 4,
+        konjunktiv2: 4,
+        prepositions: 4,
+        everyday: 3
+      };
+    }
+    setTopicWeights(newWeights);
+    localStorage.setItem('b1_translation_topic_weights', JSON.stringify(newWeights));
+    handleRefillDeck(newWeights);
+  };
+
   // Voice-to-Text Recognition states
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
-  const recentSentencesRef = useRef([]);
-  const recentMixedTopicIdsRef = useRef([]);
 
   // Custom English sentence practice states
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -893,26 +1005,59 @@ export default function TranslationPractice() {
     let effectiveSubFocus = null;
 
     if (isMixed) {
-      // Systematically rotate through all 10 syllabus topics without repeating recently seen ones
-      const unvisitedTopics = SYLLABUS_TOPICS.filter(
-        t => !recentMixedTopicIdsRef.current.includes(t.id)
-      );
-      const candidatePool = unvisitedTopics.length > 0 ? unvisitedTopics : SYLLABUS_TOPICS;
-      effectiveTopicObj = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+      let activeDeck = { ...deckRemaining };
+      let eligible = SYLLABUS_TOPICS.filter(t => (activeDeck[t.id] || 0) > 0);
 
-      recentMixedTopicIdsRef.current = [
-        ...recentMixedTopicIdsRef.current.filter(id => id !== effectiveTopicObj.id),
-        effectiveTopicObj.id
-      ];
-      if (recentMixedTopicIdsRef.current.length >= SYLLABUS_TOPICS.length) {
-        recentMixedTopicIdsRef.current = [effectiveTopicObj.id];
+      // Auto-refill deck from topicWeights if exhausted
+      if (eligible.length === 0) {
+        activeDeck = { ...topicWeights };
+        eligible = SYLLABUS_TOPICS.filter(t => (activeDeck[t.id] || 0) > 0);
+        if (eligible.length === 0) {
+          eligible = SYLLABUS_TOPICS;
+        }
       }
+
+      // Weighted random pick from remaining quota
+      let totalWeight = 0;
+      eligible.forEach(t => {
+        totalWeight += Math.max(1, activeDeck[t.id] || 1);
+      });
+
+      let rand = Math.random() * totalWeight;
+      effectiveTopicObj = eligible[0];
+      for (const t of eligible) {
+        const w = Math.max(1, activeDeck[t.id] || 1);
+        if (rand < w) {
+          effectiveTopicObj = t;
+          break;
+        }
+        rand -= w;
+      }
+
+      // Decrement counter for selected topic in deck
+      const updatedDeck = {
+        ...activeDeck,
+        [effectiveTopicObj.id]: Math.max(0, (activeDeck[effectiveTopicObj.id] || 1) - 1)
+      };
+      setDeckRemaining(updatedDeck);
+      localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(updatedDeck));
 
       const subFocusList = TOPIC_SUB_FOCUSES[effectiveTopicObj.id] || [];
       effectiveSubFocus = subFocusList.length > 0
         ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
         : null;
     } else {
+      // If a specific topic is practiced directly, also decrement its deck quota if available
+      setDeckRemaining(prev => {
+        const cur = prev[topicId] || 0;
+        if (cur > 0) {
+          const next = { ...prev, [topicId]: cur - 1 };
+          localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(next));
+          return next;
+        }
+        return prev;
+      });
+
       const subFocusList = TOPIC_SUB_FOCUSES[topicId] || [];
       effectiveSubFocus = subFocusList.length > 0
         ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
@@ -947,14 +1092,16 @@ export default function TranslationPractice() {
         }
       }
 
-      const unvisited = filtered.filter(ex => !recentSentencesRef.current.includes(ex.english));
+      const unvisited = filtered.filter(ex => !recentHistory.includes(ex.english));
       const pool = unvisited.length > 0 ? unvisited : filtered;
       const selected = pool[Math.floor(Math.random() * pool.length)];
       if (selected) {
-        recentSentencesRef.current = [
+        const nextHist = [
           selected.english,
-          ...recentSentencesRef.current.filter(s => s !== selected.english)
+          ...recentHistory.filter(s => s !== selected.english)
         ].slice(0, 10);
+        setRecentHistory(nextHist);
+        localStorage.setItem('b1_translation_history', JSON.stringify(nextHist));
 
         if (isMixedMode) {
           const topicObj = SYLLABUS_TOPICS.find(t => t.id === selected.topic);
@@ -985,9 +1132,11 @@ export default function TranslationPractice() {
             : 'Must be a longer, more elaborate multi-clause sentence between 17 and 26 words long.'
         }`;
 
-    const recentExList = recentSentencesRef.current;
-    const recentAvoidBlock = recentExList.length > 0
-      ? `\nDO NOT repeat, mirror, or paraphrase any of these recently generated exercises. Pick an entirely different situation, different vocabulary, and different verbs:\n${recentExList.slice(0, 6).map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
+    const recentHistoryList = recentHistory.slice(0, 10);
+    const recentAvoidBlock = recentHistoryList.length > 0
+      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 QUESTIONS):
+Do NOT repeat, mirror, or paraphrase any of these 10 recently generated exercises. Pick an entirely different situation, different vocabulary, and different verbs:
+${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
       : '';
 
     const systemInstruction = `You are an expert German teacher creating varied, dynamic B1 Goethe/Telc certification translation exercises.
@@ -1064,10 +1213,12 @@ Ensure the sentence is creative, natural, and completely different from standard
       if (isMixed && (!parsed.topicName || !parsed.topicName.includes('•'))) {
         parsed.topicName = displayTopicName;
       }
-      recentSentencesRef.current = [
+      const nextHist = [
         parsed.english,
-        ...recentSentencesRef.current.filter(s => s !== parsed.english)
+        ...recentHistory.filter(s => s !== parsed.english)
       ].slice(0, 10);
+      setRecentHistory(nextHist);
+      localStorage.setItem('b1_translation_history', JSON.stringify(nextHist));
       setCurrentExercise(parsed);
     } catch (err) {
       console.error("Failed to generate exercise with Gemini:", err);
@@ -1444,6 +1595,33 @@ Output raw JSON only.`;
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               type="button"
+              onClick={() => setShowDeckModal(prev => !prev)}
+              style={{
+                padding: '5px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: '600',
+                background: showDeckModal 
+                  ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))' 
+                  : 'rgba(139, 92, 246, 0.12)',
+                border: showDeckModal ? '1px solid #c084fc' : '1px solid rgba(139, 92, 246, 0.4)',
+                color: '#c084fc',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'all 0.2s ease',
+                boxShadow: showDeckModal ? '0 0 10px rgba(139, 92, 246, 0.25)' : 'none'
+              }}
+              title="Themen-Gewichtung & Fragen-Deck anpassen"
+            >
+              <span>⚖️</span>
+              <span>Deck: <strong>{deckRemainingTotal}/{deckWeightsTotal}</strong> übrig</span>
+              <span style={{ fontSize: '10px' }}>{showDeckModal ? '▲ Schließen' : '⚙️ Gewichte'}</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setShowCustomModal(prev => !prev)}
               style={{
                 background: showCustomModal 
@@ -1489,6 +1667,168 @@ Output raw JSON only.`;
             </button>
           </div>
         </div>
+
+        {/* Deck & Weights Customization Card */}
+        {showDeckModal && (
+          <div className="glass-card animate-fade-in" style={{
+            width: '100%',
+            padding: '18px 20px',
+            background: 'rgba(20, 18, 35, 0.95)',
+            border: '1px solid rgba(139, 92, 246, 0.45)',
+            borderRadius: '14px',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>⚖️ B1 Übersetzungs-Deck & Themen-Gewichtung</span>
+                </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>
+                  Definiere, wie viele Fragen pro Thema in deinem Deck sind (z.B. 10 Relativsätze in 50 Fragen). Im Mixed-Modus wird jedes Thema nach Quota abgearbeitet.
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleRefillDeck()}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(139, 92, 246, 0.2)',
+                    border: '1px solid rgba(139, 92, 246, 0.4)',
+                    color: '#c084fc',
+                    fontSize: '11.5px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                  title="Füllt alle Themen-Zähler wieder auf die eingestellten Gewichte auf"
+                >
+                  🔄 Deck auffüllen ({deckRemainingTotal}/{deckWeightsTotal})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeckModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    padding: '0 4px'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Presets */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Presets:</span>
+              {[
+                { id: 'equal_50', label: 'Ausgeglichen (50 Fragen - 5 je Thema)' },
+                { id: 'equal_30', label: 'Kompakt (30 Fragen - 3 je Thema)' },
+                { id: 'equal_100', label: 'Groß (100 Fragen - 10 je Thema)' },
+                { id: 'clauses_focus', label: 'Relativ- & Nebensätze Fokus' },
+                { id: 'verbs_tenses_focus', label: 'Zeiten & Verben Fokus' }
+              ].map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleApplyTopicPreset(p.id)}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '12px',
+                    padding: '3px 10px',
+                    fontSize: '11px',
+                    color: '#e2e8f0',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Topic Quota Adjusters */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', maxHeight: '340px', overflowY: 'auto' }}>
+              {SYLLABUS_TOPICS.map(topic => {
+                const w = topicWeights[topic.id] ?? 5;
+                const rem = deckRemaining[topic.id] ?? w;
+                return (
+                  <div key={topic.id} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: rem === 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(0, 0, 0, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.06)'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '12px', fontWeight: '700', color: rem === 0 ? 'var(--text-muted)' : '#fff' }}>
+                        {topic.label}
+                      </div>
+                      <div style={{ fontSize: '10.5px', color: rem === 0 ? '#ef4444' : 'var(--text-secondary)' }}>
+                        {rem}/{w} Fragen im Deck
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateTopicWeight(topic.id, -1)}
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: 'rgba(255,255,255,0.06)',
+                          color: '#fff',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0
+                        }}
+                      >
+                        -
+                      </button>
+                      <span style={{ fontSize: '12px', fontWeight: '700', minWidth: '20px', textAlign: 'center', color: '#fff' }}>
+                        {w}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateTopicWeight(topic.id, 1)}
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: 'rgba(255,255,255,0.06)',
+                          color: '#fff',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          padding: 0
+                        }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Custom English Sentence Input Card */}
         {showCustomModal && (
@@ -1655,6 +1995,11 @@ Output raw JSON only.`;
         }}>
           {TRANSLATION_TOPICS.map(topic => {
             const isSelected = selectedTopic === topic.id;
+            const isMixed = topic.id === 'mixed';
+            const remCount = isMixed
+              ? deckRemainingTotal
+              : (deckRemaining[topic.id] ?? (topicWeights[topic.id] || 5));
+
             return (
               <button
                 key={topic.id}
@@ -1674,14 +2019,28 @@ Output raw JSON only.`;
                   background: isSelected 
                     ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))' 
                     : 'rgba(255, 255, 255, 0.03)',
-                  color: isSelected ? '#fff' : 'var(--text-secondary)',
+                  color: isSelected ? '#fff' : (remCount === 0 && !isMixed ? 'var(--text-muted)' : 'var(--text-secondary)'),
                   cursor: isGenerating ? 'not-allowed' : 'pointer',
                   transition: 'all 0.2s ease',
-                  boxShadow: isSelected ? '0 2px 8px rgba(139, 92, 246, 0.2)' : 'none'
+                  boxShadow: isSelected ? '0 2px 8px rgba(139, 92, 246, 0.2)' : 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
                 title={topic.desc}
               >
-                {topic.label}
+                <span>{topic.label}</span>
+                <span style={{
+                  fontSize: '10px',
+                  padding: '1px 5px',
+                  borderRadius: '8px',
+                  background: remCount === 0 && !isMixed 
+                    ? 'rgba(239, 68, 68, 0.2)' 
+                    : (isSelected ? 'rgba(255,255,255,0.2)' : 'rgba(255, 255, 255, 0.06)'),
+                  color: remCount === 0 && !isMixed ? '#ef4444' : 'inherit'
+                }}>
+                  {remCount}
+                </span>
               </button>
             );
           })}
