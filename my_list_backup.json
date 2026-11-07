@@ -497,19 +497,6 @@
     "isCustom": false
   },
   {
-    "word": "das Abgas, -e",
-    "meaning": "exhaust, waste gas",
-    "category": "nouns",
-    "conjugation": "",
-    "examples": [
-      {
-        "en": "Exhaust gases from industry and households pollute the air.",
-        "de": "Abgase aus Industrie und Haushalten verschmutzen die Luft."
-      }
-    ],
-    "isCustom": false
-  },
-  {
     "word": "halten",
     "meaning": "to keep",
     "category": "verbs",
@@ -1227,6 +1214,166 @@
       {
         "en": "I am looking for a cheap apartment.",
         "de": "Ich suche eine günstige Ferienwohnung."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "jemals",
+    "meaning": "ever",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Hast du jemals von dem Problem gehört? Nein, nie.",
+        "en": "Have you ever heard of the problem? No never."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "gewöhnlich",
+    "meaning": "usual, ordinary, common",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Um die Zeit ist mein Onkel gewöhnlich zu Hause.",
+        "en": "By the time my uncle is usually at home."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "eventuell",
+    "meaning": "possibly, perhaps",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "I may come a little later.",
+        "de": "Ich komme eventuell etwas später."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "der Beleg, -e",
+    "meaning": "receipt, documentary evidence",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Do you need a receipt?",
+        "de": "Brauchen Sie einen Beleg?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "dorthin",
+    "meaning": "there",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Deine Tasche kannst du dorthin stellen.",
+        "en": "You can put your bag there."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "das Abgas, -e",
+    "meaning": "exhaust, waste gas",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "en": "Exhaust gases from industry and households pollute the air.",
+        "de": "Abgase aus Industrie und Haushalten verschmutzen die Luft."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "entlang",
+    "meaning": "along",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Gehen Sie diese Straße entlang. Dann kommen Sie direkt zum Bahnhof.",
+        "en": "Go this street. Then you come directly to the station."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "teilweise",
+    "meaning": "partially",
+    "category": "adjectives",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "War der Test schwierig? Teilweise.",
+        "en": "Was the test difficult? Partially."
+      },
+      {
+        "de": "Kannst du mir den Satz erklären? Ich verstehe ihn nur teilweise.",
+        "en": "Can you explain the sentence to me? I only partially understand him."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "beobachten",
+    "meaning": "to observe",
+    "category": "verbs",
+    "conjugation": "beobachten, beobachtet, beobachtete, hat beobachtet",
+    "examples": [
+      {
+        "de": "Wer hat den Unfall beobachtet?",
+        "en": "Who watched the accident?"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "sich beschweren (über)",
+    "meaning": "to complain (about)",
+    "category": "reflexive",
+    "conjugation": "sich beschweren, beschwert sich, beschwerte sich, hat sich beschwert",
+    "examples": [
+      {
+        "de": "Der Gast hat sich über das kalte Essen beschwert.",
+        "en": "Der Gast hat sich über das kalte Essen beschwert."
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "die Tat, -en",
+    "meaning": "act, deed, action",
+    "category": "nouns",
+    "conjugation": "",
+    "examples": [
+      {
+        "de": "Danke für die Hilfe. Das war wirklich eine gute Tat!",
+        "en": "Thanks for your help. That was really a good deed!"
+      }
+    ],
+    "isCustom": false
+  },
+  {
+    "word": "beraten",
+    "meaning": "to advise",
+    "category": "verbs",
+    "conjugation": "beraten, berät, beriet, hat beraten",
+    "examples": [
+      {
+        "de": "Sie sollten sich von einem Fachmann beraten lassen.",
+        "en": "You should seek advice from a specialist."
       }
     ],
     "isCustom": false

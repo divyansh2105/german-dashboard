@@ -191,6 +191,53 @@ export default function AnkiiSpeaking({
     return 0;
   });
 
+  const [waitEnglishSec, setWaitEnglishSec] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_anki_review_wait_english');
+      if (saved !== null) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 0.5) return val;
+      }
+    } catch (e) {}
+    return 2.0;
+  });
+
+  const [waitNextSec, setWaitNextSec] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_anki_review_wait_next');
+      if (saved !== null) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val >= 1.0) return val;
+      }
+    } catch (e) {}
+    return 5.0;
+  });
+
+  const waitEnglishSecRef = useRef(2.0);
+  const waitNextSecRef = useRef(5.0);
+
+  useEffect(() => {
+    waitEnglishSecRef.current = waitEnglishSec;
+  }, [waitEnglishSec]);
+
+  useEffect(() => {
+    waitNextSecRef.current = waitNextSec;
+  }, [waitNextSec]);
+
+  const [showTimerSettings, setShowTimerSettings] = useState(false);
+
+  const handleUpdateWaitEnglish = (val) => {
+    const clamped = Math.max(0.5, Math.min(20, Math.round(val * 10) / 10));
+    setWaitEnglishSec(clamped);
+    localStorage.setItem('b1_anki_review_wait_english', String(clamped));
+  };
+
+  const handleUpdateWaitNext = (val) => {
+    const clamped = Math.max(1, Math.min(30, Math.round(val * 10) / 10));
+    setWaitNextSec(clamped);
+    localStorage.setItem('b1_anki_review_wait_next', String(clamped));
+  };
+
   const reviewTimerRef = useRef(null);
   const reviewCountdownIntervalRef = useRef(null);
 
@@ -1091,17 +1138,17 @@ export default function AnkiiSpeaking({
       if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
       if (reviewIndexRef.current !== idx) return;
 
-      // 1. After German TTS: 2-second pause before English meaning
+      // 1. After German TTS: pause before English meaning
+      const durationEn = (waitEnglishSecRef.current || 2.0) * 1000;
       setReviewPhase('waiting_en');
-      setReviewCountdown(2.0);
+      setReviewCountdown(waitEnglishSecRef.current || 2.0);
 
       const waitStart = Date.now();
-      const waitDuration = 2000;
       reviewCountdownIntervalRef.current = setInterval(() => {
         const elapsed = Date.now() - waitStart;
-        const rem = Math.max(0, (waitDuration - elapsed) / 1000);
+        const rem = Math.max(0, (durationEn - elapsed) / 1000);
         setReviewCountdown(Number(rem.toFixed(1)));
-        if (elapsed >= waitDuration) {
+        if (elapsed >= durationEn) {
           clearInterval(reviewCountdownIntervalRef.current);
         }
       }, 100);
@@ -1118,17 +1165,17 @@ export default function AnkiiSpeaking({
           if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
           if (reviewIndexRef.current !== idx) return;
 
-          // 3. 5-second gap before next word
+          // 3. Gap before next word
+          const durationNext = (waitNextSecRef.current || 5.0) * 1000;
           setReviewPhase('gap');
-          setReviewCountdown(5.0);
+          setReviewCountdown(waitNextSecRef.current || 5.0);
 
           const gapStart = Date.now();
-          const gapDuration = 5000;
           reviewCountdownIntervalRef.current = setInterval(() => {
             const elapsed = Date.now() - gapStart;
-            const rem = Math.max(0, (gapDuration - elapsed) / 1000);
+            const rem = Math.max(0, (durationNext - elapsed) / 1000);
             setReviewCountdown(Number(rem.toFixed(1)));
-            if (elapsed >= gapDuration) {
+            if (elapsed >= durationNext) {
               clearInterval(reviewCountdownIntervalRef.current);
             }
           }, 100);
@@ -1140,9 +1187,9 @@ export default function AnkiiSpeaking({
 
             // Advance to next word
             playReviewCard(idx + 1);
-          }, 5000);
+          }, durationNext);
         });
-      }, 2000);
+      }, durationEn);
     });
   }, [clearReviewTimers, speakGerman, speakEnglish]);
 
@@ -1869,7 +1916,30 @@ export default function AnkiiSpeaking({
             <span>✕</span> Exit Review
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Timer Settings Button */}
+            <button
+              type="button"
+              onClick={() => setShowTimerSettings(!showTimerSettings)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                background: showTimerSettings ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                border: showTimerSettings ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid var(--border-color)',
+                color: showTimerSettings ? '#93c5fd' : 'var(--text-secondary)',
+                fontSize: '11.5px',
+                fontWeight: '700',
+                cursor: 'pointer'
+              }}
+              title="Customize wait times for English meaning and next word"
+            >
+              <span>⏱️</span>
+              <span>Timers: {waitEnglishSec}s / {waitNextSec}s</span>
+            </button>
+
             {SpeechRecognition && (
               <button
                 type="button"
@@ -1916,6 +1986,155 @@ export default function AnkiiSpeaking({
             </div>
           </div>
         </div>
+
+        {/* Expandable Timer Settings Panel */}
+        {showTimerSettings && (
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid rgba(59, 130, 246, 0.35)',
+            borderRadius: '14px',
+            padding: '16px',
+            marginBottom: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+            animation: 'fadeIn 0.2s ease'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>⏱️</span> Customize Review Timers
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTimerSettings(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '14px', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+              {/* 1. Wait before English */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                  Pause before English meaning:
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateWaitEnglish(waitEnglishSec - 0.5)}
+                    className="nav-button"
+                    style={{ padding: '4px 10px', fontSize: '14px', fontWeight: '800' }}
+                  >
+                    -
+                  </button>
+                  <div style={{
+                    minWidth: '55px',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    fontWeight: '800',
+                    color: '#f59e0b',
+                    background: 'rgba(0,0,0,0.3)',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    {waitEnglishSec}s
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateWaitEnglish(waitEnglishSec + 0.5)}
+                    className="nav-button"
+                    style={{ padding: '4px 10px', fontSize: '14px', fontWeight: '800' }}
+                  >
+                    +
+                  </button>
+                  <div style={{ display: 'flex', gap: '4px', marginLeft: '6px' }}>
+                    {[1, 2, 3, 5].map(sec => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => handleUpdateWaitEnglish(sec)}
+                        style={{
+                          padding: '3px 6px',
+                          borderRadius: '5px',
+                          border: '1px solid',
+                          borderColor: waitEnglishSec === sec ? '#f59e0b' : 'rgba(255,255,255,0.1)',
+                          background: waitEnglishSec === sec ? 'rgba(245, 158, 11, 0.2)' : 'transparent',
+                          color: waitEnglishSec === sec ? '#f59e0b' : 'var(--text-muted)',
+                          fontSize: '10.5px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {sec}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Wait before Next Word */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', fontWeight: '600' }}>
+                  Gap before next word:
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateWaitNext(waitNextSec - 1.0)}
+                    className="nav-button"
+                    style={{ padding: '4px 10px', fontSize: '14px', fontWeight: '800' }}
+                  >
+                    -
+                  </button>
+                  <div style={{
+                    minWidth: '55px',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    fontWeight: '800',
+                    color: '#3b82f6',
+                    background: 'rgba(0,0,0,0.3)',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)'
+                  }}>
+                    {waitNextSec}s
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateWaitNext(waitNextSec + 1.0)}
+                    className="nav-button"
+                    style={{ padding: '4px 10px', fontSize: '14px', fontWeight: '800' }}
+                  >
+                    +
+                  </button>
+                  <div style={{ display: 'flex', gap: '4px', marginLeft: '6px' }}>
+                    {[2, 3, 5, 8].map(sec => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => handleUpdateWaitNext(sec)}
+                        style={{
+                          padding: '3px 6px',
+                          borderRadius: '5px',
+                          border: '1px solid',
+                          borderColor: waitNextSec === sec ? '#3b82f6' : 'rgba(255,255,255,0.1)',
+                          background: waitNextSec === sec ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                          color: waitNextSec === sec ? '#93c5fd' : 'var(--text-muted)',
+                          fontSize: '10.5px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {sec}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Restore Toast */}
         {reviewToast && (
@@ -2014,26 +2233,49 @@ export default function AnkiiSpeaking({
               </div>
             </div>
 
-            {/* German Word Display */}
+            {/* German Word Display with clickable audio and quick restore buttons */}
             <div style={{ textAlign: 'center', padding: '16px 0 8px 0' }}>
               <div style={{
                 fontSize: '32px',
                 fontWeight: '800',
                 lineHeight: 1.3,
                 color: '#fff',
-                marginBottom: '8px'
+                marginBottom: '10px'
               }}>
                 {currentReviewCard.word}
               </div>
-              <button
-                type="button"
-                onClick={() => speakGerman(getAudioGermanWord(currentReviewCard.word))}
-                className="sound-btn"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.06)' }}
-                title="Aussprache anhören"
-              >
-                <span>🔊</span> Hören
-              </button>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => speakGerman(getAudioGermanWord(currentReviewCard.word))}
+                  className="sound-btn"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '5px 12px', borderRadius: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.06)' }}
+                  title="Aussprache anhören"
+                >
+                  <span>🔊</span> Hören
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReviewRestoreCurrent}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '5px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    background: 'rgba(16, 185, 129, 0.2)',
+                    border: '1px solid rgba(16, 185, 129, 0.55)',
+                    color: '#10b981',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Restore this word back to Ankii Speaking"
+                >
+                  <span>↩️</span> Restore Word
+                </button>
+              </div>
             </div>
 
             {/* English Meaning Display */}
@@ -2085,9 +2327,9 @@ export default function AnkiiSpeaking({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
                 <span style={{ fontWeight: '700', color: '#fff' }}>
                   {reviewPhase === 'speaking_de' && '🔊 Speaking German word...'}
-                  {reviewPhase === 'waiting_en' && `⏳ 2s Pause: Recall English (${reviewCountdown}s)`}
+                  {reviewPhase === 'waiting_en' && `⏳ English Pause (${reviewCountdown}s / ${waitEnglishSec}s)`}
                   {reviewPhase === 'speaking_en' && '🇬🇧 Speaking English meaning...'}
-                  {reviewPhase === 'gap' && `⏳ 5s Gap before next word (${reviewCountdown}s)`}
+                  {reviewPhase === 'gap' && `⏳ Next Word Gap (${reviewCountdown}s / ${waitNextSec}s)`}
                   {reviewPhase === 'paused' && '⏸️ Autoplay is Paused'}
                 </span>
                 {reviewCountdown > 0 && (
@@ -2109,14 +2351,14 @@ export default function AnkiiSpeaking({
                   height: '100%',
                   background: reviewPhase === 'waiting_en' ? '#f59e0b' : '#3b82f6',
                   width: reviewPhase === 'waiting_en'
-                    ? `${((2.0 - reviewCountdown) / 2.0) * 100}%`
-                    : (reviewPhase === 'gap' ? `${((5.0 - reviewCountdown) / 5.0) * 100}%` : (reviewPhase === 'paused' ? '0%' : '100%')),
+                    ? `${(((waitEnglishSec || 2.0) - reviewCountdown) / (waitEnglishSec || 2.0)) * 100}%`
+                    : (reviewPhase === 'gap' ? `${(((waitNextSec || 5.0) - reviewCountdown) / (waitNextSec || 5.0)) * 100}%` : (reviewPhase === 'paused' ? '0%' : '100%')),
                   transition: 'width 0.1s linear'
                 }} />
               </div>
             </div>
 
-            {/* Big Restore Button (supports Voice "Restore") */}
+            {/* Big Prominent Restore Button */}
             <button
               type="button"
               onClick={handleReviewRestoreCurrent}
@@ -2124,9 +2366,9 @@ export default function AnkiiSpeaking({
                 width: '100%',
                 padding: '14px',
                 borderRadius: '12px',
-                background: 'rgba(16, 185, 129, 0.18)',
-                border: '2px solid rgba(16, 185, 129, 0.6)',
-                color: '#10b981',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.35))',
+                border: '2px solid #10b981',
+                color: '#fff',
                 fontSize: '15px',
                 fontWeight: '800',
                 cursor: 'pointer',
@@ -2134,28 +2376,28 @@ export default function AnkiiSpeaking({
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: '4px',
-                boxShadow: '0 4px 18px rgba(16, 185, 129, 0.2)',
+                boxShadow: '0 4px 18px rgba(16, 185, 129, 0.25)',
                 transition: 'all 0.15s ease'
               }}
               title="Click or say 'Restore' to return this word to Ankii Speaking"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span>↩️</span>
-                <span>Restore to Deck</span>
+                <span style={{ fontSize: '17px' }}>↩️</span>
+                <span>RESTORE WORD TO DECK</span>
               </div>
-              <span style={{ fontSize: '11px', fontWeight: '500', color: 'rgba(16, 185, 129, 0.85)' }}>
+              <span style={{ fontSize: '11px', fontWeight: '500', color: 'rgba(255, 255, 255, 0.85)' }}>
                 Removes from Deleted List & returns to Ankii Speaking (or say <b>"Restore"</b>)
               </span>
             </button>
 
-            {/* Controls Bar: Prev, Pause/Resume, Next, Repeat */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '4px' }}>
+            {/* Controls Bar: Prev, Pause/Resume, Restore, Next, Repeat */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px', marginTop: '4px' }}>
               <button
                 type="button"
                 onClick={handleReviewPrev}
                 disabled={reviewIndex === 0}
                 className="nav-button"
-                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex === 0 ? 0.4 : 1 }}
+                style={{ padding: '10px 4px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex === 0 ? 0.4 : 1 }}
                 title="Vorheriges Wort (Pfeiltaste links)"
               >
                 ⏮️ Prev
@@ -2166,7 +2408,7 @@ export default function AnkiiSpeaking({
                 onClick={() => handleToggleReviewPause()}
                 className="nav-button"
                 style={{
-                  padding: '10px 8px',
+                  padding: '10px 4px',
                   fontSize: '12px',
                   justifyContent: 'center',
                   background: isReviewPaused ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
@@ -2180,10 +2422,32 @@ export default function AnkiiSpeaking({
 
               <button
                 type="button"
+                onClick={handleReviewRestoreCurrent}
+                style={{
+                  padding: '10px 4px',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  justifyContent: 'center',
+                  borderRadius: '10px',
+                  background: 'rgba(16, 185, 129, 0.22)',
+                  border: '1px solid rgba(16, 185, 129, 0.65)',
+                  color: '#10b981',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '3px'
+                }}
+                title="Restore this word back to deck immediately"
+              >
+                ↩️ Restore
+              </button>
+
+              <button
+                type="button"
                 onClick={handleReviewNext}
                 disabled={reviewIndex >= reviewList.length - 1}
                 className="nav-button"
-                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex >= reviewList.length - 1 ? 0.4 : 1 }}
+                style={{ padding: '10px 4px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex >= reviewList.length - 1 ? 0.4 : 1 }}
                 title="Nächstes Wort (Pfeiltaste rechts)"
               >
                 ⏭️ Skip
@@ -2193,7 +2457,7 @@ export default function AnkiiSpeaking({
                 type="button"
                 onClick={handleReviewRepeat}
                 className="nav-button"
-                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center' }}
+                style={{ padding: '10px 4px', fontSize: '12px', justifyContent: 'center' }}
                 title="Nochmal abspielen (R)"
               >
                 🔁 Repeat
