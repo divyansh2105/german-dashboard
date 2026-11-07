@@ -167,6 +167,46 @@ export default function AnkiiSpeaking({
   // Modal state for viewing/restoring deleted words
   const [showDeletedModal, setShowDeletedModal] = useState(false);
 
+  // Review List (Deleted Words in Order) state & refs
+  const [isReviewActive, setIsReviewActive] = useState(false);
+  const isReviewActiveRef = useRef(false);
+  const [reviewList, setReviewList] = useState([]);
+  const reviewListRef = useRef([]);
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const reviewIndexRef = useRef(0);
+  const [isReviewPaused, setIsReviewPaused] = useState(false);
+  const isReviewPausedRef = useRef(false);
+  const [reviewPhase, setReviewPhase] = useState('idle'); // 'idle' | 'speaking_de' | 'waiting_en' | 'speaking_en' | 'gap' | 'paused' | 'finished'
+  const reviewPhaseRef = useRef('idle');
+  const [reviewCountdown, setReviewCountdown] = useState(0);
+  const [reviewToast, setReviewToast] = useState(null);
+
+  const reviewTimerRef = useRef(null);
+  const reviewCountdownIntervalRef = useRef(null);
+
+  useEffect(() => {
+    isReviewActiveRef.current = isReviewActive;
+  }, [isReviewActive]);
+
+  useEffect(() => {
+    isReviewPausedRef.current = isReviewPaused;
+  }, [isReviewPaused]);
+
+  useEffect(() => {
+    reviewPhaseRef.current = reviewPhase;
+  }, [reviewPhase]);
+
+  const clearReviewTimers = useCallback(() => {
+    if (reviewTimerRef.current) {
+      clearTimeout(reviewTimerRef.current);
+      reviewTimerRef.current = null;
+    }
+    if (reviewCountdownIntervalRef.current) {
+      clearInterval(reviewCountdownIntervalRef.current);
+      reviewCountdownIntervalRef.current = null;
+    }
+  }, []);
+
   // 10-Second Undo Timer Toast State: { word: string, card: object, secondsLeft: number }
   const [undoToast, setUndoToast] = useState(null);
   const undoIntervalRef = useRef(null);
@@ -235,6 +275,7 @@ export default function AnkiiSpeaking({
         window.speechSynthesis.cancel();
       }
       clearAdvanceTimers();
+      clearReviewTimers();
       if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
@@ -298,6 +339,49 @@ export default function AnkiiSpeaking({
       return isPriority && !isDeleted;
     });
   }, [vocabData, selectedCategory, priorityFilters, deletedWordsSet]);
+
+  // Lookup map for fast retrieval of full word cards (meaning, category, examples) from vocabData
+  const allVocabMap = useMemo(() => {
+    const map = new Map();
+    if (!vocabData) return map;
+    Object.keys(vocabData).forEach(cat => {
+      const items = vocabData[cat] || [];
+      items.forEach(item => {
+        if (item && item.word) {
+          const key = item.word.toLowerCase().trim();
+          map.set(key, { ...item, category: cat });
+          const cleanKey = item.word.split(',')[0].trim().toLowerCase();
+          if (!map.has(cleanKey)) {
+            map.set(cleanKey, { ...item, category: cat });
+          }
+        }
+      });
+    });
+    return map;
+  }, [vocabData]);
+
+  const getCardForWord = useCallback((wordEntry) => {
+    if (!wordEntry) return null;
+    const rawWord = typeof wordEntry === 'string' ? wordEntry : (wordEntry.word || '');
+    const cleanRaw = rawWord.trim().toLowerCase();
+
+    let matched = allVocabMap.get(cleanRaw);
+    if (!matched) {
+      matched = allVocabMap.get(cleanRaw.split(',')[0].trim());
+    }
+    if (!matched) {
+      const stripped = cleanRaw.replace(/^(der|die|das)\s+/i, '').trim();
+      matched = allVocabMap.get(stripped);
+    }
+    if (matched) return matched;
+
+    return {
+      word: rawWord,
+      meaning: (typeof wordEntry === 'object' && wordEntry.meaning) ? wordEntry.meaning : '',
+      category: 'vocabulary',
+      examples: []
+    };
+  }, [allVocabMap]);
 
   // Priority count breakdown for the setup screen, respecting selectedCategory and excluding deleted words
   const priorityCounts = useMemo(() => {
@@ -915,6 +999,19 @@ export default function AnkiiSpeaking({
     }, 10000);
   }, [currentCard, currentIndex, sessionCards, speakGerman, onDeleteWord]);
 
+  // Centralized restore word handler (used by Undo, Modal, and Review List)
+  const handleRestoreWord = useCallback((wordToRestore) => {
+    if (!wordToRestore) return;
+    if (onRestoreWord) {
+      onRestoreWord(wordToRestore);
+    }
+    setLocalDeletedWords(prev => {
+      const updated = prev.filter(w => (typeof w === 'string' ? w : w.word).toLowerCase() !== wordToRestore.toLowerCase());
+      localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
+      return updated;
+    });
+  }, [onRestoreWord]);
+
   // Undo Delete Handler (Click within 10 seconds)
   const handleUndoDelete = useCallback(() => {
     if (!undoToast) return;
@@ -923,19 +1020,11 @@ export default function AnkiiSpeaking({
     const restoredCard = undoToast.card;
 
     // 1. Remove from deletedWords list
-    if (onRestoreWord) {
-      onRestoreWord(restoredWord);
-    } else {
-      setLocalDeletedWords(prev => {
-        const updated = prev.filter(w => w.toLowerCase() !== restoredWord.toLowerCase());
-        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
-        return updated;
-      });
-    }
+    handleRestoreWord(restoredWord);
 
-    // 2. Clear undo timer
-    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
+    // 2. Clear undo timers
     if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    if (undoIntervalRef.current) clearInterval(undoIntervalRef.current);
     setUndoToast(null);
     setSessionDeletedCount(prev => Math.max(0, prev - 1));
 
@@ -953,7 +1042,214 @@ export default function AnkiiSpeaking({
       const restoredDe = getAudioGermanWord(restoredCard.word);
       speakGerman(restoredDe);
     }
-  }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman, onRestoreWord]);
+  }, [undoToast, sessionActive, sessionFinished, currentIndex, speakGerman, handleRestoreWord]);
+
+  // ----------------------------------------------------
+  // REVIEW LIST ENGINE (Plays Deleted Words in Order)
+  // Flow: Speak German -> 2s Pause -> Speak English -> 5s Gap -> Next Word
+  // Supports voice control "Restore" to put word back into deck in correct categories
+  // ----------------------------------------------------
+  const playReviewCard = useCallback((idx, listOverride) => {
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    const currentList = listOverride || reviewListRef.current;
+    if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
+
+    if (!currentList || idx >= currentList.length) {
+      setReviewPhase('finished');
+      setReviewIndex(currentList ? currentList.length : 0);
+      reviewIndexRef.current = currentList ? currentList.length : 0;
+      return;
+    }
+
+    const card = currentList[idx];
+    setReviewIndex(idx);
+    reviewIndexRef.current = idx;
+    setReviewPhase('speaking_de');
+    setReviewCountdown(0);
+
+    const deWord = getAudioGermanWord(card.word);
+    speakGerman(deWord, () => {
+      if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
+      if (reviewIndexRef.current !== idx) return;
+
+      // 1. After German TTS: 2-second pause before English meaning
+      setReviewPhase('waiting_en');
+      setReviewCountdown(2.0);
+
+      const waitStart = Date.now();
+      const waitDuration = 2000;
+      reviewCountdownIntervalRef.current = setInterval(() => {
+        const elapsed = Date.now() - waitStart;
+        const rem = Math.max(0, (waitDuration - elapsed) / 1000);
+        setReviewCountdown(Number(rem.toFixed(1)));
+        if (elapsed >= waitDuration) {
+          clearInterval(reviewCountdownIntervalRef.current);
+        }
+      }, 100);
+
+      reviewTimerRef.current = setTimeout(() => {
+        clearInterval(reviewCountdownIntervalRef.current);
+        if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
+        if (reviewIndexRef.current !== idx) return;
+
+        // 2. Speak out loud English meaning
+        setReviewPhase('speaking_en');
+        const enMeaning = card.meaning || '';
+        speakEnglish(enMeaning, () => {
+          if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
+          if (reviewIndexRef.current !== idx) return;
+
+          // 3. 5-second gap before next word
+          setReviewPhase('gap');
+          setReviewCountdown(5.0);
+
+          const gapStart = Date.now();
+          const gapDuration = 5000;
+          reviewCountdownIntervalRef.current = setInterval(() => {
+            const elapsed = Date.now() - gapStart;
+            const rem = Math.max(0, (gapDuration - elapsed) / 1000);
+            setReviewCountdown(Number(rem.toFixed(1)));
+            if (elapsed >= gapDuration) {
+              clearInterval(reviewCountdownIntervalRef.current);
+            }
+          }, 100);
+
+          reviewTimerRef.current = setTimeout(() => {
+            clearInterval(reviewCountdownIntervalRef.current);
+            if (!isReviewActiveRef.current || isReviewPausedRef.current) return;
+            if (reviewIndexRef.current !== idx) return;
+
+            // Advance to next word
+            playReviewCard(idx + 1);
+          }, 5000);
+        });
+      }, 2000);
+    });
+  }, [clearReviewTimers, speakGerman, speakEnglish]);
+
+  // Restore current word in Review List
+  const handleReviewRestoreCurrent = useCallback(() => {
+    const currentList = reviewListRef.current;
+    const idx = reviewIndexRef.current;
+    if (!currentList || idx >= currentList.length) return;
+
+    const card = currentList[idx];
+    const wordStr = card.word;
+
+    // 1. Remove from deleted list (automatically returns to deck in correct category)
+    handleRestoreWord(wordStr);
+
+    // 2. Stop speech & timers
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    // 3. Show feedback toast
+    setReviewToast(`✅ Restored "${wordStr}" back to deck!`);
+    setTimeout(() => setReviewToast(null), 3000);
+
+    // 4. Remove restored word from active review list
+    const nextList = currentList.filter((_, i) => i !== idx);
+    setReviewList(nextList);
+    reviewListRef.current = nextList;
+
+    if (nextList.length === 0) {
+      setReviewPhase('finished');
+      return;
+    }
+
+    // 5. Advance to next word
+    const nextIdx = Math.min(idx, nextList.length - 1);
+    setReviewIndex(nextIdx);
+    reviewIndexRef.current = nextIdx;
+
+    reviewTimerRef.current = setTimeout(() => {
+      playReviewCard(nextIdx, nextList);
+    }, 600);
+  }, [handleRestoreWord, clearReviewTimers, playReviewCard]);
+
+  // Start Review List session
+  const handleStartReviewList = useCallback(() => {
+    if (!deletedWords || deletedWords.length === 0) return;
+
+    // In order: earliest inserted first (deletedWords[0] is earliest)
+    const cards = deletedWords.map(w => getCardForWord(w)).filter(Boolean);
+    if (cards.length === 0) return;
+
+    clearAdvanceTimers();
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+    setReviewList(cards);
+    reviewListRef.current = cards;
+    setReviewIndex(0);
+    reviewIndexRef.current = 0;
+    setIsReviewPaused(false);
+    isReviewPausedRef.current = false;
+    setIsReviewActive(true);
+    isReviewActiveRef.current = true;
+    setReviewToast(null);
+
+    if (SpeechRecognition && !isVoiceActive) {
+      setIsVoiceActive(true);
+    }
+    if (isKeepAwake) {
+      wakeLockManager.enable().catch(() => {});
+    }
+
+    setTimeout(() => {
+      playReviewCard(0, cards);
+    }, 250);
+  }, [deletedWords, getCardForWord, clearReviewTimers, isVoiceActive, isKeepAwake, playReviewCard]);
+
+  // Toggle Pause/Resume during Review List
+  const handleToggleReviewPause = useCallback((forcePause) => {
+    const nextPaused = typeof forcePause === 'boolean' ? forcePause : !isReviewPaused;
+    setIsReviewPaused(nextPaused);
+    isReviewPausedRef.current = nextPaused;
+
+    if (nextPaused) {
+      clearReviewTimers();
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      setReviewPhase('paused');
+    } else {
+      playReviewCard(reviewIndexRef.current);
+    }
+  }, [isReviewPaused, clearReviewTimers, playReviewCard]);
+
+  // Review List Navigation
+  const handleReviewNext = useCallback(() => {
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    const nextIdx = reviewIndexRef.current + 1;
+    if (nextIdx < reviewListRef.current.length) {
+      playReviewCard(nextIdx);
+    } else {
+      setReviewPhase('finished');
+    }
+  }, [clearReviewTimers, playReviewCard]);
+
+  const handleReviewPrev = useCallback(() => {
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    const prevIdx = Math.max(0, reviewIndexRef.current - 1);
+    playReviewCard(prevIdx);
+  }, [clearReviewTimers, playReviewCard]);
+
+  const handleReviewRepeat = useCallback(() => {
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    playReviewCard(reviewIndexRef.current);
+  }, [clearReviewTimers, playReviewCard]);
+
+  const handleExitReview = useCallback(() => {
+    clearReviewTimers();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setIsReviewActive(false);
+    isReviewActiveRef.current = false;
+    setReviewPhase('idle');
+  }, [clearReviewTimers]);
 
   // ----------------------------------------------------
   // Voice Command Trigger & Continuous Speech Recognition
@@ -984,6 +1280,42 @@ export default function AnkiiSpeaking({
     const text = rawText.toLowerCase().trim();
     const timeSinceCardAppeared = Date.now() - cardAppearedTimeRef.current;
     const timeSinceLastCommand = Date.now() - lastExecutedCommandTimeRef.current;
+
+    // Review List Voice Commands
+    if (isReviewActiveRef.current) {
+      if (/\b(restore|wiederherstellen)\b/i.test(text)) {
+        lastExecutedCommandTimeRef.current = Date.now();
+        triggerVoiceFeedback('Restore [↩️]');
+        handleReviewRestoreCurrent();
+        return true;
+      }
+      if (timeSinceLastCommand < 300) return false;
+      if (/\b(next|skip|weiter)\b/i.test(text)) {
+        lastExecutedCommandTimeRef.current = Date.now();
+        triggerVoiceFeedback('Next [⏭️]');
+        handleReviewNext();
+        return true;
+      }
+      if (/\b(repeat|again|wiederholen)\b/i.test(text)) {
+        lastExecutedCommandTimeRef.current = Date.now();
+        triggerVoiceFeedback('Repeat [🔁]');
+        handleReviewRepeat();
+        return true;
+      }
+      if (/\b(pause|stop|halt)\b/i.test(text)) {
+        lastExecutedCommandTimeRef.current = Date.now();
+        triggerVoiceFeedback('Pause [⏸️]');
+        handleToggleReviewPause(true);
+        return true;
+      }
+      if (/\b(play|resume|start)\b/i.test(text)) {
+        lastExecutedCommandTimeRef.current = Date.now();
+        triggerVoiceFeedback('Resume [▶️]');
+        handleToggleReviewPause(false);
+        return true;
+      }
+      return false;
+    }
 
     // 1. Delete (D press / Delete card with 10s undo) - 1.2s card appearance guard to prevent cascading
     if (/\bdelete\b/i.test(text)) {
@@ -1054,7 +1386,7 @@ export default function AnkiiSpeaking({
     }
 
     return false;
-  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, handleSpellWord, handleToggleStar, isStarred, triggerVoiceFeedback]);
+  }, [revealedState, handleMastered, handleAdvanceNext, handleForgotEnglish, handleMoreContext, handleDeleteWord, replayGerman, handleSpellWord, handleToggleStar, isStarred, triggerVoiceFeedback, handleReviewRestoreCurrent, handleReviewNext, handleReviewRepeat, handleToggleReviewPause]);
 
   // Keep a stable ref to handleVoiceCommand to avoid re-initializing recognition on state updates
   const handleVoiceCommandRef = useRef(handleVoiceCommand);
@@ -1066,7 +1398,8 @@ export default function AnkiiSpeaking({
   useEffect(() => {
     if (!SpeechRecognition) return;
 
-    if (!isVoiceActive || !sessionActive || sessionFinished) {
+    const isAnyActive = (sessionActive && !sessionFinished) || isReviewActive;
+    if (!isVoiceActive || !isAnyActive) {
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -1164,20 +1497,12 @@ export default function AnkiiSpeaking({
       }
       recognitionRef.current = null;
     };
-  }, [isVoiceActive, sessionActive, sessionFinished]);
+  }, [isVoiceActive, sessionActive, sessionFinished, isReviewActive]);
 
   // Restore a word from the Deleted Words Manager Modal
   const handleRestoreWordFromModal = useCallback((wordToRestore) => {
-    if (onRestoreWord) {
-      onRestoreWord(wordToRestore);
-    } else {
-      setLocalDeletedWords(prev => {
-        const updated = prev.filter(w => w.toLowerCase() !== wordToRestore.toLowerCase());
-        localStorage.setItem('b1_anki_speaking_deleted_words', JSON.stringify(updated));
-        return updated;
-      });
-    }
-  }, [onRestoreWord]);
+    handleRestoreWord(wordToRestore);
+  }, [handleRestoreWord]);
 
   // Restore All words from modal
   const handleRestoreAllDeleted = useCallback(() => {
@@ -1237,10 +1562,33 @@ export default function AnkiiSpeaking({
   // Desktop Keyboard Shortcuts
   // ----------------------------------------------------
   useEffect(() => {
-    if (!sessionActive || sessionFinished || showDeletedModal) return;
+    if ((!sessionActive && !isReviewActive) || (sessionActive && sessionFinished) || showDeletedModal) return;
 
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      if (isReviewActive) {
+        if (e.code === 'Space' || e.code === 'KeyP' || e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          handleToggleReviewPause();
+        } else if (e.code === 'ArrowRight' || e.code === 'KeyN' || e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          handleReviewNext();
+        } else if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          handleReviewPrev();
+        } else if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          handleReviewRepeat();
+        } else if (e.code === 'KeyD' || e.key === 'd' || e.key === 'D' || e.code === 'KeyZ' || e.code === 'Enter') {
+          e.preventDefault();
+          handleReviewRestoreCurrent();
+        } else if (e.code === 'Escape') {
+          e.preventDefault();
+          handleExitReview();
+        }
+        return;
+      }
 
       if (e.code === 'Space') {
         e.preventDefault();
@@ -1294,7 +1642,7 @@ export default function AnkiiSpeaking({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleSpellWord, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast]);
+  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleSpellWord, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast, isReviewActive, handleToggleReviewPause, handleReviewNext, handleReviewPrev, handleReviewRepeat, handleReviewRestoreCurrent, handleExitReview]);
 
   // ----------------------------------------------------
   // Full-Screen Mobile Touch Gestures & Swipe Physics
@@ -1448,6 +1796,378 @@ export default function AnkiiSpeaking({
   const englishCount = sessionResults.filter(r => r.result === 'english').length;
   const contextCount = sessionResults.filter(r => r.result === 'context').length;
   const remainingCount = Math.max(0, totalSessionWords - (currentIndex + 1));
+
+  // ----------------------------------------------------
+  // VIEW: Review List (Deleted Words in Order)
+  // ----------------------------------------------------
+  if (isReviewActive) {
+    const currentReviewCard = reviewList[reviewIndex] || null;
+    const isFinished = reviewPhase === 'finished' || !currentReviewCard;
+
+    return (
+      <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '640px', margin: '20px auto', padding: '0 16px' }}>
+        
+        {/* Top Action Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <button
+            type="button"
+            onClick={handleExitReview}
+            className="nav-button"
+            style={{ padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <span>✕</span> Exit Review
+          </button>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {SpeechRecognition && (
+              <button
+                type="button"
+                onClick={() => setIsVoiceActive(!isVoiceActive)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '10px',
+                  background: isVoiceActive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isVoiceActive ? '1px solid rgba(16, 185, 129, 0.5)' : '1px solid var(--border-color)',
+                  color: isVoiceActive ? '#10b981' : 'var(--text-secondary)',
+                  fontSize: '11.5px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+                title={isVoiceActive ? "Voice control active. Say 'Restore' to restore the word hands-free!" : "Click to enable voice control"}
+              >
+                <span>{isVoiceActive ? '🎙️ Voice: ON' : '🎙️ Voice: OFF'}</span>
+                {isVoiceActive && (
+                  <span style={{ fontSize: '10.5px', color: '#6ee7b7' }}>(Say "Restore")</span>
+                )}
+              </button>
+            )}
+
+            <div
+              onClick={handleToggleKeepAwake}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 10px',
+                borderRadius: '10px',
+                background: isKeepAwake ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                border: isKeepAwake ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid var(--border-color)',
+                fontSize: '11px',
+                color: isKeepAwake ? '#f59e0b' : 'var(--text-muted)',
+                cursor: 'pointer'
+              }}
+              title="Prevent phone screen from sleeping during review"
+            >
+              <span>{isKeepAwake ? '☀️' : '🌙'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Restore Toast */}
+        {reviewToast && (
+          <div style={{
+            padding: '10px 16px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.25)',
+            border: '1px solid rgba(16, 185, 129, 0.6)',
+            color: '#10b981',
+            fontSize: '13px',
+            fontWeight: '700',
+            textAlign: 'center',
+            marginBottom: '14px',
+            animation: 'fadeIn 0.2s ease'
+          }}>
+            {reviewToast}
+          </div>
+        )}
+
+        {/* Finished View */}
+        {isFinished ? (
+          <div className="glass-card animate-fade-in" style={{ padding: '40px 24px', textAlign: 'center' }}>
+            <div style={{ fontSize: '56px', marginBottom: '16px' }}>🎉</div>
+            <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#fff', marginBottom: '8px' }}>
+              Review List Completed!
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '420px', margin: '0 auto 24px', lineHeight: 1.5 }}>
+              You have reviewed all deleted words in this session. Any words you restored are now back in your active Ankii Speaking deck!
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={handleStartReviewList}
+                className="feedback-btn good"
+                style={{ width: 'auto', padding: '12px 24px', borderRadius: '10px', fontSize: '13px' }}
+              >
+                🔁 Review Again
+              </button>
+              <button
+                type="button"
+                onClick={handleExitReview}
+                className="nav-button"
+                style={{ padding: '12px 20px', fontSize: '13px' }}
+              >
+                ← Return to Setup
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Active Review Card */
+          <div className="glass-card animate-fade-in" style={{ padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
+            
+            {/* Header info: Progress and Category */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  textTransform: 'uppercase',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  background: 'rgba(239, 68, 68, 0.15)',
+                  color: '#f87171',
+                  border: '1px solid rgba(239, 68, 68, 0.3)'
+                }}>
+                  Deleted Word
+                </span>
+                {currentReviewCard.category && (
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>
+                    {currentReviewCard.category}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                {reviewIndex + 1} / {reviewList.length}
+              </div>
+            </div>
+
+            {/* German Word Display */}
+            <div style={{ textAlign: 'center', padding: '16px 0 8px 0' }}>
+              <div style={{
+                fontSize: '32px',
+                fontWeight: '800',
+                lineHeight: 1.3,
+                color: '#fff',
+                marginBottom: '8px'
+              }}>
+                {currentReviewCard.word}
+              </div>
+              <button
+                type="button"
+                onClick={() => speakGerman(getAudioGermanWord(currentReviewCard.word))}
+                className="sound-btn"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', borderRadius: '8px', fontSize: '12px', background: 'rgba(255,255,255,0.06)' }}
+                title="Aussprache anhören"
+              >
+                <span>🔊</span> Hören
+              </button>
+            </div>
+
+            {/* English Meaning Display */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.35)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '12px',
+              padding: '16px',
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '700', letterSpacing: '0.5px', marginBottom: '4px' }}>
+                English Meaning
+              </div>
+              <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--color-verb)' }}>
+                {currentReviewCard.meaning || '(No translation)'}
+              </div>
+            </div>
+
+            {/* Workplace/Example if available */}
+            {currentReviewCard.examples && currentReviewCard.examples.length > 0 && (
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '10px',
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid var(--border-color)',
+                fontSize: '12.5px'
+              }}>
+                <div style={{ color: '#fff', fontWeight: '600', marginBottom: '4px' }}>
+                  💬 {currentReviewCard.examples[0].de}
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '11.5px' }}>
+                  {currentReviewCard.examples[0].en}
+                </div>
+              </div>
+            )}
+
+            {/* Phase / Countdown Banner */}
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: reviewPhase === 'paused'
+                ? 'rgba(245, 158, 11, 0.1)'
+                : (reviewPhase === 'gap' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.04)'),
+              border: '1px solid var(--border-color)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
+                <span style={{ fontWeight: '700', color: '#fff' }}>
+                  {reviewPhase === 'speaking_de' && '🔊 Speaking German word...'}
+                  {reviewPhase === 'waiting_en' && `⏳ 2s Pause: Recall English (${reviewCountdown}s)`}
+                  {reviewPhase === 'speaking_en' && '🇬🇧 Speaking English meaning...'}
+                  {reviewPhase === 'gap' && `⏳ 5s Gap before next word (${reviewCountdown}s)`}
+                  {reviewPhase === 'paused' && '⏸️ Autoplay is Paused'}
+                </span>
+                {reviewCountdown > 0 && (
+                  <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: '700' }}>
+                    {reviewCountdown}s
+                  </span>
+                )}
+              </div>
+
+              {/* Animated Progress Bar */}
+              <div style={{
+                width: '100%',
+                height: '5px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                borderRadius: '3px',
+                overflow: 'hidden'
+              }}>
+                <div style={{
+                  height: '100%',
+                  background: reviewPhase === 'waiting_en' ? '#f59e0b' : '#3b82f6',
+                  width: reviewPhase === 'waiting_en'
+                    ? `${((2.0 - reviewCountdown) / 2.0) * 100}%`
+                    : (reviewPhase === 'gap' ? `${((5.0 - reviewCountdown) / 5.0) * 100}%` : (reviewPhase === 'paused' ? '0%' : '100%')),
+                  transition: 'width 0.1s linear'
+                }} />
+              </div>
+            </div>
+
+            {/* Big Restore Button (supports Voice "Restore") */}
+            <button
+              type="button"
+              onClick={handleReviewRestoreCurrent}
+              style={{
+                width: '100%',
+                padding: '14px',
+                borderRadius: '12px',
+                background: 'rgba(16, 185, 129, 0.18)',
+                border: '2px solid rgba(16, 185, 129, 0.6)',
+                color: '#10b981',
+                fontSize: '15px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '4px',
+                boxShadow: '0 4px 18px rgba(16, 185, 129, 0.2)',
+                transition: 'all 0.15s ease'
+              }}
+              title="Click or say 'Restore' to return this word to Ankii Speaking"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>↩️</span>
+                <span>Restore to Deck</span>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: '500', color: 'rgba(16, 185, 129, 0.85)' }}>
+                Removes from Deleted List & returns to Ankii Speaking (or say <b>"Restore"</b>)
+              </span>
+            </button>
+
+            {/* Controls Bar: Prev, Pause/Resume, Next, Repeat */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '4px' }}>
+              <button
+                type="button"
+                onClick={handleReviewPrev}
+                disabled={reviewIndex === 0}
+                className="nav-button"
+                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex === 0 ? 0.4 : 1 }}
+                title="Vorheriges Wort (Pfeiltaste links)"
+              >
+                ⏮️ Prev
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleReviewPause()}
+                className="nav-button"
+                style={{
+                  padding: '10px 8px',
+                  fontSize: '12px',
+                  justifyContent: 'center',
+                  background: isReviewPaused ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                  border: isReviewPaused ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid var(--border-color)',
+                  color: isReviewPaused ? '#93c5fd' : '#fff'
+                }}
+                title="Pause / Weiter (Leertaste)"
+              >
+                {isReviewPaused ? '▶️ Resume' : '⏸️ Pause'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleReviewNext}
+                disabled={reviewIndex >= reviewList.length - 1}
+                className="nav-button"
+                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center', opacity: reviewIndex >= reviewList.length - 1 ? 0.4 : 1 }}
+                title="Nächstes Wort (Pfeiltaste rechts)"
+              >
+                ⏭️ Skip
+              </button>
+
+              <button
+                type="button"
+                onClick={handleReviewRepeat}
+                className="nav-button"
+                style={{ padding: '10px 8px', fontSize: '12px', justifyContent: 'center' }}
+                title="Nochmal abspielen (R)"
+              >
+                🔁 Repeat
+              </button>
+            </div>
+
+            {/* Keyboard shortcut cues */}
+            <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+              Shortcuts: <kbd style={{ padding: '1px 5px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>Space</kbd> Pause/Play • <kbd style={{ padding: '1px 5px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>Enter</kbd> Restore • <kbd style={{ padding: '1px 5px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px' }}>Esc</kbd> Exit
+            </div>
+
+          </div>
+        )}
+
+        {/* Voice Feedback Floating HUD */}
+        {isVoiceActive && (voiceFeedbackMsg || lastHeardVoice) && (
+          <div style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '8px 18px',
+            borderRadius: '30px',
+            background: voiceFeedbackMsg ? 'rgba(16, 185, 129, 0.95)' : 'rgba(15, 23, 42, 0.85)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+            color: '#fff',
+            fontSize: '13px',
+            fontWeight: '700',
+            animation: 'fadeIn 0.2s ease',
+            pointerEvents: 'none'
+          }}>
+            <span style={{ fontSize: '15px' }}>{voiceFeedbackMsg ? '⚡' : '🎙️'}</span>
+            <span>{voiceFeedbackMsg || `Heard: "${lastHeardVoice}"`}</span>
+          </div>
+        )}
+
+      </div>
+    );
+  }
 
   // ----------------------------------------------------
   // VIEW: 1. Pre-Session Setup & Filters
@@ -1677,22 +2397,45 @@ export default function AnkiiSpeaking({
                 <span>🗑️</span>
                 <span>{deletedWords.length} word{deletedWords.length !== 1 ? 's' : ''} deleted from future sessions</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowDeletedModal(true)}
-                style={{
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.35)',
-                  color: '#fff',
-                  borderRadius: '8px',
-                  padding: '5px 12px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  cursor: 'pointer'
-                }}
-              >
-                Manage / Restore
-              </button>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleStartReviewList}
+                  disabled={deletedWords.length === 0}
+                  style={{
+                    background: deletedWords.length > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                    border: deletedWords.length > 0 ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid var(--border-color)',
+                    color: deletedWords.length > 0 ? '#10b981' : 'var(--text-muted)',
+                    borderRadius: '8px',
+                    padding: '5px 12px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: deletedWords.length > 0 ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                  title="Autoplay and review deleted words in order, with voice 'Restore' support"
+                >
+                  <span>🎧</span> Review List ({deletedWords.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedModal(true)}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                    color: '#fff',
+                    borderRadius: '8px',
+                    padding: '5px 12px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Manage / Restore
+                </button>
+              </div>
             </div>
 
             {/* Cloud Sync Status & Actions Row */}
@@ -2070,6 +2813,36 @@ export default function AnkiiSpeaking({
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: '1.4' }}>
                 These words will never appear in any future Ankii Speaking sessions. Click <b>Restore</b> on any word to add it back to your deck.
               </p>
+
+              {/* Start Review List button inside modal */}
+              {deletedWords.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeletedModal(false);
+                    handleStartReviewList();
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(59, 130, 246, 0.25))',
+                    border: '1px solid rgba(16, 185, 129, 0.5)',
+                    color: '#fff',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    marginBottom: '14px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
+                  }}
+                >
+                  <span>🎧 Start Review List ({deletedWords.length} Words in Order)</span>
+                </button>
+              )}
 
               {/* Cloud Sync Status & Actions inside Modal */}
               <div style={{
