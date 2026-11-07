@@ -180,6 +180,16 @@ export default function AnkiiSpeaking({
   const reviewPhaseRef = useRef('idle');
   const [reviewCountdown, setReviewCountdown] = useState(0);
   const [reviewToast, setReviewToast] = useState(null);
+  const [savedReviewIndex, setSavedReviewIndex] = useState(() => {
+    try {
+      const idx = localStorage.getItem('b1_anki_review_last_index');
+      if (idx !== null) {
+        const parsed = parseInt(idx, 10);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+    } catch (e) {}
+    return 0;
+  });
 
   const reviewTimerRef = useRef(null);
   const reviewCountdownIntervalRef = useRef(null);
@@ -1066,6 +1076,13 @@ export default function AnkiiSpeaking({
     const card = currentList[idx];
     setReviewIndex(idx);
     reviewIndexRef.current = idx;
+    setSavedReviewIndex(idx);
+    try {
+      localStorage.setItem('b1_anki_review_last_index', String(idx));
+      if (card && card.word) {
+        localStorage.setItem('b1_anki_review_last_word', card.word);
+      }
+    } catch (e) {}
     setReviewPhase('speaking_de');
     setReviewCountdown(0);
 
@@ -1163,19 +1180,52 @@ export default function AnkiiSpeaking({
     const nextIdx = Math.min(idx, nextList.length - 1);
     setReviewIndex(nextIdx);
     reviewIndexRef.current = nextIdx;
+    setSavedReviewIndex(nextIdx);
+    try {
+      localStorage.setItem('b1_anki_review_last_index', String(nextIdx));
+      if (nextList[nextIdx] && nextList[nextIdx].word) {
+        localStorage.setItem('b1_anki_review_last_word', nextList[nextIdx].word);
+      }
+    } catch (e) {}
 
     reviewTimerRef.current = setTimeout(() => {
       playReviewCard(nextIdx, nextList);
     }, 600);
   }, [handleRestoreWord, clearReviewTimers, playReviewCard]);
 
-  // Start Review List session
-  const handleStartReviewList = useCallback(() => {
+  // Start Review List session (resumes from last reviewed position unless override provided)
+  const handleStartReviewList = useCallback((startIndexOverride) => {
     if (!deletedWords || deletedWords.length === 0) return;
 
     // In order: earliest inserted first (deletedWords[0] is earliest)
     const cards = deletedWords.map(w => getCardForWord(w)).filter(Boolean);
     if (cards.length === 0) return;
+
+    let startingIdx = 0;
+    if (typeof startIndexOverride === 'number' && startIndexOverride >= 0 && startIndexOverride < cards.length) {
+      startingIdx = startIndexOverride;
+    } else {
+      try {
+        const savedWord = localStorage.getItem('b1_anki_review_last_word');
+        const savedIndexRaw = localStorage.getItem('b1_anki_review_last_index');
+        if (savedWord) {
+          const foundIdx = cards.findIndex(c => c.word.toLowerCase() === savedWord.toLowerCase());
+          if (foundIdx !== -1) {
+            startingIdx = foundIdx;
+          } else if (savedIndexRaw !== null) {
+            const parsed = parseInt(savedIndexRaw, 10);
+            if (!isNaN(parsed) && parsed >= 0) {
+              startingIdx = Math.min(parsed, cards.length - 1);
+            }
+          }
+        } else if (savedIndexRaw !== null) {
+          const parsed = parseInt(savedIndexRaw, 10);
+          if (!isNaN(parsed) && parsed >= 0) {
+            startingIdx = Math.min(parsed, cards.length - 1);
+          }
+        }
+      } catch (e) {}
+    }
 
     clearAdvanceTimers();
     clearReviewTimers();
@@ -1183,8 +1233,9 @@ export default function AnkiiSpeaking({
 
     setReviewList(cards);
     reviewListRef.current = cards;
-    setReviewIndex(0);
-    reviewIndexRef.current = 0;
+    setReviewIndex(startingIdx);
+    reviewIndexRef.current = startingIdx;
+    setSavedReviewIndex(startingIdx);
     setIsReviewPaused(false);
     isReviewPausedRef.current = false;
     setIsReviewActive(true);
@@ -1199,7 +1250,7 @@ export default function AnkiiSpeaking({
     }
 
     setTimeout(() => {
-      playReviewCard(0, cards);
+      playReviewCard(startingIdx, cards);
     }, 250);
   }, [deletedWords, getCardForWord, clearReviewTimers, isVoiceActive, isKeepAwake, playReviewCard]);
 
@@ -1897,11 +1948,11 @@ export default function AnkiiSpeaking({
             <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
               <button
                 type="button"
-                onClick={handleStartReviewList}
+                onClick={() => handleStartReviewList(0)}
                 className="feedback-btn good"
                 style={{ width: 'auto', padding: '12px 24px', borderRadius: '10px', fontSize: '13px' }}
               >
-                🔁 Review Again
+                🔁 Start Over from Beginning (#1)
               </button>
               <button
                 type="button"
@@ -1938,8 +1989,28 @@ export default function AnkiiSpeaking({
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
-                {reviewIndex + 1} / {reviewList.length}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
+                  Word {reviewIndex + 1} of {reviewList.length}
+                </span>
+                {reviewIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => playReviewCard(0)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-muted)',
+                      fontSize: '10.5px',
+                      padding: '2px 7px',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                    title="Jump back to the very first word (#1)"
+                  >
+                    ⏮️ Restart #1
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2400,7 +2471,7 @@ export default function AnkiiSpeaking({
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={handleStartReviewList}
+                  onClick={() => handleStartReviewList()}
                   disabled={deletedWords.length === 0}
                   style={{
                     background: deletedWords.length > 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.05)',
@@ -2415,9 +2486,9 @@ export default function AnkiiSpeaking({
                     alignItems: 'center',
                     gap: '5px'
                   }}
-                  title="Autoplay and review deleted words in order, with voice 'Restore' support"
+                  title={savedReviewIndex > 0 && savedReviewIndex < deletedWords.length ? `Resume review from word #${savedReviewIndex + 1} of ${deletedWords.length}` : `Autoplay and review deleted words in order, with voice 'Restore' support`}
                 >
-                  <span>🎧</span> Review List ({deletedWords.length})
+                  <span>🎧</span> Review List {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length ? `(Resume #${savedReviewIndex + 1})` : `(${deletedWords.length})`}
                 </button>
                 <button
                   type="button"
@@ -2816,32 +2887,53 @@ export default function AnkiiSpeaking({
 
               {/* Start Review List button inside modal */}
               {deletedWords.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDeletedModal(false);
-                    handleStartReviewList();
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(59, 130, 246, 0.25))',
-                    border: '1px solid rgba(16, 185, 129, 0.5)',
-                    color: '#fff',
-                    fontWeight: '700',
-                    fontSize: '13px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '8px',
-                    marginBottom: '14px',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
-                  }}
-                >
-                  <span>🎧 Start Review List ({deletedWords.length} Words in Order)</span>
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeletedModal(false);
+                      handleStartReviewList();
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(59, 130, 246, 0.25))',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      color: '#fff',
+                      fontWeight: '700',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 15px rgba(16, 185, 129, 0.2)'
+                    }}
+                  >
+                    <span>🎧 {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length ? `Resume Review at #${savedReviewIndex + 1} of ${deletedWords.length}` : `Start Review List (${deletedWords.length} Words in Order)`}</span>
+                  </button>
+                  {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeletedModal(false);
+                        handleStartReviewList(0);
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        textAlign: 'center'
+                      }}
+                    >
+                      Or restart from beginning (#1)
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Cloud Sync Status & Actions inside Modal */}
