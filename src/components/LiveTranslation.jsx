@@ -101,6 +101,7 @@ export default function LiveTranslation({
   const resumeVoiceTimeoutRef = useRef(null);
   const isStoppingManuallyRef = useRef(false);
   const hasEverStartedSuccessfullyRef = useRef(false);
+  const lastProcessedResultIndexRef = useRef(-1);
 
   // Keep phaseRef & directionRef in sync with state
   useEffect(() => {
@@ -171,11 +172,6 @@ export default function LiveTranslation({
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
       }
-      try {
-        const dummy = new SpeechSynthesisUtterance('');
-        dummy.volume = 0;
-        window.speechSynthesis.speak(dummy);
-      } catch (e) {}
     }
     if (window.AudioContext || window.webkitAudioContext) {
       try {
@@ -225,7 +221,7 @@ export default function LiveTranslation({
     }, 350);
   }, []);
 
-  const speakText = useCallback((text, lang = 'de-DE', onEnd, shouldResume = true) => {
+  const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
@@ -233,10 +229,6 @@ export default function LiveTranslation({
 
     pauseRecognitionForTts();
     window.speechSynthesis.cancel();
-
-    if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
-
-    // Resume speech synthesis engine if paused (critical on iOS WebKit / Chrome)
     if (window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
     }
@@ -245,9 +237,6 @@ export default function LiveTranslation({
     utterance.lang = lang;
     utterance.rate = lang.startsWith('de') ? 0.92 : 1.0;
 
-    // Retain global and persistent Set references to avoid premature garbage collection on iOS/WebKit
-    window.__lt_utterance = utterance;
-    activeUtteranceRef.current = utterance;
     if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
       window.__ltActiveUtterances.add(utterance);
     }
@@ -255,41 +244,34 @@ export default function LiveTranslation({
     isSpeakingTtsRef.current = true;
     setIsSpeaking(true);
 
-    let isDone = false;
+    let hasEnded = false;
     const finish = () => {
-      if (isDone) return;
-      isDone = true;
-      if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+      if (hasEnded) return;
+      hasEnded = true;
+      if (ttsSafetyTimerRef.current) {
+        clearTimeout(ttsSafetyTimerRef.current);
+        ttsSafetyTimerRef.current = null;
+      }
       if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
         window.__ltActiveUtterances.delete(utterance);
       }
-      window.__lt_utterance = null;
-      activeUtteranceRef.current = null;
       if (isMountedRef.current) {
         setIsSpeaking(false);
       }
-      if (shouldResume) {
-        resumeRecognitionAfterTts();
-      }
+      resumeRecognitionAfterTts();
       if (onEnd) onEnd();
     };
 
     utterance.onend = finish;
-    utterance.onerror = (e) => {
-      console.warn('[LiveTranslation TTS Error]', e);
-      finish();
-    };
+    utterance.onerror = finish;
 
-    // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
-    const wordCount = (text || '').trim().split(/\s+/).length;
-    const estDuration = Math.max(2000, wordCount * 550 + 1000);
+    const estDuration = Math.max(2500, (text || '').length * 120);
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
     ttsSafetyTimerRef.current = setTimeout(finish, estDuration);
 
     try {
       window.speechSynthesis.speak(utterance);
     } catch (e) {
-      console.warn('[LiveTranslation TTS Speak failed]', e);
       finish();
     }
   }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
@@ -315,151 +297,140 @@ export default function LiveTranslation({
   // If isRepeat = true: Repeats the queried word FIRST, then translation, then example!
   // ----------------------------------------------------
   const speakSequentialResult = useCallback((res, dir = 'de_en', onComplete, isRepeat = false) => {
-    if (!res) {
+    if (!res || !('speechSynthesis' in window)) {
+      if (isMountedRef.current) {
+        setPhase('idle');
+        phaseRef.current = 'idle';
+      }
+      resumeRecognitionAfterTts();
       if (onComplete) onComplete();
       return;
     }
 
-    // Cancel any previous active synthesis and get fresh sequence ID
-    if ('speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
+    pauseRecognitionForTts();
+    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
     }
+
     if (ttsSafetyTimerRef.current) {
       clearTimeout(ttsSafetyTimerRef.current);
       ttsSafetyTimerRef.current = null;
     }
 
-    const currentSeqId = ++activeSequenceIdRef.current;
-    isSpeakingTtsRef.current = true;
-
+    // Build the ordered playlist of speech parts
+    const parts = [];
     if (dir === 'en_de') {
-      // EN -> DE:
-      // Queried English phrase: res.english
-      // German translation: res.german
-      // German example sentence: res.germanExample
-
-      setPhase('speaking');
-
-      const playGermanExample = () => {
-        if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-        if (res.germanExample) {
-          setTimeout(() => {
-            if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-            setSpeakingSubPhase('de_example');
-            setStatusMessage(`Lese Beispielsatz vor: „${res.germanExample}“`);
-
-            speakText(res.germanExample, 'de-DE', () => {
-              if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-              setSpeakingSubPhase(null);
-              setPhase('idle');
-              switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
-              resumeRecognitionAfterTts();
-              if (onComplete) onComplete();
-            }, false);
-          }, 320);
-        } else {
-          setSpeakingSubPhase(null);
-          setPhase('idle');
-          switchRecognitionLang('de-DE');
-          setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
-          resumeRecognitionAfterTts();
-          if (onComplete) onComplete();
-        }
-      };
-
-      const playGermanTranslation = () => {
-        if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-        setSpeakingSubPhase('de_translation');
-        setStatusMessage(`Lese deutsche Übersetzung vor: „${res.german}“`);
-
-        speakText(res.german, 'de-DE', () => {
-          if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-          playGermanExample();
-        }, false);
-      };
-
       if (isRepeat && res.english) {
-        // Repeat mode: repeat the last queried English word/phrase first!
-        setSpeakingSubPhase('en');
-        setStatusMessage(`Wiederhole gesuchte Phrase: „${res.english}“`);
-
-        speakText(res.english, 'en-US', () => {
-          if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-          setTimeout(() => {
-            if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-            playGermanTranslation();
-          }, 300);
-        }, false);
-      } else {
-        // Normal mode: speak German translation then German example
-        playGermanTranslation();
+        parts.push({ text: res.english, lang: 'en-US', rate: 1.0, subPhase: 'en', status: `Wiederhole: „${res.english}“` });
+      }
+      if (res.german) {
+        parts.push({ text: res.german, lang: 'de-DE', rate: 0.92, subPhase: 'de_translation', status: `Lese Übersetzung vor: „${res.german}“` });
+      }
+      if (res.germanExample) {
+        parts.push({ text: res.germanExample, lang: 'de-DE', rate: 0.92, subPhase: 'de_example', status: `Lese Beispielsatz vor: „${res.germanExample}“` });
       }
     } else {
-      // DE -> EN:
-      // Queried German word: res.german
-      // English translation: res.english
-      // German example sentence: res.germanExample
+      if (isRepeat && res.german) {
+        parts.push({ text: res.german, lang: 'de-DE', rate: 0.92, subPhase: 'de_translation', status: `Wiederhole: „${res.german}“` });
+      }
+      if (res.english) {
+        parts.push({ text: res.english, lang: 'en-US', rate: 1.0, subPhase: 'en', status: `Lese Übersetzung vor: „${res.english}“` });
+      }
+      if (res.germanExample) {
+        parts.push({ text: res.germanExample, lang: 'de-DE', rate: 0.92, subPhase: 'de_example', status: `Lese Beispielsatz vor: „${res.germanExample}“` });
+      }
+    }
 
-      setPhase('speaking');
+    if (parts.length === 0) {
+      if (isMountedRef.current) {
+        setPhase('idle');
+        phaseRef.current = 'idle';
+      }
+      resumeRecognitionAfterTts();
+      if (onComplete) onComplete();
+      return;
+    }
 
-      const playGermanExample = () => {
-        if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-        if (res.germanExample) {
-          setTimeout(() => {
-            if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-            setSpeakingSubPhase('de_example');
-            setStatusMessage(`Lese Beispielsatz vor: „${res.germanExample}“`);
+    isSpeakingTtsRef.current = true;
+    setIsSpeaking(true);
+    setPhase('speaking');
+    phaseRef.current = 'speaking';
 
-            speakText(res.germanExample, 'de-DE', () => {
-              if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-              setSpeakingSubPhase(null);
-              setPhase('idle');
-              switchRecognitionLang('de-DE');
-              setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
-              resumeRecognitionAfterTts();
-              if (onComplete) onComplete();
-            }, false);
-          }, 320);
+    let hasEndedFinal = false;
+    const finishFinal = () => {
+      if (hasEndedFinal) return;
+      hasEndedFinal = true;
+      if (ttsSafetyTimerRef.current) {
+        clearTimeout(ttsSafetyTimerRef.current);
+        ttsSafetyTimerRef.current = null;
+      }
+      if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
+        window.__ltActiveUtterances.clear();
+      }
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingSubPhase(null);
+        setPhase('idle');
+        phaseRef.current = 'idle';
+        switchRecognitionLang('de-DE');
+        setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
+      }
+      resumeRecognitionAfterTts();
+      if (onComplete) onComplete();
+    };
+
+    // Watchdog to guarantee recognition resumes even if iOS swallows onend
+    const totalChars = parts.reduce((acc, p) => acc + (p.text || '').length, 0);
+    const estTotalDuration = Math.max(5000, totalChars * 140 + parts.length * 900);
+    ttsSafetyTimerRef.current = setTimeout(finishFinal, estTotalDuration);
+
+    let currentIndex = 0;
+
+    const playNext = () => {
+      if (hasEndedFinal || !isMountedRef.current) return;
+      if (currentIndex >= parts.length) {
+        finishFinal();
+        return;
+      }
+
+      const part = parts[currentIndex];
+      setSpeakingSubPhase(part.subPhase);
+      if (part.status) setStatusMessage(part.status);
+
+      const utterance = new SpeechSynthesisUtterance(part.text);
+      utterance.lang = part.lang;
+      utterance.rate = part.rate;
+
+      if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
+        window.__ltActiveUtterances.add(utterance);
+      }
+
+      const advance = () => {
+        if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
+          window.__ltActiveUtterances.delete(utterance);
+        }
+        if (hasEndedFinal || !isMountedRef.current) return;
+        currentIndex++;
+        if (currentIndex < parts.length) {
+          setTimeout(playNext, 300);
         } else {
-          setSpeakingSubPhase(null);
-          setPhase('idle');
-          switchRecognitionLang('de-DE');
-          setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
-          resumeRecognitionAfterTts();
-          if (onComplete) onComplete();
+          finishFinal();
         }
       };
 
-      const playEnglishTranslation = () => {
-        if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-        setSpeakingSubPhase('en');
-        setStatusMessage(`Lese Übersetzung vor: „${res.english}“`);
+      utterance.onend = advance;
+      utterance.onerror = advance;
 
-        speakText(res.english, 'en-US', () => {
-          if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-          playGermanExample();
-        }, false);
-      };
-
-      if (isRepeat && res.german) {
-        // Repeat mode: repeat the last queried German word first!
-        setSpeakingSubPhase('de_translation');
-        setStatusMessage(`Wiederhole gesuchtes Wort: „${res.german}“`);
-
-        speakText(res.german, 'de-DE', () => {
-          if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-          setTimeout(() => {
-            if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
-            playEnglishTranslation();
-          }, 300);
-        }, false);
-      } else {
-        // Normal mode: speak English translation then German example
-        playEnglishTranslation();
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        advance();
       }
-    }
-  }, [speakText, switchRecognitionLang, resumeRecognitionAfterTts]);
+    };
+
+    playNext();
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts, switchRecognitionLang]);
 
   const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
     speakSequentialResult({ english: enMeaning, germanExample: deSentence }, 'de_en', onComplete);
@@ -748,6 +719,7 @@ export default function LiveTranslation({
       const errLang = dir === 'en_de' ? 'en-US' : 'de-DE';
       speakText(errMsg, errLang, () => {
         setPhase('idle');
+        phaseRef.current = 'idle';
         switchRecognitionLang('de-DE');
         setStatusMessage('Bereit. Sage „Übersetze“ (DE) oder „Translate“ (EN).');
       });
@@ -798,6 +770,7 @@ export default function LiveTranslation({
     // STEP 2: NOT IN B1 WORDLIST -> QUERY GEMINI
     // ----------------------------------------------------
     setPhase('processing');
+    phaseRef.current = 'processing';
     const posHint = effectivePos === 'verb' ? ' (als Verb)' : effectivePos === 'noun' ? ' (als Nomen)' : '';
     if (dir === 'en_de') {
       setStatusMessage(`Gemini übersetzt: „${cleanInput}“${posHint} ins Deutsche...`);
@@ -1232,7 +1205,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
         if (finalPhrase) {
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
           setPhase('processing');
+          phaseRef.current = 'processing';
           currentRecordingTextRef.current = '';
           setCurrentRecordingText('');
           setLiveTranscript('');
@@ -1244,6 +1219,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
         // Standard 2-Step Flow (user said ONLY trigger keyword "Übersetze" or "Translate"):
         setPhase('recording');
+        phaseRef.current = 'recording';
+        recordingStartIndexRef.current = Math.max(0, currentResultCount);
+        lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
         currentRecordingTextRef.current = '';
         detectedPosRef.current = null;
         setCurrentRecordingText('');
@@ -1272,7 +1250,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         const cleanCheck = (cleanSpokenPhrase(text) || '').toLowerCase().trim();
         if (!cleanCheck || cleanCheck.includes('repeat') || cleanCheck.includes('wiederhol')) {
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
           setPhase('idle');
+          phaseRef.current = 'idle';
           currentRecordingTextRef.current = '';
           const target = lastResultRef.current || currentResult || (history && history[0]);
           if (target) {
@@ -1294,7 +1274,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         const newFinal = (newTargetDir === 'de_en' && newPhrase) ? extractLatestGermanWord(newPhrase) : newPhrase;
         if (newFinal) {
           if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
           setPhase('processing');
+          phaseRef.current = 'processing';
           currentRecordingTextRef.current = '';
           setCurrentRecordingText('');
           setLiveTranscript('');
@@ -1325,6 +1307,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         silenceTimerRef.current = setTimeout(() => {
           const phraseToTranslate = currentRecordingTextRef.current;
           if (phraseToTranslate && phaseRef.current === 'recording') {
+            lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
+            setPhase('processing');
+            phaseRef.current = 'processing';
             setLiveTranscript('');
             setCurrentRecordingText('');
             currentRecordingTextRef.current = '';
@@ -1345,6 +1330,9 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         const posToUse = detectedPos || detectedPosRef.current;
 
         if (phraseToTranslate) {
+          lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, currentResultCount - 1);
+          setPhase('processing');
+          phaseRef.current = 'processing';
           setLiveTranscript('');
           setCurrentRecordingText('');
           currentRecordingTextRef.current = '';
@@ -1395,6 +1383,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         recognition.maxAlternatives = 5;
         recognition.lang = recognitionLangRef.current || 'de-DE'; // Dynamic speech recognition engine
         recordingStartIndexRef.current = 0;
+        lastProcessedResultIndexRef.current = -1;
 
         recognition.onstart = () => {
           hasEverStartedSuccessfullyRef.current = true;
@@ -1406,9 +1395,16 @@ Provide an authentic, natural German example sentence in a real-world scenario (
             return;
           }
 
+          if (event.resultIndex === 0 || event.resultIndex <= lastProcessedResultIndexRef.current) {
+            lastProcessedResultIndexRef.current = -1;
+          }
+
           // 1. Inspect alternatives in newest results for commands / triggers
           let latestCandidate = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (i <= lastProcessedResultIndexRef.current) {
+              continue;
+            }
             for (let j = 0; j < event.results[i].length; j++) {
               const candidate = event.results[i][j].transcript.trim();
               if (!latestCandidate) latestCandidate = candidate;
@@ -1450,6 +1446,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
           let cumulativeTranscript = '';
           for (let i = startIdx; i < event.results.length; i++) {
+            if (i <= lastProcessedResultIndexRef.current) continue;
             if (event.results[i] && event.results[i][0]) {
               const seg = event.results[i][0].transcript.trim();
               if (seg) {
