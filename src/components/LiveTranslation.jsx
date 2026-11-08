@@ -14,6 +14,12 @@ const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
   : null;
 
+// Persistent utterance cache to prevent WebKit / iOS Safari from garbage collecting
+// SpeechSynthesisUtterance mid-speech before onend fires
+if (typeof window !== 'undefined') {
+  window.__ltActiveUtterances = window.__ltActiveUtterances || new Set();
+}
+
 export default function LiveTranslation({
   vocabData = [],
   myList = [],
@@ -83,6 +89,18 @@ export default function LiveTranslation({
   const recordingStartIndexRef = useRef(0);
   const lastRepeatTimeRef = useRef(0);
   const activeSequenceIdRef = useRef(0);
+  const lastSpeakingEndTimeRef = useRef(0);
+
+  const isVoiceActiveRef = useRef(false);
+  useEffect(() => {
+    isVoiceActiveRef.current = isVoiceActive;
+  }, [isVoiceActive]);
+
+  const startRecognitionRef = useRef(null);
+  const restartTimeoutRef = useRef(null);
+  const resumeVoiceTimeoutRef = useRef(null);
+  const isStoppingManuallyRef = useRef(false);
+  const hasEverStartedSuccessfullyRef = useRef(false);
 
   // Keep phaseRef & directionRef in sync with state
   useEffect(() => {
@@ -130,6 +148,8 @@ export default function LiveTranslation({
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+      if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
       if (pocketHoldTimerRef.current) clearTimeout(pocketHoldTimerRef.current);
       if (pocketIntervalRef.current) clearInterval(pocketIntervalRef.current);
     };
@@ -182,11 +202,36 @@ export default function LiveTranslation({
     };
   }, [unlockAudio]);
 
-  const speakText = useCallback((text, lang = 'de-DE', onEnd) => {
+  // Coordination helpers for SpeechRecognition & iOS AVAudioSession
+  const pauseRecognitionForTts = useCallback(() => {
+    isSpeakingTtsRef.current = true;
+    if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+    if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort(); } catch (e) {}
+    }
+  }, []);
+
+  const resumeRecognitionAfterTts = useCallback(() => {
+    if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
+    if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+    // 350ms settle buffer allows iOS AVAudioSession to release hardware lock
+    resumeVoiceTimeoutRef.current = setTimeout(() => {
+      isSpeakingTtsRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
+      if (isVoiceActiveRef.current && isMountedRef.current && startRecognitionRef.current) {
+        startRecognitionRef.current();
+      }
+    }, 350);
+  }, []);
+
+  const speakText = useCallback((text, lang = 'de-DE', onEnd, shouldResume = true) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
+
+    pauseRecognitionForTts();
 
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
 
@@ -199,9 +244,12 @@ export default function LiveTranslation({
     utterance.lang = lang;
     utterance.rate = lang.startsWith('de') ? 1.0 : 0.95;
 
-    // Retain global and ref references to avoid premature garbage collection on iOS/WebKit
+    // Retain global and persistent Set references to avoid premature garbage collection on iOS/WebKit
     window.__lt_utterance = utterance;
     activeUtteranceRef.current = utterance;
+    if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
+      window.__ltActiveUtterances.add(utterance);
+    }
 
     const voices = window.speechSynthesis.getVoices();
     if (voices && voices.length > 0) {
@@ -225,13 +273,15 @@ export default function LiveTranslation({
       if (isDone) return;
       isDone = true;
       if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+      if (typeof window !== 'undefined' && window.__ltActiveUtterances) {
+        window.__ltActiveUtterances.delete(utterance);
+      }
       window.__lt_utterance = null;
       activeUtteranceRef.current = null;
-      setTimeout(() => {
-        if (!isMountedRef.current) return;
-        isSpeakingTtsRef.current = false;
-        if (onEnd) onEnd();
-      }, 250);
+      if (shouldResume) {
+        resumeRecognitionAfterTts();
+      }
+      if (onEnd) onEnd();
     };
 
     utterance.onend = finish;
@@ -253,7 +303,7 @@ export default function LiveTranslation({
       console.warn('[LiveTranslation TTS Speak failed]', e);
       finish();
     }
-  }, []);
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   // Switch speech recognition language dynamically ('de-DE' <-> 'en-US')
   const switchRecognitionLang = useCallback((targetLang) => {
@@ -291,6 +341,7 @@ export default function LiveTranslation({
     }
 
     const currentSeqId = ++activeSequenceIdRef.current;
+    isSpeakingTtsRef.current = true;
 
     if (dir === 'en_de') {
       // EN -> DE:
@@ -314,14 +365,16 @@ export default function LiveTranslation({
               setPhase('idle');
               switchRecognitionLang('de-DE');
               setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
+              resumeRecognitionAfterTts();
               if (onComplete) onComplete();
-            });
+            }, false);
           }, 320);
         } else {
           setSpeakingSubPhase(null);
           setPhase('idle');
           switchRecognitionLang('de-DE');
           setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
+          resumeRecognitionAfterTts();
           if (onComplete) onComplete();
         }
       };
@@ -334,7 +387,7 @@ export default function LiveTranslation({
         speakText(res.german, 'de-DE', () => {
           if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
           playGermanExample();
-        });
+        }, false);
       };
 
       if (isRepeat && res.english) {
@@ -348,7 +401,7 @@ export default function LiveTranslation({
             if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
             playGermanTranslation();
           }, 300);
-        });
+        }, false);
       } else {
         // Normal mode: speak German translation then German example
         playGermanTranslation();
@@ -375,14 +428,16 @@ export default function LiveTranslation({
               setPhase('idle');
               switchRecognitionLang('de-DE');
               setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
+              resumeRecognitionAfterTts();
               if (onComplete) onComplete();
-            });
+            }, false);
           }, 320);
         } else {
           setSpeakingSubPhase(null);
           setPhase('idle');
           switchRecognitionLang('de-DE');
           setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
+          resumeRecognitionAfterTts();
           if (onComplete) onComplete();
         }
       };
@@ -395,7 +450,7 @@ export default function LiveTranslation({
         speakText(res.english, 'en-US', () => {
           if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
           playGermanExample();
-        });
+        }, false);
       };
 
       if (isRepeat && res.german) {
@@ -409,13 +464,13 @@ export default function LiveTranslation({
             if (activeSequenceIdRef.current !== currentSeqId || !isMountedRef.current) return;
             playEnglishTranslation();
           }, 300);
-        });
+        }, false);
       } else {
         // Normal mode: speak English translation then German example
         playEnglishTranslation();
       }
     }
-  }, [speakText, switchRecognitionLang]);
+  }, [speakText, switchRecognitionLang, resumeRecognitionAfterTts]);
 
   const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
     speakSequentialResult({ english: enMeaning, germanExample: deSentence }, 'de_en', onComplete);
@@ -1195,12 +1250,12 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               setStatusMessage(`Phrase erfasst: „${finalPhrase}“. Translating...`);
               speakText('In Progress', 'en-US', () => {
                 translateWithDirection(finalPhrase, 'en_de', detectedPos);
-              });
+              }, false);
             } else {
               setStatusMessage(`Wort erfasst: „${finalPhrase}“. Übersetze...`);
               speakText('In Bearbeitung', 'de-DE', () => {
                 translateWithDirection(finalPhrase, 'de_en', detectedPos);
-              });
+              }, false);
             }
             return;
           }
@@ -1216,12 +1271,12 @@ Provide an authentic, natural German example sentence in a real-world scenario (
 
         if (targetDir === 'en_de') {
           setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
-          recordingStartIndexRef.current = currentResultCount;
+          recordingStartIndexRef.current = 0;
           switchRecognitionLang('en-US');
           speakText('In Progress', 'en-US');
         } else {
           setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
-          recordingStartIndexRef.current = currentResultCount;
+          recordingStartIndexRef.current = 0;
           switchRecognitionLang('de-DE');
           speakText('In Bearbeitung', 'de-DE');
         }
@@ -1314,6 +1369,8 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     if (!SpeechRecognition) return;
 
     if (!isVoiceActive) {
+      isStoppingManuallyRef.current = true;
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
         recognitionRef.current = null;
@@ -1321,12 +1378,20 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       return;
     }
 
-    let isStoppingManually = false;
+    isStoppingManuallyRef.current = false;
     let recognition = null;
 
     const startRecognition = () => {
-      if (isStoppingManually || !isMountedRef.current) return;
+      if (isStoppingManuallyRef.current || !isMountedRef.current) return;
+      if (isSpeakingTtsRef.current) return;
+
       try {
+        if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+        if (recognitionRef.current) {
+          try { recognitionRef.current.abort(); } catch (e) {}
+          recognitionRef.current = null;
+        }
+
         recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
@@ -1334,7 +1399,16 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         recognition.lang = recognitionLangRef.current || 'de-DE'; // Dynamic speech recognition engine
         recordingStartIndexRef.current = 0;
 
+        recognition.onstart = () => {
+          hasEverStartedSuccessfullyRef.current = true;
+        };
+
         recognition.onresult = (event) => {
+          // Discard mic input while device TTS is speaking or within 400ms cooldown to avoid self-triggering
+          if (isSpeakingTtsRef.current || (Date.now() - lastSpeakingEndTimeRef.current < 400)) {
+            return;
+          }
+
           // 1. Inspect alternatives in newest results for commands / triggers
           let latestCandidate = '';
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1373,7 +1447,10 @@ Provide an authentic, natural German example sentence in a real-world scenario (
           }
 
           // 2. Compute cumulative transcript across all segments in the active recording session
-          const startIdx = Math.max(0, recordingStartIndexRef.current || 0);
+          const startIdx = (recordingStartIndexRef.current < event.results.length)
+            ? Math.max(0, recordingStartIndexRef.current || 0)
+            : 0;
+
           let cumulativeTranscript = '';
           for (let i = startIdx; i < event.results.length; i++) {
             if (event.results[i] && event.results[i][0]) {
@@ -1400,37 +1477,49 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         };
 
         recognition.onerror = (event) => {
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            isStoppingManually = true;
+          console.warn('SpeechRecognition error:', event.error);
+          if ((event.error === 'not-allowed' || event.error === 'service-not-allowed') && !hasEverStartedSuccessfullyRef.current) {
+            isStoppingManuallyRef.current = true;
             setIsVoiceActive(false);
             alert('Mikrofon-Berechtigung verweigert. Bitte erlaube den Mikrofonzugriff.');
           }
         };
 
         recognition.onend = () => {
-          if (!isStoppingManually && isMountedRef.current) {
-            setTimeout(() => {
-              if (!isStoppingManually && isMountedRef.current) {
-                startRecognition();
-              }
-            }, 300);
-          }
+          if (isStoppingManuallyRef.current || !isMountedRef.current) return;
+          if (isSpeakingTtsRef.current) return;
+
+          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = setTimeout(() => {
+            if (!isStoppingManuallyRef.current && isMountedRef.current && isVoiceActiveRef.current && !isSpeakingTtsRef.current) {
+              startRecognition();
+            }
+          }, 300);
         };
 
         recognition.start();
         recognitionRef.current = recognition;
       } catch (err) {
         console.warn('SpeechRecognition start error:', err);
+        if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = setTimeout(() => {
+          if (!isStoppingManuallyRef.current && isMountedRef.current && isVoiceActiveRef.current && !isSpeakingTtsRef.current) {
+            startRecognition();
+          }
+        }, 600);
       }
     };
 
+    startRecognitionRef.current = startRecognition;
     startRecognition();
 
     return () => {
-      isStoppingManually = true;
-      if (recognition) {
+      isStoppingManuallyRef.current = true;
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+      if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) {}
       }
+      recognitionRef.current = null;
     };
   }, [isVoiceActive]);
 
