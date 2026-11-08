@@ -232,6 +232,7 @@ export default function LiveTranslation({
     }
 
     pauseRecognitionForTts();
+    window.speechSynthesis.cancel();
 
     if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
 
@@ -242,7 +243,7 @@ export default function LiveTranslation({
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = lang.startsWith('de') ? 1.0 : 0.95;
+    utterance.rate = lang.startsWith('de') ? 0.92 : 1.0;
 
     // Retain global and persistent Set references to avoid premature garbage collection on iOS/WebKit
     window.__lt_utterance = utterance;
@@ -251,22 +252,8 @@ export default function LiveTranslation({
       window.__ltActiveUtterances.add(utterance);
     }
 
-    const voices = window.speechSynthesis.getVoices();
-    if (voices && voices.length > 0) {
-      let chosenVoice = null;
-      if (lang.startsWith('de')) {
-        chosenVoice = voices.find(v => (v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) && v.localService !== false) ||
-          voices.find(v => v.lang.startsWith('de'));
-      } else {
-        chosenVoice = voices.find(v => (v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) && v.localService !== false) ||
-          voices.find(v => v.lang.startsWith('en'));
-      }
-      if (chosenVoice) {
-        try { utterance.voice = chosenVoice; } catch (e) {}
-      }
-    }
-
     isSpeakingTtsRef.current = true;
+    setIsSpeaking(true);
 
     let isDone = false;
     const finish = () => {
@@ -278,6 +265,9 @@ export default function LiveTranslation({
       }
       window.__lt_utterance = null;
       activeUtteranceRef.current = null;
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+      }
       if (shouldResume) {
         resumeRecognitionAfterTts();
       }
@@ -292,10 +282,9 @@ export default function LiveTranslation({
 
     // Deterministic safety timeout (prevents hanging if onend is swallowed by iOS WebKit)
     const wordCount = (text || '').trim().split(/\s+/).length;
-    const estDuration = Math.max(1800, wordCount * 550 + 1000);
-    ttsSafetyTimerRef.current = setTimeout(() => {
-      finish();
-    }, estDuration);
+    const estDuration = Math.max(2000, wordCount * 550 + 1000);
+    if (ttsSafetyTimerRef.current) clearTimeout(ttsSafetyTimerRef.current);
+    ttsSafetyTimerRef.current = setTimeout(finish, estDuration);
 
     try {
       window.speechSynthesis.speak(utterance);
@@ -1216,9 +1205,8 @@ Provide an authentic, natural German example sentence in a real-world scenario (
       }
 
       if (hasTrigger) {
-        // Prevent duplicate trigger execution from rapid interim + final speech results
         const now = Date.now();
-        if (now - lastTriggerTimeRef.current < 2000) {
+        if (now - lastTriggerTimeRef.current < 800) {
           return;
         }
         lastTriggerTimeRef.current = now;
@@ -1238,30 +1226,23 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         setDirection(targetDir);
         directionRef.current = targetDir;
 
-        // Check if user spoke entire command in one single breath: "Translate [phrase] Stop" or "Übersetze [word] Halt"
-        if (hasStop) {
-          const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text, targetDir);
-          const finalPhrase = (targetDir === 'de_en' && phrase) ? extractLatestGermanWord(phrase) : phrase;
-          if (finalPhrase) {
-            setPhase('recording');
-            currentRecordingTextRef.current = finalPhrase;
-            detectedPosRef.current = detectedPos;
-            if (targetDir === 'en_de') {
-              setStatusMessage(`Phrase erfasst: „${finalPhrase}“. Translating...`);
-              speakText('In Progress', 'en-US', () => {
-                translateWithDirection(finalPhrase, 'en_de', detectedPos);
-              }, false);
-            } else {
-              setStatusMessage(`Wort erfasst: „${finalPhrase}“. Übersetze...`);
-              speakText('In Bearbeitung', 'de-DE', () => {
-                translateWithDirection(finalPhrase, 'de_en', detectedPos);
-              }, false);
-            }
-            return;
-          }
+        // Single-breath flow: "Übersetze Katze", "Übersetze Haus Halt", "Translate apple", "Translate how are you Stop"
+        const { cleanText: phrase, detectedPos } = extractSpokenPhraseAndPos(text, targetDir);
+        const finalPhrase = (targetDir === 'de_en' && phrase) ? extractLatestGermanWord(phrase) : phrase;
+
+        if (finalPhrase) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          setPhase('processing');
+          currentRecordingTextRef.current = '';
+          setCurrentRecordingText('');
+          setLiveTranscript('');
+          detectedPosRef.current = null;
+          setStatusMessage(targetDir === 'en_de' ? `Phrase erfasst: „${finalPhrase}“. Translating...` : `Wort erfasst: „${finalPhrase}“. Übersetze...`);
+          translateWithDirection(finalPhrase, targetDir, detectedPos);
+          return;
         }
 
-        // Standard 2-Step Flow:
+        // Standard 2-Step Flow (user said ONLY trigger keyword "Übersetze" or "Translate"):
         setPhase('recording');
         currentRecordingTextRef.current = '';
         detectedPosRef.current = null;
@@ -1270,29 +1251,27 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         recordedChunksRef.current = [];
 
         if (targetDir === 'en_de') {
-          setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
+          setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase.');
           recordingStartIndexRef.current = 0;
           switchRecognitionLang('en-US');
-          speakText('In Progress', 'en-US');
         } else {
-          setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
+          setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort.');
           recordingStartIndexRef.current = 0;
           switchRecognitionLang('de-DE');
-          speakText('In Bearbeitung', 'de-DE');
         }
         return;
       }
     }
 
     // ----------------------------------------------------
-    // State 2: RECORDING (Capturing word/phrase until "Stop" or "Halt" is heard)
-    // Empty by default, NEVER auto-submits until stop keyword is spoken
+    // State 2: RECORDING (Capturing word/phrase until pause/silence or "Stop" / "Halt")
     // ----------------------------------------------------
     if (phaseRef.current === 'recording') {
-      // If repeat was spoken instead of a phrase while recording, abort to repeat last
+      // Repeat command
       if (hasRepeat && !hasStop) {
         const cleanCheck = (cleanSpokenPhrase(text) || '').toLowerCase().trim();
         if (!cleanCheck || cleanCheck.includes('repeat') || cleanCheck.includes('wiederhol')) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
           setPhase('idle');
           currentRecordingTextRef.current = '';
           const target = lastResultRef.current || currentResult || (history && history[0]);
@@ -1304,17 +1283,32 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         }
       }
 
-      // If trailing or repeated trigger events arrive while recording, do not speak again
-      if (hasTrigger && !hasStop) {
-        return;
+      const activeDir = directionRef.current || 'de_en';
+
+      // If user repeats or speaks another trigger while in recording mode (e.g. "Übersetze Buch" or "Translate house")
+      if (hasTrigger) {
+        const newTargetDir = hasEnglishTrigger ? 'en_de' : 'de_en';
+        setDirection(newTargetDir);
+        directionRef.current = newTargetDir;
+        const { cleanText: newPhrase, detectedPos: newPos } = extractSpokenPhraseAndPos(text, newTargetDir);
+        const newFinal = (newTargetDir === 'de_en' && newPhrase) ? extractLatestGermanWord(newPhrase) : newPhrase;
+        if (newFinal) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          setPhase('processing');
+          currentRecordingTextRef.current = '';
+          setCurrentRecordingText('');
+          setLiveTranscript('');
+          detectedPosRef.current = null;
+          setStatusMessage(newTargetDir === 'en_de' ? `Phrase erfasst: „${newFinal}“. Translating...` : `Wort erfasst: „${newFinal}“. Übersetze...`);
+          translateWithDirection(newFinal, newTargetDir, newPos);
+          return;
+        }
       }
 
-      const activeDir = directionRef.current || 'de_en';
       const { cleanText: currentClean, detectedPos } = extractSpokenPhraseAndPos(text, activeDir);
 
-      // Only update buffer if an actual word/phrase was spoken (not empty/trigger words)
+      // Update buffer when an actual word/phrase is spoken
       if (currentClean) {
-        // German to English: strictly ONE word input. If another word is spoken, it replaces the previous word!
         const wordOrPhraseToStore = activeDir === 'de_en'
           ? extractLatestGermanWord(currentClean)
           : currentClean;
@@ -1325,9 +1319,23 @@ Provide an authentic, natural German example sentence in a real-world scenario (
         if (detectedPos) {
           detectedPosRef.current = detectedPos;
         }
+
+        // Auto-translate on natural pause (1.2s silence after speaking word/phrase)
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = setTimeout(() => {
+          const phraseToTranslate = currentRecordingTextRef.current;
+          if (phraseToTranslate && phaseRef.current === 'recording') {
+            setLiveTranscript('');
+            setCurrentRecordingText('');
+            currentRecordingTextRef.current = '';
+            const posToUse = detectedPosRef.current;
+            detectedPosRef.current = null;
+            translateWithDirection(phraseToTranslate, activeDir, posToUse);
+          }
+        }, 1200);
       }
 
-      // ONLY submit when user explicitly says "Stop" or "Halt"
+      // Explicit Stop/Halt keyword spoken: translate immediately without waiting for silence!
       if (hasStop) {
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         let phraseToTranslate = currentClean || currentRecordingTextRef.current;
@@ -1342,17 +1350,6 @@ Provide an authentic, natural German example sentence in a real-world scenario (
           currentRecordingTextRef.current = '';
           detectedPosRef.current = null;
           translateWithDirection(phraseToTranslate, activeDir, posToUse);
-        } else {
-          // If Stop/Halt was spoken but no word/phrase was captured yet
-          if (activeDir === 'en_de') {
-            setStatusMessage('Keine Phrase erfasst. Sage „Translate“, um es erneut zu versuchen.');
-            switchRecognitionLang('de-DE');
-          } else {
-            setStatusMessage('Kein Wort erfasst. Sage „Übersetze“, um es erneut zu versuchen.');
-          }
-          setPhase('idle');
-          currentRecordingTextRef.current = '';
-          detectedPosRef.current = null;
         }
       }
     }
@@ -1547,13 +1544,11 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     detectedPosRef.current = null;
     setLiveTranscript('');
     if (dir === 'en_de') {
-      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter) und sage „Stop“.');
+      setStatusMessage('Aufnahme läuft (EN ➔ DE)... Sprich die Phrase (1-6 Wörter).');
       switchRecognitionLang('en-US');
-      speakText('In Progress', 'en-US');
     } else {
-      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort und sage „Halt“.');
+      setStatusMessage('Aufnahme läuft (DE ➔ EN)... Sprich das Wort.');
       switchRecognitionLang('de-DE');
-      speakText('In Bearbeitung', 'de-DE');
     }
   };
 

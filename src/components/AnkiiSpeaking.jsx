@@ -565,12 +565,7 @@ export default function AnkiiSpeaking({
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'de-DE';
-
-    const voices = window.speechSynthesis.getVoices();
-    const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-      voices.find(v => v.lang.startsWith('de'));
-    if (deVoice) utterance.voice = deVoice;
-    utterance.rate = 1.0;
+    utterance.rate = 0.92;
 
     isSpeakingRef.current = true;
     setIsSpeaking(true);
@@ -617,11 +612,6 @@ export default function AnkiiSpeaking({
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
-
-    const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-      voices.find(v => v.lang.startsWith('en'));
-    if (enVoice) utterance.voice = enVoice;
     utterance.rate = 1.0;
 
     isSpeakingRef.current = true;
@@ -667,19 +657,12 @@ export default function AnkiiSpeaking({
     pauseRecognitionForTts();
     window.speechSynthesis.cancel();
 
-    const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-      voices.find(v => v.lang.startsWith('en'));
-    const deVoice = voices.find(v => v.lang.startsWith('de-DE') || v.lang.startsWith('de_DE')) ||
-      voices.find(v => v.lang.startsWith('de'));
-
     isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('en');
 
     const utterEn = new SpeechSynthesisUtterance(enText);
     utterEn.lang = 'en-US';
-    if (enVoice) utterEn.voice = enVoice;
     utterEn.rate = 1.0;
 
     if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
@@ -726,8 +709,7 @@ export default function AnkiiSpeaking({
         }
         const utterDe = new SpeechSynthesisUtterance(deSentence);
         utterDe.lang = 'de-DE';
-        if (deVoice) utterDe.voice = deVoice;
-        utterDe.rate = 1.0;
+        utterDe.rate = 0.92;
 
         if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
           window.__ankiActiveUtterances.add(utterDe);
@@ -827,11 +809,6 @@ export default function AnkiiSpeaking({
 
     const utterance = new SpeechSynthesisUtterance(spoken);
     utterance.lang = 'en-US';
-
-    const voices = window.speechSynthesis.getVoices();
-    const enVoice = voices.find(v => v.lang.startsWith('en-US') || v.lang.startsWith('en_US')) ||
-      voices.find(v => v.lang.startsWith('en'));
-    if (enVoice) utterance.voice = enVoice;
     utterance.rate = 0.85; // Measured, clear cadence for spelling
 
     isSpeakingRef.current = true;
