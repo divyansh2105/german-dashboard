@@ -1073,12 +1073,17 @@ export default function VerbTenses({
         recognition.lang = 'en-US';
 
         recognition.onresult = (event) => {
-          const startIndex = lastProcessedResultIndexRef.current + 1;
+          if (event.resultIndex === 0 || event.resultIndex <= lastProcessedResultIndexRef.current) {
+            lastProcessedResultIndexRef.current = -1;
+          }
+          const startIndex = Math.max(event.resultIndex, lastProcessedResultIndexRef.current + 1);
           for (let i = startIndex; i < event.results.length; i++) {
             lastProcessedResultIndexRef.current = i;
             if (event.results[i].isFinal) {
-              const text = event.results[i][0].transcript;
-              handleVoiceCommand(text);
+              const text = event.results[i][0]?.transcript;
+              if (text) {
+                handleVoiceCommand(text);
+              }
             }
           }
         };
@@ -1091,9 +1096,13 @@ export default function VerbTenses({
 
         recognition.onend = () => {
           if (isVoiceActive && isMountedRef.current && sessionActive && !sessionFinished) {
-            try {
-              recognition.start();
-            } catch (err) { }
+            setTimeout(() => {
+              if (isMountedRef.current && isVoiceActive) {
+                try {
+                  recognition.start();
+                } catch (err) { }
+              }
+            }, 300);
           }
         };
 

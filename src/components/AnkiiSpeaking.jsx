@@ -41,6 +41,12 @@ const SpeechRecognition = typeof window !== 'undefined'
   ? (window.SpeechRecognition || window.webkitSpeechRecognition || null)
   : null;
 
+// Persistent utterance cache to prevent WebKit / iOS Safari from garbage collecting
+// SpeechSynthesisUtterance mid-speech before the onend event has fired
+if (typeof window !== 'undefined') {
+  window.__ankiActiveUtterances = window.__ankiActiveUtterances || new Set();
+}
+
 export default function AnkiiSpeaking({
   vocabData,
   myList = [],
@@ -306,11 +312,22 @@ export default function AnkiiSpeaking({
 
   // Voice Instruction State & Continuous Recognition Engine
   const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const isVoiceActiveRef = useRef(false);
+  useEffect(() => {
+    isVoiceActiveRef.current = isVoiceActive;
+  }, [isVoiceActive]);
+
   const [isVoiceReady, setIsVoiceReady] = useState(false);
   const [voiceFeedbackMsg, setVoiceFeedbackMsg] = useState(null);
   const [lastHeardVoice, setLastHeardVoice] = useState('');
   const voiceFeedbackTimeoutRef = useRef(null);
   const recognitionRef = useRef(null);
+  const startRecognitionRef = useRef(null);
+  const restartTimeoutRef = useRef(null);
+  const resumeVoiceTimeoutRef = useRef(null);
+  const ttsWatchdogRef = useRef(null);
+  const isStoppingManuallyRef = useRef(false);
+  const hasEverStartedSuccessfullyRef = useRef(false);
   const cardAppearedTimeRef = useRef(Date.now());
   const lastExecutedCommandTimeRef = useRef(0);
   const lastProcessedResultIndexRef = useRef(-1);
@@ -337,6 +354,9 @@ export default function AnkiiSpeaking({
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
       if (voiceFeedbackTimeoutRef.current) clearTimeout(voiceFeedbackTimeoutRef.current);
       if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+      if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
+      if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (e) { }
       }
@@ -508,14 +528,39 @@ export default function AnkiiSpeaking({
   };
 
   // ----------------------------------------------------
-  // Audio Speech Helpers
+  // Audio Speech Helpers & WebKit iOS Voice Coordination
   // ----------------------------------------------------
+
+  const pauseRecognitionForTts = useCallback(() => {
+    isSpeakingRef.current = true;
+    if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+    if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+  }, []);
+
+  const resumeRecognitionAfterTts = useCallback(() => {
+    if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
+    if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+    // 350ms settle delay allows iOS AVAudioSession to release the playback hardware lock
+    resumeVoiceTimeoutRef.current = setTimeout(() => {
+      isSpeakingRef.current = false;
+      lastSpeakingEndTimeRef.current = Date.now();
+      if (isVoiceActiveRef.current && isMountedRef.current && startRecognitionRef.current) {
+        startRecognitionRef.current();
+      }
+    }, 350);
+  }, []);
 
   const speakGerman = useCallback((text, onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
+    pauseRecognitionForTts();
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -531,32 +576,43 @@ export default function AnkiiSpeaking({
     setIsSpeaking(true);
     setSpeakingPhase('de');
 
-    utterance.onend = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
+    if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+      window.__ankiActiveUtterances.add(utterance);
+    }
+
+    let hasEnded = false;
+    const finish = () => {
+      if (hasEnded) return;
+      hasEnded = true;
+      if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+        window.__ankiActiveUtterances.delete(utterance);
+      }
+      if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingPhase(null);
+      }
+      resumeRecognitionAfterTts();
       if (onEnd) onEnd();
     };
 
-    utterance.onerror = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
-      if (onEnd) onEnd();
-    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+
+    // Watchdog to guarantee isSpeaking resets even if iOS drops onend
+    const estDuration = Math.max(2500, (text || '').length * 120);
+    if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+    ttsWatchdogRef.current = setTimeout(finish, estDuration);
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   const speakEnglish = useCallback((text, onEnd) => {
     if (!('speechSynthesis' in window) || !text) {
       if (onEnd) onEnd();
       return;
     }
+    pauseRecognitionForTts();
     window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
@@ -572,26 +628,35 @@ export default function AnkiiSpeaking({
     setIsSpeaking(true);
     setSpeakingPhase('en');
 
-    utterance.onend = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
+    if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+      window.__ankiActiveUtterances.add(utterance);
+    }
+
+    let hasEnded = false;
+    const finish = () => {
+      if (hasEnded) return;
+      hasEnded = true;
+      if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+        window.__ankiActiveUtterances.delete(utterance);
+      }
+      if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingPhase(null);
+      }
+      resumeRecognitionAfterTts();
       if (onEnd) onEnd();
     };
 
-    utterance.onerror = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
-      if (onEnd) onEnd();
-    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+
+    const estDuration = Math.max(2500, (text || '').length * 120);
+    if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+    ttsWatchdogRef.current = setTimeout(finish, estDuration);
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   // Sequential speech: English meaning -> pause -> German workplace example sentence
   const speakSequentialContext = useCallback((enText, deSentence, onEnd) => {
@@ -599,6 +664,7 @@ export default function AnkiiSpeaking({
       if (onEnd) onEnd();
       return;
     }
+    pauseRecognitionForTts();
     window.speechSynthesis.cancel();
 
     const voices = window.speechSynthesis.getVoices();
@@ -616,49 +682,77 @@ export default function AnkiiSpeaking({
     if (enVoice) utterEn.voice = enVoice;
     utterEn.rate = 1.0;
 
+    if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+      window.__ankiActiveUtterances.add(utterEn);
+    }
+
+    let hasEndedFinal = false;
+    const finishFinal = () => {
+      if (hasEndedFinal) return;
+      hasEndedFinal = true;
+      if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+        window.__ankiActiveUtterances.delete(utterEn);
+      }
+      if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingPhase(null);
+      }
+      resumeRecognitionAfterTts();
+      if (onEnd) onEnd();
+    };
+
+    const estTotalDuration = Math.max(5000, ((enText || '').length + (deSentence || '').length) * 140);
+    if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+    ttsWatchdogRef.current = setTimeout(finishFinal, estTotalDuration);
+
     utterEn.onend = () => {
-      if (!isMountedRef.current) return;
+      if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+        window.__ankiActiveUtterances.delete(utterEn);
+      }
+      if (!isMountedRef.current) {
+        finishFinal();
+        return;
+      }
       setSpeakingPhase('example');
       audioEndTimeoutRef.current = setTimeout(() => {
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current) {
+          finishFinal();
+          return;
+        }
+        if (!deSentence) {
+          finishFinal();
+          return;
+        }
         const utterDe = new SpeechSynthesisUtterance(deSentence);
         utterDe.lang = 'de-DE';
         if (deVoice) utterDe.voice = deVoice;
         utterDe.rate = 1.0;
 
-        utterDe.onend = () => {
-          isSpeakingRef.current = false;
-          lastSpeakingEndTimeRef.current = Date.now();
-          if (!isMountedRef.current) return;
-          setIsSpeaking(false);
-          setSpeakingPhase(null);
-          if (onEnd) onEnd();
+        if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+          window.__ankiActiveUtterances.add(utterDe);
+        }
+
+        const finishDe = () => {
+          if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+            window.__ankiActiveUtterances.delete(utterDe);
+          }
+          finishFinal();
         };
 
-        utterDe.onerror = () => {
-          isSpeakingRef.current = false;
-          lastSpeakingEndTimeRef.current = Date.now();
-          if (!isMountedRef.current) return;
-          setIsSpeaking(false);
-          setSpeakingPhase(null);
-          if (onEnd) onEnd();
-        };
+        utterDe.onend = finishDe;
+        utterDe.onerror = finishDe;
 
         window.speechSynthesis.speak(utterDe);
       }, 320);
     };
 
     utterEn.onerror = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
-      if (onEnd) onEnd();
+      finishFinal();
     };
 
     window.speechSynthesis.speak(utterEn);
-  }, []);
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   // Current Card
   const currentCard = sessionCards[currentIndex];
@@ -722,6 +816,7 @@ export default function AnkiiSpeaking({
       if (onEnd) onEnd();
       return;
     }
+    pauseRecognitionForTts();
     window.speechSynthesis.cancel();
 
     const { spoken } = formatSpellBreakdown(wordToSpell);
@@ -743,26 +838,35 @@ export default function AnkiiSpeaking({
     setIsSpeaking(true);
     setSpeakingPhase('spell');
 
-    utterance.onend = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
+    if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+      window.__ankiActiveUtterances.add(utterance);
+    }
+
+    let hasEnded = false;
+    const finish = () => {
+      if (hasEnded) return;
+      hasEnded = true;
+      if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
+        window.__ankiActiveUtterances.delete(utterance);
+      }
+      if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+      if (isMountedRef.current) {
+        setIsSpeaking(false);
+        setSpeakingPhase(null);
+      }
+      resumeRecognitionAfterTts();
       if (onEnd) onEnd();
     };
 
-    utterance.onerror = () => {
-      isSpeakingRef.current = false;
-      lastSpeakingEndTimeRef.current = Date.now();
-      if (!isMountedRef.current) return;
-      setIsSpeaking(false);
-      setSpeakingPhase(null);
-      if (onEnd) onEnd();
-    };
+    utterance.onend = finish;
+    utterance.onerror = finish;
+
+    const estDuration = Math.max(3000, (spoken || '').length * 140);
+    if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+    ttsWatchdogRef.current = setTimeout(finish, estDuration);
 
     window.speechSynthesis.speak(utterance);
-  }, []);
+  }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   const handleSpellWord = useCallback(() => {
     if (!currentCard) return;
@@ -1368,10 +1472,8 @@ export default function AnkiiSpeaking({
   const handleVoiceCommand = useCallback((rawText) => {
     if (!rawText) return false;
 
-    // While device is speaking out loud or within 500ms cooldown, disable recognizing instructions to prevent self-triggering
-    const isTtsSpeaking = isSpeakingRef.current ||
-      (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) ||
-      (Date.now() - lastSpeakingEndTimeRef.current < 500);
+    // While device is speaking out loud or within 400ms cooldown, disable recognizing instructions to prevent self-triggering
+    const isTtsSpeaking = isSpeakingRef.current || (Date.now() - lastSpeakingEndTimeRef.current < 400);
 
     if (isTtsSpeaking) return false;
 
@@ -1498,6 +1600,8 @@ export default function AnkiiSpeaking({
 
     const isAnyActive = (sessionActive && !sessionFinished) || isReviewActive;
     if (!isVoiceActive || !isAnyActive) {
+      isStoppingManuallyRef.current = true;
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.abort();
@@ -1507,12 +1611,21 @@ export default function AnkiiSpeaking({
       return;
     }
 
-    let isStoppingManually = false;
+    isStoppingManuallyRef.current = false;
     let recognition = null;
 
     const startRecognition = () => {
-      if (isStoppingManually || !isMountedRef.current) return;
+      if (isStoppingManuallyRef.current || !isMountedRef.current) return;
+      // If TTS is currently speaking, wait; resumeRecognitionAfterTts will fire once speech finishes
+      if (isSpeakingRef.current) return;
+
       try {
+        if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+        if (recognitionRef.current) {
+          try { recognitionRef.current.abort(); } catch (e) {}
+          recognitionRef.current = null;
+        }
+
         lastProcessedResultIndexRef.current = -1;
         recognition = new SpeechRecognition();
         recognition.continuous = true;
@@ -1520,19 +1633,26 @@ export default function AnkiiSpeaking({
         recognition.maxAlternatives = 3;
         recognition.lang = 'en-US';
 
-        recognition.onresult = (event) => {
-          // While device is speaking out loud or within 500ms cooldown, discard mic input to prevent self-triggering
-          const isTtsSpeaking = isSpeakingRef.current ||
-            (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) ||
-            (Date.now() - lastSpeakingEndTimeRef.current < 500);
+        recognition.onstart = () => {
+          hasEverStartedSuccessfullyRef.current = true;
+        };
 
-          if (isTtsSpeaking) {
-            lastProcessedResultIndexRef.current = Math.max(lastProcessedResultIndexRef.current, event.results.length - 1);
+        recognition.onresult = (event) => {
+          // While device is speaking out loud or within 400ms cooldown, discard mic input to prevent self-triggering
+          if (isSpeakingRef.current || Date.now() - lastSpeakingEndTimeRef.current < 400) {
             return;
           }
 
+          // iOS WebKit Segment Reset:
+          // Unlike Desktop Chrome, WebKit on iOS does not accumulate results monotonically.
+          // Whenever event.resultIndex is 0 or less than our last processed index, reset our tracker
+          // so subsequent instructions are not locked out!
+          if (event.resultIndex === 0 || event.resultIndex <= lastProcessedResultIndexRef.current) {
+            lastProcessedResultIndexRef.current = -1;
+          }
+
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Guard: If this utterance index was already consumed, skip it!
+            // Guard: If this utterance index was already consumed in this segment, skip it!
             if (i <= lastProcessedResultIndexRef.current) {
               continue;
             }
@@ -1554,43 +1674,51 @@ export default function AnkiiSpeaking({
         };
 
         recognition.onerror = (event) => {
-          // Normal timeouts or silence trigger onend; handle real permission errors
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            isStoppingManually = true;
+          console.warn('SpeechRecognition error:', event.error);
+          // Only permanently abort if genuine permission denial on initial start
+          if ((event.error === 'not-allowed' || event.error === 'service-not-allowed') && !hasEverStartedSuccessfullyRef.current) {
+            isStoppingManuallyRef.current = true;
             setIsVoiceActive(false);
             alert('Microphone permission was denied. Please allow microphone access to use Voice Control.');
           }
         };
 
         recognition.onend = () => {
-          // Keep listening for the full duration of the session
-          if (!isStoppingManually && isMountedRef.current) {
-            setTimeout(() => {
-              if (!isStoppingManually && isMountedRef.current) {
-                startRecognition();
-              }
-            }, 150);
-          }
+          if (isStoppingManuallyRef.current || !isMountedRef.current) return;
+          // If TTS is speaking, do not restart yet; resumeRecognitionAfterTts will restart it when TTS finishes
+          if (isSpeakingRef.current) return;
+
+          // Restart recognition after 300ms buffer so iOS WebKit can cycle its audio session cleanly
+          if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+          restartTimeoutRef.current = setTimeout(() => {
+            if (!isStoppingManuallyRef.current && isMountedRef.current && isVoiceActiveRef.current && !isSpeakingRef.current) {
+              startRecognition();
+            }
+          }, 300);
         };
 
         recognition.start();
         recognitionRef.current = recognition;
       } catch (err) {
-        setTimeout(() => {
-          if (!isStoppingManually && isMountedRef.current) {
+        console.warn('SpeechRecognition start failed, scheduling retry...', err);
+        if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+        restartTimeoutRef.current = setTimeout(() => {
+          if (!isStoppingManuallyRef.current && isMountedRef.current && isVoiceActiveRef.current && !isSpeakingRef.current) {
             startRecognition();
           }
-        }, 500);
+        }, 600);
       }
     };
 
+    startRecognitionRef.current = startRecognition;
     startRecognition();
 
     return () => {
-      isStoppingManually = true;
-      if (recognition) {
+      isStoppingManuallyRef.current = true;
+      if (restartTimeoutRef.current) clearTimeout(restartTimeoutRef.current);
+      if (recognitionRef.current) {
         try {
-          recognition.abort();
+          recognitionRef.current.abort();
         } catch (e) { }
       }
       recognitionRef.current = null;

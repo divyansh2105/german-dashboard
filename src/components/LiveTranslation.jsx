@@ -1413,7 +1413,7 @@ Provide an authentic, natural German example sentence in a real-world scenario (
               if (!isStoppingManually && isMountedRef.current) {
                 startRecognition();
               }
-            }, 40);
+            }, 300);
           }
         };
 
