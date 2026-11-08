@@ -33,6 +33,7 @@ export default function LiveTranslation({
 
   // Core recognition phase: 'idle' | 'recording' | 'processing' | 'speaking'
   const [phase, setPhase] = useState('idle');
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [currentRecordingText, setCurrentRecordingText] = useState('');
   const [currentResult, setCurrentResult] = useState(null);
@@ -205,6 +206,7 @@ export default function LiveTranslation({
     if (resumeVoiceTimeoutRef.current) clearTimeout(resumeVoiceTimeoutRef.current);
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch (e) {}
+      recognitionRef.current = null;
     }
   }, []);
 
@@ -215,6 +217,7 @@ export default function LiveTranslation({
     resumeVoiceTimeoutRef.current = setTimeout(() => {
       isSpeakingTtsRef.current = false;
       lastSpeakingEndTimeRef.current = Date.now();
+      lastProcessedResultIndexRef.current = -1;
       if (isVoiceActiveRef.current && isMountedRef.current && startRecognitionRef.current) {
         startRecognitionRef.current();
       }
@@ -376,6 +379,8 @@ export default function LiveTranslation({
         switchRecognitionLang('de-DE');
         setStatusMessage('Bereit. Sage „Übersetze“ (DE), „Translate“ (EN) oder „Wiederholen“ / „Repeat“.');
       }
+      isSpeakingTtsRef.current = false;
+      lastProcessedResultIndexRef.current = -1;
       resumeRecognitionAfterTts();
       if (onComplete) onComplete();
     };
@@ -425,11 +430,20 @@ export default function LiveTranslation({
       try {
         window.speechSynthesis.speak(utterance);
       } catch (err) {
+        console.warn('[LiveTranslation] speak failed:', err);
         advance();
       }
     };
 
-    playNext();
+    // Buffer to ensure cancel() has completed before first speak
+    setTimeout(() => {
+      try {
+        playNext();
+      } catch (e) {
+        console.error('[LiveTranslation] playNext startup error:', e);
+        finishFinal();
+      }
+    }, 60);
   }, [pauseRecognitionForTts, resumeRecognitionAfterTts, switchRecognitionLang]);
 
   const speakSequentialTranslation = useCallback((enMeaning, deSentence, onComplete) => {
@@ -1021,6 +1035,8 @@ Provide an authentic, natural German example sentence in a real-world scenario (
     }
     activeSequenceIdRef.current++;
     isSpeakingTtsRef.current = false;
+    setIsSpeaking(false);
+    lastProcessedResultIndexRef.current = -1;
     setSpeakingSubPhase(null);
     setPhase('idle');
     setCurrentRecordingText('');
