@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import WordList from './components/WordList';
 import Flashcards from './components/Flashcards';
 import AnkiiSpeaking from './components/AnkiiSpeaking';
