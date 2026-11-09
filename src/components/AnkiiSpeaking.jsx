@@ -60,7 +60,9 @@ export default function AnkiiSpeaking({
   setSyncCode,
   onSyncDeletedNow,
   onReview,
-  isAnonymous
+  isAnonymous,
+  reviewPosition,
+  onUpdateReviewPosition
 }) {
   // Pre-session filter state
   const [priorityFilters, setPriorityFilters] = useState([1]); // Only High (1) by default
@@ -191,11 +193,22 @@ export default function AnkiiSpeaking({
       const idx = localStorage.getItem('b1_anki_review_last_index');
       if (idx !== null) {
         const parsed = parseInt(idx, 10);
-        return isNaN(parsed) ? 0 : parsed;
+        return isNaN(parsed) ? 150 : parsed;
       }
     } catch (e) {}
-    return 0;
+    return 150; // Initial target: word #151 (0-indexed 150)
   });
+
+  useEffect(() => {
+    if (reviewPosition && typeof reviewPosition.index === 'number') {
+      const idx = reviewPosition.index;
+      setSavedReviewIndex(idx);
+      if (!isReviewActiveRef.current) {
+        setReviewIndex(idx);
+        reviewIndexRef.current = idx;
+      }
+    }
+  }, [reviewPosition]);
 
   const [waitEnglishSec, setWaitEnglishSec] = useState(() => {
     try {
@@ -753,9 +766,9 @@ export default function AnkiiSpeaking({
 
   // English spelling breakdown helper for German words (including ä, ö, ü, ß)
   const formatSpellBreakdown = (text) => {
-    if (!text) return { cleanWord: '', spoken: '', display: '' };
+    if (!text) return { cleanWord: '', spoken: '', display: '', spokenTokens: [] };
     const cleanWord = extractWordForSpelling(text);
-    if (!cleanWord) return { cleanWord: '', spoken: '', display: '' };
+    if (!cleanWord) return { cleanWord: '', spoken: '', display: '', spokenTokens: [] };
 
     const spokenTokens = [];
     const displayTokens = [];
@@ -788,6 +801,7 @@ export default function AnkiiSpeaking({
 
     return {
       cleanWord,
+      spokenTokens,
       spoken: spokenTokens.join(', ') + '.',
       display: displayTokens.join(' • ')
     };
@@ -800,8 +814,11 @@ export default function AnkiiSpeaking({
     }
     pauseRecognitionForTts();
     window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
 
-    const { spoken } = formatSpellBreakdown(wordToSpell);
+    const { spoken, spokenTokens } = formatSpellBreakdown(wordToSpell);
     if (!spoken) {
       if (onEnd) onEnd();
       return;
@@ -820,9 +837,21 @@ export default function AnkiiSpeaking({
     }
 
     let hasEnded = false;
+    let keepAliveTimer = null;
+
     const finish = () => {
       if (hasEnded) return;
+      // CRITICAL GUARD: If watchdog fired while browser is STILL actively speaking, extend watchdog and DO NOT cut off speech!
+      if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+        if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+        ttsWatchdogRef.current = setTimeout(finish, 6000);
+        return;
+      }
       hasEnded = true;
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
       if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
         window.__ankiActiveUtterances.delete(utterance);
       }
@@ -838,11 +867,30 @@ export default function AnkiiSpeaking({
     utterance.onend = finish;
     utterance.onerror = finish;
 
-    const estDuration = Math.max(3000, (spoken || '').length * 140);
+    // Generous duration calculation: Spelling at rate 0.85 with comma pauses takes ~900-1100ms per letter.
+    // Give at least 2500ms per token + 15 second buffer so the watchdog is purely a safety net and NEVER terminates active speech!
+    const tokenCount = (spokenTokens && spokenTokens.length) ? spokenTokens.length : (spoken.split(',').length);
+    const estDuration = Math.max(25000, tokenCount * 2500 + 15000);
     if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
     ttsWatchdogRef.current = setTimeout(finish, estDuration);
 
-    window.speechSynthesis.speak(utterance);
+    // Keepalive to prevent iOS Safari 15-second speech synthesis pause bug on long words
+    keepAliveTimer = setInterval(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } else {
+        if (keepAliveTimer) clearInterval(keepAliveTimer);
+      }
+    }, 8000);
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('speakSpelling failed:', e);
+      finish();
+    }
   }, [pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   const handleSpellWord = useCallback(() => {
@@ -1207,10 +1255,14 @@ export default function AnkiiSpeaking({
     setSavedReviewIndex(idx);
     try {
       localStorage.setItem('b1_anki_review_last_index', String(idx));
+      localStorage.setItem('b1_anki_review_last_updated', String(Date.now()));
       if (card && card.word) {
         localStorage.setItem('b1_anki_review_last_word', card.word);
       }
     } catch (e) {}
+    if (onUpdateReviewPosition) {
+      onUpdateReviewPosition(idx, card?.word);
+    }
     setReviewPhase('speaking_de');
     setReviewCountdown(0);
 
@@ -1311,10 +1363,14 @@ export default function AnkiiSpeaking({
     setSavedReviewIndex(nextIdx);
     try {
       localStorage.setItem('b1_anki_review_last_index', String(nextIdx));
+      localStorage.setItem('b1_anki_review_last_updated', String(Date.now()));
       if (nextList[nextIdx] && nextList[nextIdx].word) {
         localStorage.setItem('b1_anki_review_last_word', nextList[nextIdx].word);
       }
     } catch (e) {}
+    if (onUpdateReviewPosition) {
+      onUpdateReviewPosition(nextIdx, nextList[nextIdx]?.word);
+    }
 
     reviewTimerRef.current = setTimeout(() => {
       playReviewCard(nextIdx, nextList);
@@ -2317,6 +2373,31 @@ export default function AnkiiSpeaking({
                 <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>
                   Word {reviewIndex + 1} of {reviewList.length}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = window.prompt(`Jump to Word # (1 to ${reviewList.length}):`, String(reviewIndex + 1));
+                    if (input !== null) {
+                      const num = parseInt(input.trim(), 10);
+                      if (!isNaN(num) && num >= 1 && num <= reviewList.length) {
+                        playReviewCard(num - 1);
+                      }
+                    }
+                  }}
+                  style={{
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    color: '#10b981',
+                    fontSize: '10.5px',
+                    fontWeight: '700',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                  title="Jump directly to any word number"
+                >
+                  🎯 Jump #
+                </button>
                 {reviewIndex > 0 && (
                   <button
                     type="button"
@@ -3282,26 +3363,51 @@ export default function AnkiiSpeaking({
                   >
                     <span>🎧 {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length ? `Resume Review at #${savedReviewIndex + 1} of ${deletedWords.length}` : `Start Review List (${deletedWords.length} Words in Order)`}</span>
                   </button>
-                  {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length && (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', marginTop: '4px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => {
-                        setShowDeletedModal(false);
-                        handleStartReviewList(0);
+                        const input = window.prompt(`Jump to Word # (1 to ${deletedWords.length}):`, String(savedReviewIndex + 1));
+                        if (input !== null) {
+                          const num = parseInt(input.trim(), 10);
+                          if (!isNaN(num) && num >= 1 && num <= deletedWords.length) {
+                            setShowDeletedModal(false);
+                            handleStartReviewList(num - 1);
+                          }
+                        }
                       }}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: 'var(--text-muted)',
+                        color: 'var(--accent-color, #10b981)',
                         fontSize: '11px',
                         cursor: 'pointer',
-                        textDecoration: 'underline',
-                        textAlign: 'center'
+                        textDecoration: 'underline'
                       }}
                     >
-                      Or restart from beginning (#1)
+                      🎯 Jump to specific word #
                     </button>
-                  )}
+                    {savedReviewIndex > 0 && savedReviewIndex < deletedWords.length && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowDeletedModal(false);
+                          handleStartReviewList(0);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          fontSize: '11px',
+                          cursor: 'pointer',
+                          textDecoration: 'underline',
+                          textAlign: 'center'
+                        }}
+                      >
+                        Restart from #1
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 

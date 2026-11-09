@@ -422,12 +422,146 @@ function App() {
     }
   };
 
+  // Persistent Review List position for Ankii Speaking (synced across devices via Upstash KV)
+  const [reviewPosition, setReviewPosition] = useState(() => {
+    try {
+      const hasInit151 = localStorage.getItem('b1_anki_review_init_151_applied') === 'true';
+      if (!hasInit151) {
+        localStorage.setItem('b1_anki_review_init_151_applied', 'true');
+        localStorage.setItem('b1_anki_review_last_index', '150');
+        localStorage.setItem('b1_anki_review_last_updated', String(Date.now()));
+        return { index: 150, word: '', updatedAt: Date.now() };
+      }
+      const savedIdx = localStorage.getItem('b1_anki_review_last_index');
+      const savedWord = localStorage.getItem('b1_anki_review_last_word') || '';
+      const savedUp = localStorage.getItem('b1_anki_review_last_updated');
+      if (savedIdx !== null) {
+        const parsed = parseInt(savedIdx, 10);
+        return {
+          index: isNaN(parsed) ? 150 : parsed,
+          word: savedWord,
+          updatedAt: savedUp ? parseInt(savedUp, 10) : 0
+        };
+      }
+    } catch (e) {}
+    return { index: 150, word: '', updatedAt: 0 };
+  });
+
+  const reviewPositionRef = useRef(reviewPosition);
+  useEffect(() => {
+    reviewPositionRef.current = reviewPosition;
+  }, [reviewPosition]);
+
+  const syncReviewPositionWithCloud = async (codeVal, forceIndex, forceWord) => {
+    if (!codeVal || codeVal.trim().length < 3) return { success: false, error: 'Sync code must be at least 3 characters.' };
+    try {
+      const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const res = await fetch(`/api/sync?code=${cleanCode}&type=ankii_review_pos&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!res.ok) {
+        return { success: false, error: `Cloud fetch failed: ${res.status}` };
+      }
+      const cloudData = await res.json();
+      let cloudRecord = null;
+      if (Array.isArray(cloudData) && cloudData.length > 0) {
+        cloudRecord = cloudData[0];
+      }
+
+      let currentLocalIdx = 150;
+      let currentLocalWord = '';
+      let currentLocalUp = 0;
+      try {
+        const sIdx = localStorage.getItem('b1_anki_review_last_index');
+        const sWord = localStorage.getItem('b1_anki_review_last_word');
+        const sUp = localStorage.getItem('b1_anki_review_last_updated');
+        if (sIdx !== null) {
+          const p = parseInt(sIdx, 10);
+          if (!isNaN(p)) currentLocalIdx = p;
+        }
+        if (sWord) currentLocalWord = sWord;
+        if (sUp) {
+          const up = parseInt(sUp, 10);
+          if (!isNaN(up)) currentLocalUp = up;
+        }
+      } catch (e) {}
+
+      if (typeof forceIndex === 'number' && forceIndex >= 0) {
+        currentLocalIdx = forceIndex;
+        if (forceWord) currentLocalWord = forceWord;
+        currentLocalUp = Date.now();
+        localStorage.setItem('b1_anki_review_last_index', String(currentLocalIdx));
+        localStorage.setItem('b1_anki_review_last_updated', String(currentLocalUp));
+        if (currentLocalWord) localStorage.setItem('b1_anki_review_last_word', currentLocalWord);
+      }
+
+      const hasInit151 = localStorage.getItem('b1_anki_review_init_151_applied') === 'true';
+
+      let finalIndex = currentLocalIdx;
+      let finalWord = currentLocalWord;
+      let finalUpdatedAt = currentLocalUp;
+
+      if (!hasInit151 && (!cloudRecord || cloudRecord.index === 0 || !cloudRecord.index)) {
+        finalIndex = 150;
+        finalUpdatedAt = Date.now();
+        localStorage.setItem('b1_anki_review_init_151_applied', 'true');
+        localStorage.setItem('b1_anki_review_last_index', '150');
+        localStorage.setItem('b1_anki_review_last_updated', String(finalUpdatedAt));
+      } else if (cloudRecord && typeof cloudRecord.index === 'number') {
+        const cloudUp = cloudRecord.updatedAt || 0;
+        if (cloudUp > currentLocalUp && forceIndex === undefined) {
+          finalIndex = cloudRecord.index;
+          finalWord = cloudRecord.word || '';
+          finalUpdatedAt = cloudUp;
+          localStorage.setItem('b1_anki_review_last_index', String(finalIndex));
+          localStorage.setItem('b1_anki_review_last_updated', String(finalUpdatedAt));
+          if (finalWord) localStorage.setItem('b1_anki_review_last_word', finalWord);
+        } else if (currentLocalUp > cloudUp || forceIndex !== undefined) {
+          finalIndex = currentLocalIdx;
+        }
+      }
+
+      setReviewPosition({ index: finalIndex, word: finalWord, updatedAt: finalUpdatedAt });
+
+      const shouldPush = !cloudRecord || finalUpdatedAt > (cloudRecord.updatedAt || 0) || forceIndex !== undefined || !hasInit151;
+      if (shouldPush) {
+        try {
+          await fetch(`/api/sync?code=${cleanCode}&type=ankii_review_pos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ index: finalIndex, word: finalWord, updatedAt: finalUpdatedAt }]),
+            cache: 'no-store'
+          });
+        } catch (postErr) {
+          console.warn("Could not sync review position back to cloud:", postErr);
+        }
+      }
+
+      return { success: true, index: finalIndex };
+    } catch (err) {
+      console.warn("Cloud review position sync error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const reviewPosSyncTimeoutRef = useRef(null);
+  const handleUpdateReviewPosition = useCallback((newIndex, wordStr) => {
+    setReviewPosition({ index: newIndex, word: wordStr || '', updatedAt: Date.now() });
+    if (reviewPosSyncTimeoutRef.current) clearTimeout(reviewPosSyncTimeoutRef.current);
+    reviewPosSyncTimeoutRef.current = setTimeout(() => {
+      if (syncCode && syncCode.trim().length >= 3) {
+        syncReviewPositionWithCloud(syncCode, newIndex, wordStr);
+      }
+    }, 1500);
+  }, [syncCode]);
+
   // Initial cloud sync on load
   useEffect(() => {
     if (syncCode) {
       syncWithCloud(syncCode);
       syncDeletedWithCloud(syncCode);
       syncDeletedVerbsWithCloud(syncCode);
+      syncReviewPositionWithCloud(syncCode);
     }
 
     // Try loading local backup from project directory if deletedWords is empty on mount
@@ -484,6 +618,7 @@ function App() {
         syncWithCloud(syncCode);
         syncDeletedWithCloud(syncCode);
         syncDeletedVerbsWithCloud(syncCode);
+        syncReviewPositionWithCloud(syncCode);
       }
     };
 
@@ -495,6 +630,7 @@ function App() {
         syncWithCloud(syncCode);
         syncDeletedWithCloud(syncCode);
         syncDeletedVerbsWithCloud(syncCode);
+        syncReviewPositionWithCloud(syncCode);
       }
     }, 45000);
 
@@ -509,6 +645,7 @@ function App() {
   useEffect(() => {
     if (activeTab === 'ankii-speaking' && syncCode && syncCode.trim().length >= 3) {
       syncDeletedWithCloud(syncCode);
+      syncReviewPositionWithCloud(syncCode);
     } else if (activeTab === 'verb-tenses' && syncCode && syncCode.trim().length >= 3) {
       syncDeletedVerbsWithCloud(syncCode);
     }
@@ -1897,6 +2034,7 @@ function App() {
                 localStorage.setItem('b1_sync_code', clean);
                 syncWithCloud(clean);
                 syncDeletedWithCloud(clean);
+                syncReviewPositionWithCloud(clean);
               } else {
                 localStorage.removeItem('b1_sync_code');
               }
@@ -1906,12 +2044,15 @@ function App() {
               if (!codeToUse || codeToUse.length < 3) return { success: false, error: 'Code too short' };
               const [delRes] = await Promise.all([
                 syncDeletedWithCloud(codeToUse),
-                syncWithCloud(codeToUse)
+                syncWithCloud(codeToUse),
+                syncReviewPositionWithCloud(codeToUse)
               ]);
               return delRes;
             }}
             onReview={handleReviewWord}
             isAnonymous={isAnonymous}
+            reviewPosition={reviewPosition}
+            onUpdateReviewPosition={handleUpdateReviewPosition}
           />
         )}
         {activeTab === 'verb-tenses' && (

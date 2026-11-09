@@ -1100,9 +1100,21 @@ export default function VerbTenses({
     }
 
     let hasEnded = false;
+    let keepAliveTimer = null;
+
     const finish = () => {
       if (hasEnded) return;
+      // CRITICAL GUARD: If watchdog fired while browser is STILL actively speaking, extend watchdog and DO NOT cut off speech!
+      if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+        if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
+        ttsWatchdogRef.current = setTimeout(finish, 6000);
+        return;
+      }
       hasEnded = true;
+      if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+      }
       if (typeof window !== 'undefined' && window.__vtActiveUtterances) {
         window.__vtActiveUtterances.delete(utterance);
       }
@@ -1117,11 +1129,29 @@ export default function VerbTenses({
     utterance.onend = finish;
     utterance.onerror = finish;
 
-    const estDuration = Math.max(3000, speechText.length * 140);
+    // Generous duration calculation: Spelling at rate 0.85 with pauses takes ~900-1100ms per letter.
+    // Give at least 2500ms per letter + 15 second buffer so the watchdog is purely a safety net and NEVER terminates active speech!
+    const estDuration = Math.max(25000, letters.length * 2500 + 15000);
     if (ttsWatchdogRef.current) clearTimeout(ttsWatchdogRef.current);
     ttsWatchdogRef.current = setTimeout(finish, estDuration);
 
-    window.speechSynthesis.speak(utterance);
+    // Keepalive to prevent iOS Safari 15-second speech synthesis pause bug on long words
+    keepAliveTimer = setInterval(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis && window.speechSynthesis.speaking) {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } else {
+        if (keepAliveTimer) clearInterval(keepAliveTimer);
+      }
+    }, 8000);
+
+    try {
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('VerbTenses speakSpelling failed:', e);
+      finish();
+    }
   }, [currentCard, pauseRecognitionForTts, resumeRecognitionAfterTts]);
 
   // ----------------------------------------------------
