@@ -967,6 +967,14 @@ export default function TranslationPractice() {
 
   // Initialize Web Speech Recognition
   useEffect(() => {
+// Helper to capitalize the first letter of a sentence and after sentence-ending punctuation (. ? !)
+const capitalizeSentenceStart = (text) => {
+  if (!text) return '';
+  let res = text.replace(/^(\s*)(\p{L})/u, (_, space, char) => space + char.toUpperCase());
+  res = res.replace(/([.?!]\s+)(\p{L})/gu, (_, punc, char) => punc + char.toUpperCase());
+  return res;
+};
+
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const rec = new SpeechRecognition();
@@ -989,7 +997,8 @@ export default function TranslationPractice() {
         }
         const cleanedSession = sessionTranscript.trim();
         const base = sessionBaseTextRef.current;
-        setUserTranslation(base ? (base + ' ' + cleanedSession) : cleanedSession);
+        const combined = base ? (base + ' ' + cleanedSession) : cleanedSession;
+        setUserTranslation(capitalizeSentenceStart(combined));
       };
 
       rec.onerror = (event) => {
@@ -1057,7 +1066,7 @@ export default function TranslationPractice() {
             transcript += event.results[i][0].transcript;
           }
         }
-        setCustomSentenceText(transcript);
+        setCustomSentenceText(capitalizeSentenceStart(transcript.trim()));
       };
 
       rec.onerror = (event) => {
