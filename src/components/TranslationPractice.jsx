@@ -69,58 +69,106 @@ const PERSPECTIVE_STYLES = [
 // Topic-specific grammatical sub-nuances for deep variety
 const TOPIC_SUB_FOCUSES = {
   past: [
-    "Präteritum of modal verbs (musste, konnte, durfte, wollte) combined with an infinitive clause",
-    "Perfekt with 'sein' for change of location or state (z.B. umgezogen, eingeschlafen, aufgewacht, angekommen)",
-    "Perfekt with reflexive verbs (z.B. sich beschwert, sich entschieden, sich gefreut)",
-    "Plusquamperfekt combined with 'nachdem' for completed past actions",
-    "Mixed narrative: reporting a past incident and its lingering consequences"
+    "Präteritum of common irregular core verbs (gab, stand, lag, saß, ging, kam, wusste, dachte, nannte) in formal written or narrative context",
+    "Präteritum of modal verbs (musste, konnte, durfte, wollte, sollte) combined with infinitive clauses in workplace or travel excuses",
+    "Perfekt with 'sein' for change of location, motion, or state change (z.B. umgezogen, eingeschlafen, aufgewacht, angekommen, verschwunden)",
+    "Perfekt with reflexive verbs (z.B. sich beschwert, sich entschieden, sich erkundigt, sich gefreut) with correct reflexive pronoun placement",
+    "Perfekt with separable verbs (z.B. hat angerufen, hat vorbereitet, ist ausgestiegen, hat mitgebracht, ist abgefahren)",
+    "Perfekt with inseparable verbs without 'ge-' (z.B. hat bezahlt, hat empfohlen, hat verstanden, hat zerstört, hat wiederholt)",
+    "Plusquamperfekt combined with 'nachdem' for completed prior past actions (z.B. 'Nachdem wir den Vertrag unterschrieben hatten, ...')",
+    "Double infinitive in the past with modal verbs (Ersatzinfinitiv: 'hat machen müssen / hat reparieren lassen')",
+    "Past narrative with temporal connectors (damals, früher, vor zwei Jahren, als vs. wenn in the past)",
+    "Mixed narrative: reporting a past incident and explaining its lingering consequences in the present",
+    "Contrasting past assumptions (hatte gedacht / war davon ausgegangen) with present reality"
   ],
   future: [
-    "Futur I (werden + Infinitiv) expressing a firm plan, resolution, or prediction",
-    "Futur I expressing an assumption about the present (z.B. 'Er wird wohl im Büro sein')",
-    "Alternative future using temporal adverbs (z.B. nächsten Monat, übermorgen) + Präsens",
-    "Conditional future outcome: what will happen if a specific condition is fulfilled"
+    "Futur I (werden + Infinitiv) expressing a firm personal resolution, promise, or long-term plan",
+    "Futur I expressing an official corporate, legal, or municipal administrative announcement",
+    "Futur I expressing an assumption / subjective speculation about the present (z.B. 'Er wird wohl noch im Stau stehen')",
+    "Alternative future using temporal adverbs (übermorgen, nächste Woche, im kommenden Monat) + Präsens with clear time markers",
+    "Conditional future outcome (Wenn-Satz + Futur I): what will happen if a specific condition is fulfilled",
+    "Futur I combined with modal verbs: werden + Infinitiv + Infinitiv (z.B. 'Wir werden die Richtlinien anpassen müssen')",
+    "Future intentions with 'vorhaben / planen zu + Infinitiv' (z.B. 'Die Geschäftsführung hat vor, die Filiale im Sommer zu modernisieren')",
+    "Futur I combined with passive voice (Futur I Passiv: 'wird ... werden')",
+    "Expressing doubts or questions about future timing with 'ob' or 'wann' (z.B. 'Es ist noch unklar, wann die Reparatur abgeschlossen sein wird')",
+    "Future milestones and goals with temporal prepositions (bis zum, ab dem, innerhalb der nächsten drei Monate)"
   ],
   prepositions: [
-    "Two-way prepositions (Wechselpräpositionen) with Dativ for stationary position (in, an, auf, unter, vor, hinter, zwischen)",
-    "Two-way prepositions with Akkusativ for motion/direction (stellen, legen, hängen, setzen)",
-    "Verbs with fixed prepositions (z.B. warten auf, teilnehmen an, sich interessieren für, träumen von, abhängen von)",
-    "Genitiv prepositions common at B1 (während, trotz, wegen, innerhalb)"
+    "Two-way prepositions (Wechselpräpositionen) with Dativ for stationary position (in, an, auf, unter, vor, hinter, neben, zwischen)",
+    "Two-way prepositions with Akkusativ for motion, placement, and direction (stellen, legen, hängen, setzen)",
+    "Fixed Dativ prepositions (aus, bei, mit, nach, seit, von, zu, gegenüber) in professional and daily communication",
+    "Fixed Akkusativ prepositions (durch, für, gegen, ohne, um, bis, entlang) in everyday directives",
+    "High-frequency B1 Genitiv prepositions (während, trotz, wegen, innerhalb, außerhalb) with correct Genitiv endings",
+    "Verbs with fixed Dativ prepositions (teilnehmen an, abhängen von, gehören zu, gratulieren zu, sich beschäftigen mit)",
+    "Verbs with fixed Akkusativ prepositions (warten auf, sich freuen auf/über, sich interessieren für, bitten um, denken an)",
+    "Temporal prepositions with Dativ and Genitiv (vor, nach, bei, seit, ab, während, bis zu) with time spans and events",
+    "Pronominal adverbs (da(r)- / wo(r)-) combined with prepositions (z.B. 'Wir freuen uns sehr darauf', 'Woran denkst du?')",
+    "Adjectives with fixed prepositions (zufrieden mit, stolz auf, verantwortlich für, interessiert an, wütend über)",
+    "Local prepositions distinguishing 'nach' vs 'zu' vs 'in' (cities/countries vs persons/institutions vs enclosed buildings)"
   ],
   subordinate: [
-    "Causal clauses with 'weil' or 'da' followed by verb-final word order",
-    "Concessive clauses with 'obwohl' followed by main clause subject-verb inversion",
-    "Conditional clauses with 'wenn' or 'falls'",
-    "Temporal sequences using 'nachdem', 'während', 'bevor', or 'seitdem'",
-    "Indirect questions using 'ob' or interrogative pronouns (wann, wie, warum)",
-    "Double connectors (nicht nur ... sondern auch, sowohl ... als auch, zwar ... aber, entweder ... oder)"
+    "Causal clauses with 'weil' and 'da' with strict verb-final word order and inversion in the main clause",
+    "Concessive clauses with 'obwohl' / 'obgleich' followed by main clause subject-verb inversion",
+    "Conditional clauses with 'wenn' and 'falls' contrasting realistic conditions vs official requirements",
+    "Temporal clauses with 'während' (simultaneity) and 'bevor / ehe' (prior action) with distinct tenses",
+    "Temporal clauses with 'nachdem' (requiring Plusquamperfekt/Perfekt sequence) (z.B. 'Nachdem sie die E-Mail gelesen hatte, ...')",
+    "Temporal clauses with 'seit / seitdem' expressing actions continuing from the past into the present",
+    "Temporal clauses with 'bis' expressing an endpoint of an action",
+    "Indirect questions using 'ob' (yes/no) and 'W-Fragen' (wann, wie, warum, wer) nested inside a main sentence",
+    "Object clauses with 'dass' expressing opinions, announcements, or perceptions",
+    "Two-part connectors: 'nicht nur ... sondern auch' (addition) in complex workplace statements",
+    "Two-part connectors: 'sowohl ... als auch' (inclusion) and 'weder ... noch' (double negation)",
+    "Two-part connectors: 'zwar ... aber' (concession) and 'entweder ... oder' (alternatives)",
+    "Proportional clauses with 'je ... desto / umso' (z.B. 'Je früher wir den Antrag einreichen, desto schneller wird er bearbeitet')"
   ],
   zu_infinitive: [
-    "Final clause expressing purpose: 'um ... zu + Infinitiv' (in order to do something)",
-    "Negative consequence or omitted action: 'ohne ... zu + Infinitiv' (without doing something)",
-    "Alternative action: 'anstatt / statt ... zu + Infinitiv' (instead of doing something)",
-    "Verbs taking Infinitiv mit zu (z.B. vorhaben, planen, versuchen, vergessen, beschließen, bitten, versprechen)",
-    "Impersonal expressions with 'es ist': 'Es ist wichtig/schwer/verboten/möglich, ... zu + Infinitiv'",
-    "Noun + haben expressions: 'Lust/Zeit/die Absicht/Angst haben, ... zu + Infinitiv'",
-    "Separable verbs in infinitive clauses: prefix + '-zu-' + verb stem (z.B. einzukaufen, anzurufen, mitzubringen, aufzustehen)"
+    "Final clauses with 'um ... zu + Infinitiv' expressing conscious purpose or goal (same subject as main clause)",
+    "Negative clauses with 'ohne ... zu + Infinitiv' expressing an omitted expected action (z.B. 'Er verließ das Meeting, ohne etwas zu sagen')",
+    "Alternative clauses with 'anstatt / statt ... zu + Infinitiv' (z.B. 'Statt den Vertrag zu kündigen, bat sie um ein Gespräch')",
+    "Separable verbs in infinitive clauses (prefix + -zu- + stem: anzurufen, mitzubringen, einzukaufen, auszuschalten, vorzubereiten)",
+    "Common B1 verbs governing 'zu + Infinitiv' (planen, vorhaben, versuchen, beschließen, vergessen, aufhören, versprechen, bitten)",
+    "Impersonal expressions with 'es ist' (es ist wichtig / verboten / ratsam / notwendig / schwer / möglich, ... zu + Infinitiv)",
+    "Noun + haben expressions governing 'zu + Infinitiv' (Zeit / Lust / die Absicht / die Gelegenheit / die Möglichkeit / Angst haben, ... zu)",
+    "Infinitivkonstruktionen with reflexive verbs (sich weigern zu, sich bemühen zu, sich freuen ... zu)",
+    "'Brauchen nicht ... zu + Infinitiv' replacing 'nicht müssen' (z.B. 'Sie brauchen das Dokument nicht persönlich vorbeizubringen')",
+    "'Scheinen ... zu + Infinitiv' expressing appearance or impression (z.B. 'Die Verhandlungen scheinen erfolgreich zu verlaufen')"
   ],
   modal: [
-    "Polite request or subjective permission using Konjunktiv II / Modalverben (dürfte, könnte, müsste)",
-    "Modal verb inside a subordinate clause (verb cluster at the end: '... weil er morgen arbeiten muss')",
-    "Past tense of modal verbs in everyday workplace or travel excuses",
-    "Expressing obligation vs prohibition (müssen vs nicht dürfen)"
+    "Objective obligation vs prohibition: 'müssen' (must) vs 'nicht dürfen' (must not / forbidden) in official regulations",
+    "Polite requests, favors, and permissions using Konjunktiv II of modal verbs: 'könnte, dürfte, müsste'",
+    "Modal verbs in Präteritum (musste, konnte, durfte, wollte, sollte) in workplace explanations, sick notes, and schedule clashes",
+    "Modal verbs inside subordinate clauses (verb cluster at the end: '... weil er die Frist unbedingt einhalten muss')",
+    "Modal verbs with Perfect tense / Ersatzinfinitiv (z.B. 'Ich habe gestern lange arbeiten müssen')",
+    "Giving recommendations with 'sollte' vs reporting instructions/orders from a doctor or supervisor with 'soll'",
+    "Subjective meaning of 'wollen' (claiming something) vs firm desire (z.B. 'Er will davon nichts gewusst haben')",
+    "Expressing capability vs opportunity vs authorization: 'können' (ability) vs 'dürfen' (permission)",
+    "Subjective assumptions with 'müsste' and 'dürfte' (z.B. 'Die Kollegin müsste gleich da sein')",
+    "Modal verbs combined with passive voice (z.B. 'Der Bericht muss bis Freitag fertiggestellt werden')"
   ],
   passive: [
-    "Vorgangspassiv in Präsens for ongoing processes or official rules (werden + Partizip II)",
-    "Vorgangspassiv in Präteritum/Perfekt for completed events (wurde + Partizip II)",
-    "Passive with modal verbs (z.B. 'muss repariert werden', 'kann erst morgen abgeholt werden')",
-    "Zustandspassiv (sein + Partizip II) describing the resulting state"
+    "Vorgangspassiv in Präsens (werden + Partizip II) describing ongoing procedures, instructions, or official workflows",
+    "Vorgangspassiv in Präteritum (wurde + Partizip II) reporting completed past actions in news, reports, or incident logs",
+    "Vorgangspassiv in Perfekt (ist ... worden + Partizip II) in conversation about completed processes",
+    "Passive with modal verbs in Präsens: muss / kann / soll / darf ... Partizip II + werden",
+    "Passive with modal verbs in Präteritum: musste / konnte / durfte ... Partizip II + werden",
+    "Passive with agent/cause: distinguishing 'von + Dativ' (acting person) vs 'durch + Akkusativ' (means, tool, cause)",
+    "Passive inside subordinate clauses (verb cluster order: '... weil die Straße gesperrt werden muss')",
+    "Zustandspassiv with 'sein' (sein + Partizip II) describing a completed result or state (z.B. 'Die Akte ist bereits archiviert')",
+    "Impersonal passive without subject (Passiv mit 'es' / ohne Subjekt: 'Hier wird gearbeitet', 'Es wurde intensiv diskutiert')",
+    "Passive alternatives at B1 (Passiversatzformen: 'lässt sich + Infinitiv' or 'ist zu + Infinitiv')"
   ],
   relative: [
-    "Relative clause with preposition + case (z.B. 'der Kollege, mit dem ich gesprochen habe')",
-    "Relative clause in Dativ or Genitiv ('das Kind, dessen Eltern...', 'den Freunden, denen wir geholfen haben')",
-    "Relative clause referring to a location or indefinite pronoun ('alles, was...', 'der Ort, wo...')",
-    "Relative clause nested within a complex sentence"
+    "Relative clauses with Nominativ (der, die, das, die - subject of the relative clause) describing a person, object, or concept",
+    "Relative clauses with Akkusativ (den, die, das, die - direct object of the relative clause)",
+    "Relative clauses with Dativ (dem, der, dem, denen - indirect object or verb governing Dativ)",
+    "Relative clauses with Genitiv (dessen, deren) expressing possession or relationship (z.B. 'der Kollege, dessen Vorschlag angenommen wurde')",
+    "Relative clauses with Preposition + Dativ (mit dem, zu der, bei denen, nach welchem)",
+    "Relative clauses with Preposition + Akkusativ (auf die, für das, über den, um welche)",
+    "Relative clauses with two-way prepositions (in dem / im, an der, auf dem, unter denen)",
+    "Indefinite relative clauses with 'was' referring back to neuter pronouns (alles, nichts, etwas, das, was)",
+    "Relative clauses referring to a whole preceding clause with 'was' (z.B. 'Er hat die Prüfung bestanden, was uns alle sehr gefreut hat')",
+    "Local relative clauses with 'wo' referring to cities, institutions, or locations",
+    "Nested relative clauses inserted directly into the middle of the main clause between subject and verb"
   ],
   konjunktiv2: [
     "Polite requests, favors, and administrative inquiries using 'könnten' or 'dürfte' (z.B. 'Könnten Sie mir bitte die Bestätigung zusenden?', 'Dürfte ich kurz Ihr Telefon benutzen?')",
@@ -137,12 +185,16 @@ const TOPIC_SUB_FOCUSES = {
     "Expressions of near-accidents or close calls ('fast / beinahe + Konjunktiv II der Vergangenheit') (z.B. 'Beinahe hätte ich den wichtigen Termin vergessen')"
   ],
   everyday: [
-    "Dealing with an unexpected delay, rescheduling an appointment with apologies",
-    "Filing a polite complaint about a defective item or service issue",
-    "Explaining requirements or asking for advice at a public administrative office",
-    "Navigating a small conflict or negotiation with a neighbor, colleague, or landlord",
-    "Inquiring about public transport disruptions, ticket cancellations, or travel changes",
-    "Formal communication regarding job interview availability or apartment handover (Wohnungsübergabe)"
+    "Formal workplace and team communication (project updates, deadlines, delegating tasks, proposing meeting agenda points)",
+    "Apartment, landlord and tenancy issues (heating/hot water breakdown, utility bill disputes, technician scheduling, apartment handover)",
+    "Doctor, pharmacy and healthcare navigation (symptoms description, specialist appointments, prescription dosages, physiotherapy follow-up)",
+    "Public administration and official bureaucracy (Bürgeramt registration, residence permit renewal, tax number inquiries, certificate verification)",
+    "Travel, train delays and transport inquiries (train cancellations, seat reservations, platform changes, delay compensation claims)",
+    "Consumer complaints and warranty claims (defective electronics, demanding repair/replacement under warranty, polite support disputes)",
+    "Job search, cover letter and interview inquiries (contract terms clarification, probation period questions, notice periods, remote work policy)",
+    "Banking, contracts and subscriptions (opening bank accounts, canceling memberships within notice period, banking app issues)",
+    "Resolving neighborhood and community conflicts (quiet hours, waste sorting disputes, package delivery etiquette)",
+    "Education, university and language courses (enrollment requirements, exam registration deadlines, presentation rehearsals, recommendation requests)"
   ]
 };
 
