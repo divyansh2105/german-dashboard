@@ -114,8 +114,6 @@ export default function GrammarPractice() {
   const [showVerbListModal, setShowVerbListModal] = useState(false);
   const [verbSearchQuery, setVerbSearchQuery] = useState('');
   const [verbGroupFilter, setVerbGroupFilter] = useState('all');
-  const [verbTierFilter, setVerbTierFilter] = useState('all');
-  const [verbStatusFilter, setVerbStatusFilter] = useState('all');
 
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [questionMode, setQuestionMode] = useState(() => {
@@ -1204,16 +1202,16 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               </div>
             </div>
 
-            {/* Filters Bar: Search + Group selector + Tier + Status */}
+            {/* Filters Bar: Search + Group selector */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <input
                   type="text"
-                  placeholder="🔍 Suchen (z.B. warten, auf, freuen, wait, da-/wo-)..."
+                  placeholder="🔍 Suchen (z.B. warten, auf, freuen, Zug, holiday, Beispielsatz)..."
                   value={verbSearchQuery}
                   onChange={(e) => setVerbSearchQuery(e.target.value)}
                   style={{
-                    flex: '1 1 240px',
+                    flex: '1 1 auto',
                     padding: '8px 12px',
                     borderRadius: '8px',
                     background: 'rgba(0,0,0,0.4)',
@@ -1222,42 +1220,23 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                     fontSize: '13px'
                   }}
                 />
-                
-                {/* Tier filter */}
-                <select
-                  value={verbTierFilter}
-                  onChange={(e) => setVerbTierFilter(e.target.value)}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#fff',
-                    fontSize: '12px'
-                  }}
-                >
-                  <option value="all">Alle Tiers</option>
-                  <option value="1">Tier 1 (High Frequency)</option>
-                  <option value="2">Tier 2</option>
-                </select>
-
-                {/* Status filter */}
-                <select
-                  value={verbStatusFilter}
-                  onChange={(e) => setVerbStatusFilter(e.target.value)}
-                  style={{
-                    padding: '7px 10px',
-                    borderRadius: '8px',
-                    background: 'rgba(0,0,0,0.4)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    color: '#fff',
-                    fontSize: '12px'
-                  }}
-                >
-                  <option value="all">Alle Status</option>
-                  <option value="remaining">⏳ Noch offen ({festVerbsRemaining.length})</option>
-                  <option value="covered">✅ Bereits geübt ({68 - festVerbsRemaining.length})</option>
-                </select>
+                {verbSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setVerbSearchQuery('')}
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      color: 'var(--text-secondary)',
+                      borderRadius: '6px',
+                      padding: '6px 10px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
 
               {/* Quick Group Tabs */}
@@ -1308,23 +1287,19 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             </div>
 
             {/* Verb Groups & Tables */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '520px', overflowY: 'auto', paddingRight: '4px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '560px', overflowY: 'auto', paddingRight: '4px' }}>
               {FIXED_VERBS_GROUPS
                 .filter(group => verbGroupFilter === 'all' || verbGroupFilter === group.id)
                 .map((group, groupIdx) => {
                   const query = verbSearchQuery.trim().toLowerCase();
                   const matchingVerbs = group.verbs.filter(v => {
-                    if (verbTierFilter !== 'all' && String(v.tier) !== verbTierFilter) return false;
-                    const isCovered = !festVerbsRemaining.includes(v.id);
-                    if (verbStatusFilter === 'remaining' && isCovered) return false;
-                    if (verbStatusFilter === 'covered' && !isCovered) return false;
-
                     if (!query) return true;
                     return (
                       v.verb.toLowerCase().includes(query) ||
                       v.prep.toLowerCase().includes(query) ||
                       v.meaning.toLowerCase().includes(query) ||
-                      v.daWo.toLowerCase().includes(query) ||
+                      (v.example && v.example.toLowerCase().includes(query)) ||
+                      (v.exampleEn && v.exampleEn.toLowerCase().includes(query)) ||
                       group.title.toLowerCase().includes(query) ||
                       group.concept.toLowerCase().includes(query)
                     );
@@ -1365,41 +1340,26 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-muted)', fontSize: '11px' }}>
-                              <th style={{ padding: '6px 8px', width: '30px' }}>#</th>
-                              <th style={{ padding: '6px 8px', width: '50px' }}>Tier</th>
-                              <th style={{ padding: '6px 8px' }}>Verb</th>
-                              <th style={{ padding: '6px 8px', width: '50px' }}>Kasus</th>
-                              <th style={{ padding: '6px 8px' }}>Bedeutung</th>
-                              <th style={{ padding: '6px 8px' }}>da- / wo- Form</th>
-                              <th style={{ padding: '6px 8px', width: '80px' }}>Status</th>
+                              <th style={{ padding: '6px 8px', width: '32px' }}>#</th>
+                              <th style={{ padding: '6px 8px', minWidth: '130px' }}>Verb</th>
+                              <th style={{ padding: '6px 8px', width: '55px' }}>Kasus</th>
+                              <th style={{ padding: '6px 8px', minWidth: '140px' }}>Bedeutung</th>
+                              <th style={{ padding: '6px 8px' }}>Beispielsatz</th>
                               <th style={{ padding: '6px 8px', textAlign: 'right', width: '70px' }}>Aktion</th>
                             </tr>
                           </thead>
                           <tbody>
                             {matchingVerbs.map(v => {
-                              const isRemaining = festVerbsRemaining.includes(v.id);
                               return (
                                 <tr
                                   key={v.id}
                                   style={{
-                                    borderBottom: '1px solid rgba(255,255,255,0.03)',
-                                    background: isRemaining ? 'transparent' : 'rgba(34, 197, 94, 0.03)'
+                                    borderBottom: '1px solid rgba(255,255,255,0.04)',
+                                    verticalAlign: 'middle'
                                   }}
                                 >
-                                  <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>{v.id}</td>
-                                  <td style={{ padding: '8px' }}>
-                                    <span style={{
-                                      fontSize: '10px',
-                                      padding: '1px 6px',
-                                      borderRadius: '4px',
-                                      background: v.tier === 1 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(148, 163, 184, 0.2)',
-                                      color: v.tier === 1 ? '#93c5fd' : '#cbd5e1',
-                                      fontWeight: '700'
-                                    }}>
-                                      T{v.tier}
-                                    </span>
-                                  </td>
-                                  <td style={{ padding: '8px', fontWeight: '700', color: '#fff' }}>
+                                  <td style={{ padding: '10px 8px', color: 'var(--text-muted)', fontSize: '11px' }}>{v.id}</td>
+                                  <td style={{ padding: '10px 8px', fontWeight: '700', color: '#fff' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                       <span>{v.verb}</span>
                                       <button
@@ -1419,7 +1379,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                                       </button>
                                     </div>
                                   </td>
-                                  <td style={{ padding: '8px' }}>
+                                  <td style={{ padding: '10px 8px' }}>
                                     <span style={{
                                       fontSize: '10.5px',
                                       padding: '2px 6px',
@@ -1432,25 +1392,43 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                                       {v.case}
                                     </span>
                                   </td>
-                                  <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{v.meaning}</td>
-                                  <td style={{ padding: '8px' }}>
-                                    <code style={{ fontSize: '11px', color: '#facc15', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>
-                                      {v.daWo}
-                                    </code>
+                                  <td style={{ padding: '10px 8px', color: 'var(--text-secondary)' }}>{v.meaning}</td>
+                                  <td style={{ padding: '10px 8px' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ color: '#e2e8f0', fontWeight: '500', lineHeight: 1.4 }}>
+                                          {v.example}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => speakGermanText(v.example)}
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: 'var(--text-muted)',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            padding: 0,
+                                            flexShrink: 0
+                                          }}
+                                          title="Beispielsatz anhören"
+                                        >
+                                          🔊
+                                        </button>
+                                      </div>
+                                      {v.exampleEn && (
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                          🇬🇧 {v.exampleEn}
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
-                                  <td style={{ padding: '8px' }}>
-                                    {isRemaining ? (
-                                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>⏳ Offen</span>
-                                    ) : (
-                                      <span style={{ fontSize: '11px', color: '#4ade80', fontWeight: '600' }}>✅ Geübt</span>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                  <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                                     <button
                                       type="button"
                                       onClick={() => handlePracticeSpecificVerb(v)}
                                       style={{
-                                        padding: '3px 8px',
+                                        padding: '4px 10px',
                                         borderRadius: '6px',
                                         background: 'rgba(59, 130, 246, 0.2)',
                                         border: '1px solid rgba(59, 130, 246, 0.45)',
