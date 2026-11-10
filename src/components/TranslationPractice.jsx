@@ -829,6 +829,18 @@ export default function TranslationPractice() {
     return [];
   });
 
+  // Track the last 10 questions individually per topic
+  const [topicHistory, setTopicHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_translation_topic_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    return {};
+  });
+
   const [showDeckModal, setShowDeckModal] = useState(false);
 
   // Deck Management Helpers
@@ -1209,12 +1221,36 @@ const capitalizeSentenceStart = (text) => {
         }
       }
 
-      const unvisited = filtered.filter(ex => !recentHistory.some(h => (typeof h === 'string' ? h : h.english || '').startsWith(ex.english)));
+      const targetTopicList = topicHistory[targetTopicId] || [];
+      const unvisited = filtered.filter(ex => 
+        !targetTopicList.some(h => (typeof h === 'string' ? h : h.english || '').startsWith(ex.english)) &&
+        !recentHistory.some(h => (typeof h === 'string' ? h : h.english || '').startsWith(ex.english))
+      );
       const pool = unvisited.length > 0 ? unvisited : filtered;
       const selected = pool[Math.floor(Math.random() * pool.length)];
       if (selected) {
+        const historyEntry = selected.grammarFocus 
+          ? `${selected.english} [Grammar: ${selected.grammarFocus}]`
+          : selected.english;
+
+        // Update topic-specific history
+        const updatedTopicList = [
+          historyEntry,
+          ...targetTopicList.filter(s => {
+            const sText = typeof s === 'string' ? s : (s.english || '');
+            return !sText.startsWith(selected.english);
+          })
+        ].slice(0, 10);
+        const nextTopicHistory = {
+          ...topicHistory,
+          [targetTopicId]: updatedTopicList
+        };
+        setTopicHistory(nextTopicHistory);
+        localStorage.setItem('b1_translation_topic_history', JSON.stringify(nextTopicHistory));
+
+        // Update global recent history
         const nextHist = [
-          selected.english,
+          historyEntry,
           ...recentHistory.filter(s => {
             const sText = typeof s === 'string' ? s : (s.english || '');
             return !sText.startsWith(selected.english);
@@ -1252,15 +1288,32 @@ const capitalizeSentenceStart = (text) => {
             : 'Must be a longer, more elaborate multi-clause sentence between 17 and 26 words long.'
         }`;
 
-    const recentHistoryList = recentHistory.slice(0, 10);
-    const recentAvoidBlock = recentHistoryList.length > 0
-      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 EXERCISES IN SESSION):
-The student has already translated these 10 exercises recently. You MUST NOT repeat, mirror, or paraphrase any of them:
-${recentHistoryList.map((s, idx) => {
+    // Topic-specific last 10 questions for effective anti-repetition
+    const targetTopicKey = effectiveTopicObj.id;
+    const currentTopicList = (topicHistory[targetTopicKey] || []).slice(0, 10);
+    const otherRecentList = recentHistory
+      .filter(s => {
+        const sText = typeof s === 'string' ? s : (s.english || '');
+        return !currentTopicList.some(ts => {
+          const tsText = typeof ts === 'string' ? ts : (ts.english || '');
+          return sText === tsText || sText.startsWith(tsText) || tsText.startsWith(sText);
+        });
+      })
+      .slice(0, Math.max(0, 10 - currentTopicList.length));
+
+    const recentAvoidBlock = (currentTopicList.length > 0 || otherRecentList.length > 0)
+      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT FOR TOPIC "${effectiveTopicObj.label.toUpperCase()}":
+${currentTopicList.length > 0 ? `PREVIOUS 10 EXERCISES SPECIFICALLY FOR THIS TOPIC (${effectiveTopicObj.label}):
+${currentTopicList.map((s, idx) => {
   const str = typeof s === 'string' ? s : (s.english || JSON.stringify(s));
   return `  ${idx + 1}. "${str}"`;
-}).join('\n')}
-MANDATORY DIVERSITY RULE: You MUST choose an entirely DIFFERENT scenario, different subjects, different verbs, and a different grammatical angle from all 10 above!\n`
+}).join('\n')}` : ''}
+${otherRecentList.length > 0 ? `\nOTHER RECENTLY PRACTICED EXERCISES (DO NOT REUSE THE SAME VOCABULARY/THEMES):
+${otherRecentList.map((s, idx) => {
+  const str = typeof s === 'string' ? s : (s.english || JSON.stringify(s));
+  return `  • "${str}"`;
+}).join('\n')}` : ''}
+MANDATORY DIVERSITY RULE: You MUST choose an entirely DIFFERENT scenario, different subjects, different verbs, and a different grammatical angle from all above!\n`
       : '';
 
     const systemInstruction = `You are an expert German teacher creating varied, dynamic B1 Goethe/Telc certification translation exercises.
@@ -1357,6 +1410,24 @@ Seed: ${randomSeed}`;
       const historyEntry = parsed.grammarFocus
         ? `${parsed.english} [Grammar: ${parsed.grammarFocus}]`
         : parsed.english;
+
+      // 1. Update topic-specific history (up to 10 for this topic)
+      const prevTopicList = topicHistory[targetTopicKey] || [];
+      const updatedTopicList = [
+        historyEntry,
+        ...prevTopicList.filter(s => {
+          const sText = typeof s === 'string' ? s : (s.english || '');
+          return !sText.startsWith(parsed.english);
+        })
+      ].slice(0, 10);
+      const nextTopicHistory = {
+        ...topicHistory,
+        [targetTopicKey]: updatedTopicList
+      };
+      setTopicHistory(nextTopicHistory);
+      localStorage.setItem('b1_translation_topic_history', JSON.stringify(nextTopicHistory));
+
+      // 2. Update global recent history (up to 10 overall)
       const nextHist = [
         historyEntry,
         ...recentHistory.filter(s => {
@@ -1366,7 +1437,7 @@ Seed: ${randomSeed}`;
       ].slice(0, 10);
       setRecentHistory(nextHist);
       localStorage.setItem('b1_translation_history', JSON.stringify(nextHist));
-      setCurrentExercise(parsed);
+
       setCurrentExercise(parsed);
     } catch (err) {
       console.error("Failed to generate exercise with Gemini:", err);

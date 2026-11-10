@@ -87,6 +87,18 @@ export default function GrammarPractice() {
     return [];
   });
 
+  // Track the last 10 questions individually per preposition and verb
+  const [topicHistory, setTopicHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_grammar_topic_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) {}
+    return {};
+  });
+
   // 65 High-Frequency Fixed Verbs (Feste Verbverbindungen) Iteration Deck
   const [festVerbsRemaining, setFestVerbsRemaining] = useState(() => {
     try {
@@ -329,14 +341,6 @@ export default function GrammarPractice() {
     setUserInput('');
     setCurrentQuestion(null);
 
-    // Anti-repetition context: previous 10 questions passed to Gemini
-    const recentHistoryList = recentHistory.slice(0, 10);
-    const recentAvoidBlock = recentHistoryList.length > 0
-      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 QUESTIONS):
-Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create a completely different context, subject, and story:
-${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
-      : '';
-
     const randomSeed = Math.floor(Math.random() * 1000000);
     let targetPrep = '';
     let targetCase = '';
@@ -401,6 +405,28 @@ ${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
       targetPrep = pickedVerb.prep;
       targetCase = (pickedVerb.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ';
       targetFormula = `$$\\textbf{${pickedVerb.verb}} + \\textbf{${pickedVerb.prep}} + \\textbf{${targetCase}}$$`;
+
+      // Specific topic keys for preposition and verb
+      const prepTopicKey = `prep_${targetPrep}`;
+      const verbTopicKey = `verb_${pickedVerb.verb}`;
+
+      const topicSpecificList = Array.from(new Set([
+        ...(topicHistory[verbTopicKey] || []),
+        ...(topicHistory[prepTopicKey] || [])
+      ])).slice(0, 10);
+
+      const otherRecentList = recentHistory
+        .filter(s => !topicSpecificList.some(ts => s === ts || s.startsWith(ts) || ts.startsWith(s)))
+        .slice(0, Math.max(0, 10 - topicSpecificList.length));
+
+      const recentAvoidBlock = (topicSpecificList.length > 0 || otherRecentList.length > 0)
+        ? `\nCRITICAL ANTI-REPETITION CONSTRAINT FOR VERB "${pickedVerb.verb.toUpperCase()}" & PREPOSITION "${targetPrep.toUpperCase()}":
+${topicSpecificList.length > 0 ? `PREVIOUS QUESTIONS ON THIS SPECIFIC VERB/PREPOSITION (${pickedVerb.verb} + ${targetPrep}):
+${topicSpecificList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}` : ''}
+${otherRecentList.length > 0 ? `\nOTHER RECENTLY GENERATED QUESTIONS (DO NOT REUSE THE SAME CONTEXT OR SUBJECTS):
+${otherRecentList.map((s, idx) => `  • "${s}"`).join('\n')}` : ''}
+STRICT REQUIREMENT: Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create an entirely DIFFERENT context, subject person, and story!\n`
+        : '';
 
       promptText = `Generate a single B1-level German sentence testing a fixed verb-preposition combination (Verben mit festen Präpositionen).
 
@@ -485,6 +511,22 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
       setDeckRemaining(updatedDeck);
       localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(updatedDeck));
 
+      // Specific topic key for this preposition
+      const prepTopicKey = `prep_${targetPrep}`;
+      const topicSpecificList = (topicHistory[prepTopicKey] || []).slice(0, 10);
+      const otherRecentList = recentHistory
+        .filter(s => !topicSpecificList.some(ts => s === ts || s.startsWith(ts) || ts.startsWith(s)))
+        .slice(0, Math.max(0, 10 - topicSpecificList.length));
+
+      const recentAvoidBlock = (topicSpecificList.length > 0 || otherRecentList.length > 0)
+        ? `\nCRITICAL ANTI-REPETITION CONSTRAINT FOR PREPOSITION "${targetPrep.toUpperCase()}":
+${topicSpecificList.length > 0 ? `PREVIOUS QUESTIONS SPECIFICALLY TESTING "${targetPrep.toUpperCase()}":
+${topicSpecificList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}` : ''}
+${otherRecentList.length > 0 ? `\nOTHER RECENTLY GENERATED QUESTIONS (DO NOT REUSE THE SAME CONTEXT OR SUBJECTS):
+${otherRecentList.map((s, idx) => `  • "${s}"`).join('\n')}` : ''}
+STRICT REQUIREMENT: Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create an entirely DIFFERENT context, subject person, and story!\n`
+        : '';
+
       let modeConstraint = '';
       if (questionMode === 'situational') {
         modeConstraint = `CRITICAL FOCUS: SIMPLER SITUATIONAL PREPOSITION (NOT VERB-DEPENDENT).
@@ -565,6 +607,26 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
       // Save to recent 10-question history
       const fullSentence = enrichedQuestion.sentence.replace('___', enrichedQuestion.correctPreposition);
+
+      // 1. Update topic-specific history (last 10 per preposition/verb)
+      const prepTopicKey = `prep_${enrichedQuestion.correctPreposition || targetPrep}`;
+      const verbTopicKey = pickedVerb ? `verb_${pickedVerb.verb}` : null;
+      const keysToUpdate = [prepTopicKey];
+      if (verbTopicKey) keysToUpdate.push(verbTopicKey);
+
+      let nextTopicHistory = { ...topicHistory };
+      keysToUpdate.forEach(k => {
+        const prevList = nextTopicHistory[k] || [];
+        const nextList = [
+          fullSentence,
+          ...prevList.filter(s => s !== fullSentence)
+        ].slice(0, 10);
+        nextTopicHistory[k] = nextList;
+      });
+      setTopicHistory(nextTopicHistory);
+      localStorage.setItem('b1_grammar_topic_history', JSON.stringify(nextTopicHistory));
+
+      // 2. Update global recent history (last 10 overall)
       const nextHistory = [
         fullSentence,
         ...recentHistory.filter(s => s !== fullSentence)
