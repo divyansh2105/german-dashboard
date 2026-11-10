@@ -123,10 +123,18 @@ const TOPIC_SUB_FOCUSES = {
     "Relative clause nested within a complex sentence"
   ],
   konjunktiv2: [
-    "Polite requests and offers using 'hätte', 'wäre', 'könnte' (z.B. 'Hätten Sie vielleicht einen Moment Zeit?')",
-    "Unreal conditions in the present ('Wenn ich mehr Zeit hätte, würde ich...')",
-    "Giving polite advice using 'sollte' ('Du solltest unbedingt den Vertrag genau lesen')",
-    "Unreal wishes or regrets in daily situations ('Ich wünschte, die Heizung würde funktionieren')"
+    "Polite requests, favors, and administrative inquiries using 'könnten' or 'dürfte' (z.B. 'Könnten Sie mir bitte die Bestätigung zusenden?', 'Dürfte ich kurz Ihr Telefon benutzen?')",
+    "Unreal conditional sentences in the present with 'wenn' (z.B. 'Wenn das Team mehr Zeit hätte, würden wir das Projekt früher abschließen')",
+    "Unreal conditional clauses with Verb-First Inversion (without 'wenn') (z.B. 'Hätte ich deine Nummer gehabt, hätte ich angerufen' / 'Wäre das Wetter schöner, könnten wir draußen arbeiten')",
+    "Past Unreal Conditions / Regrets (Konjunktiv II der Vergangenheit: 'hätte/wäre + Partizip II') (z.B. 'Wenn der Zug pünktlich gewesen wäre, hätten wir den Flug nicht verpasst')",
+    "Constructive recommendations and polite advice using 'sollte' / 'müsste' (z.B. 'An deiner Stelle sollte man den Mietvertrag vor der Unterschrift genau prüfen')",
+    "Unreal comparisons using 'als ob' or 'als wenn' + Konjunktiv II (z.B. 'Er tut so, als ob er der Abteilungsleiter wäre / als wüsste er alles')",
+    "Unreal wishes and nostalgic regrets using 'doch bloß' or 'doch nur' (z.B. 'Wenn ich doch bloß früher Feierabend gemacht hätte!')",
+    "Hesitant opinions, polite suggestions, or negotiation compromises (z.B. 'Ich fände es besser, wenn wir den Termin verschieben würden', 'Es wäre ratsam, vorher nachzufragen')",
+    "Hypothetical alternatives or consequences with 'sonst' / 'andernfalls' (z.B. 'Wir müssen den Antrag heute einreichen, sonst würden wir die Frist versäumen')",
+    "Subjective assumptions or high probabilities with 'dürfte' or 'müsste' (z.B. 'Das Paket müsste eigentlich heute Vormittag eintreffen')",
+    "Commercial or formal polite proposals and offers (z.B. 'Wir wären gern bereit, Ihnen bei einer Verlängerung einen Rabatt einzuräumen')",
+    "Expressions of near-accidents or close calls ('fast / beinahe + Konjunktiv II der Vergangenheit') (z.B. 'Beinahe hätte ich den wichtigen Termin vergessen')"
   ],
   everyday: [
     "Dealing with an unexpected delay, rescheduling an appointment with apologies",
@@ -1017,6 +1025,29 @@ export default function TranslationPractice() {
     }
   };
 
+  // Systematic sub-focus rotation helper (guarantees covering all nuances without early repeats)
+  const getNextSubFocus = (targetTopicId) => {
+    const subFocusList = TOPIC_SUB_FOCUSES[targetTopicId] || [];
+    if (subFocusList.length === 0) return null;
+    const storageKey = `b1_trans_subfocus_pool_${targetTopicId}`;
+    let pool = [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || '[]');
+      if (Array.isArray(saved) && saved.length > 0) pool = saved;
+    } catch (e) {}
+
+    if (pool.length === 0) {
+      pool = subFocusList.map((_, i) => i);
+    }
+
+    const poolIdx = Math.floor(Math.random() * pool.length);
+    const chosenIdx = pool[poolIdx];
+    const nextPool = pool.filter((_, idx) => idx !== poolIdx);
+    localStorage.setItem(storageKey, JSON.stringify(nextPool));
+
+    return subFocusList[chosenIdx];
+  };
+
   // Generate a new translation exercise
   const generateNewExercise = async (topicId = selectedTopic, lengthId = selectedLength) => {
     if (isListening && recognitionRef.current) {
@@ -1073,10 +1104,7 @@ export default function TranslationPractice() {
       setDeckRemaining(updatedDeck);
       localStorage.setItem('b1_translation_deck_remaining', JSON.stringify(updatedDeck));
 
-      const subFocusList = TOPIC_SUB_FOCUSES[effectiveTopicObj.id] || [];
-      effectiveSubFocus = subFocusList.length > 0
-        ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
-        : null;
+      effectiveSubFocus = getNextSubFocus(effectiveTopicObj.id);
     } else {
       // If a specific topic is practiced directly, also decrement its deck quota if available
       setDeckRemaining(prev => {
@@ -1089,10 +1117,7 @@ export default function TranslationPractice() {
         return prev;
       });
 
-      const subFocusList = TOPIC_SUB_FOCUSES[topicId] || [];
-      effectiveSubFocus = subFocusList.length > 0
-        ? subFocusList[Math.floor(Math.random() * subFocusList.length)]
-        : null;
+      effectiveSubFocus = getNextSubFocus(topicId);
     }
 
     const displayTopicName = isMixed
@@ -1123,13 +1148,16 @@ export default function TranslationPractice() {
         }
       }
 
-      const unvisited = filtered.filter(ex => !recentHistory.includes(ex.english));
+      const unvisited = filtered.filter(ex => !recentHistory.some(h => (typeof h === 'string' ? h : h.english || '').startsWith(ex.english)));
       const pool = unvisited.length > 0 ? unvisited : filtered;
       const selected = pool[Math.floor(Math.random() * pool.length)];
       if (selected) {
         const nextHist = [
           selected.english,
-          ...recentHistory.filter(s => s !== selected.english)
+          ...recentHistory.filter(s => {
+            const sText = typeof s === 'string' ? s : (s.english || '');
+            return !sText.startsWith(selected.english);
+          })
         ].slice(0, 10);
         setRecentHistory(nextHist);
         localStorage.setItem('b1_translation_history', JSON.stringify(nextHist));
@@ -1165,9 +1193,13 @@ export default function TranslationPractice() {
 
     const recentHistoryList = recentHistory.slice(0, 10);
     const recentAvoidBlock = recentHistoryList.length > 0
-      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 QUESTIONS):
-Do NOT repeat, mirror, or paraphrase any of these 10 recently generated exercises. Pick an entirely different situation, different vocabulary, and different verbs:
-${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
+      ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 EXERCISES IN SESSION):
+The student has already translated these 10 exercises recently. You MUST NOT repeat, mirror, or paraphrase any of them:
+${recentHistoryList.map((s, idx) => {
+  const str = typeof s === 'string' ? s : (s.english || JSON.stringify(s));
+  return `  ${idx + 1}. "${str}"`;
+}).join('\n')}
+MANDATORY DIVERSITY RULE: You MUST choose an entirely DIFFERENT scenario, different subjects, different verbs, and a different grammatical angle from all 10 above!\n`
       : '';
 
     const systemInstruction = `You are an expert German teacher creating varied, dynamic B1 Goethe/Telc certification translation exercises.
@@ -1211,19 +1243,34 @@ You MUST respond strictly with a valid JSON object matching this schema:
 
 Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
 
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    const userPrompt = `Generate a single B1 German translation challenge.
+
+PRIMARY TOPIC: ${effectiveTopicObj.label} (${effectiveTopicObj.desc})
+${effectiveSubFocus ? `MANDATORY SPECIFIC GRAMMAR CONCEPT TO TEST:
+You MUST create an exercise specifically requiring this grammatical pattern:
+👉 "${effectiveSubFocus}"` : ''}
+
+CONTEXT DOMAIN: "${randomScenario.domain}" (Aspects: ${randomScenario.details})
+RHETORICAL PERSPECTIVE: "${randomPerspective}"
+TARGET LENGTH: ${targetLengthObj.label} (${targetLengthObj.wordRange})
+${recentAvoidBlock}
+CRITICAL MANDATE:
+1. Do NOT repeat or resemble any of the previous exercises listed above.
+2. Avoid overused textbook clichés.
+3. Ensure the German translation directly and naturally uses: "${effectiveSubFocus || effectiveTopicObj.label}".
+4. Use rich, idiomatic B1 everyday German.
+Seed: ${randomSeed}`;
+
     try {
       const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        prompt: `Generate a new, distinct B1 German translation exercise for topic: ${effectiveTopicObj.label}${isMixed ? ' (Mixed B1 Rotation)' : ''}.
-Context Domain: ${randomScenario.domain}.
-Sentence Style: ${randomPerspective}.
-Target length: ${targetLengthObj.label} (${targetLengthObj.wordRange}).
-Ensure the sentence is creative, natural, and completely different from standard textbook clichés.`,
+        prompt: userPrompt,
         systemInstruction,
         generationConfig: {
-          temperature: 0.88,
+          temperature: 0.92,
           topP: 0.95
         },
         jsonMode: true,
@@ -1244,12 +1291,21 @@ Ensure the sentence is creative, natural, and completely different from standard
       if (isMixed && (!parsed.topicName || !parsed.topicName.includes('•'))) {
         parsed.topicName = displayTopicName;
       }
+
+      // Record sentence and grammatical focus in history
+      const historyEntry = parsed.grammarFocus
+        ? `${parsed.english} [Grammar: ${parsed.grammarFocus}]`
+        : parsed.english;
       const nextHist = [
-        parsed.english,
-        ...recentHistory.filter(s => s !== parsed.english)
+        historyEntry,
+        ...recentHistory.filter(s => {
+          const sText = typeof s === 'string' ? s : (s.english || '');
+          return !sText.startsWith(parsed.english);
+        })
       ].slice(0, 10);
       setRecentHistory(nextHist);
       localStorage.setItem('b1_translation_history', JSON.stringify(nextHist));
+      setCurrentExercise(parsed);
       setCurrentExercise(parsed);
     } catch (err) {
       console.error("Failed to generate exercise with Gemini:", err);
