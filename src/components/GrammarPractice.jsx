@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { queryGemini, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
+import { FIXED_VERBS_GROUPS, ALL_FIXED_VERBS, formatVerbFormula } from '../data/fixedVerbsData';
 
 const PREPOSITION_GROUPS = {
   Akkusativ: ['bis', 'durch', 'für', 'gegen', 'ohne', 'um'],
@@ -86,6 +87,36 @@ export default function GrammarPractice() {
     return [];
   });
 
+  // 65 High-Frequency Fixed Verbs (Feste Verbverbindungen) Iteration Deck
+  const [festVerbsRemaining, setFestVerbsRemaining] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_grammar_fest_verbs_remaining');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return ALL_FIXED_VERBS.map(v => v.id);
+  });
+
+  const [festVerbsIteration, setFestVerbsIteration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_grammar_fest_verbs_iteration');
+      if (saved) {
+        const num = parseInt(saved, 10);
+        if (!isNaN(num) && num >= 1) return num;
+      }
+    } catch (e) {}
+    return 1;
+  });
+
+  const [currentVerbTarget, setCurrentVerbTarget] = useState(null);
+  const [showVerbListModal, setShowVerbListModal] = useState(false);
+  const [verbSearchQuery, setVerbSearchQuery] = useState('');
+  const [verbGroupFilter, setVerbGroupFilter] = useState('all');
+  const [verbTierFilter, setVerbTierFilter] = useState('all');
+  const [verbStatusFilter, setVerbStatusFilter] = useState('all');
+
   const [showDeckModal, setShowDeckModal] = useState(false);
   const [questionMode, setQuestionMode] = useState(() => {
     try {
@@ -170,11 +201,35 @@ export default function GrammarPractice() {
     setSelectedPreps([]);
   };
 
-  // Speaks complete German sentence using browser Text-to-Speech
+  // Speaks complete German text using browser Text-to-Speech
   const speakGermanText = (text) => {
-    if (window.speakGerman && text) {
+    if (!text) return;
+    if (window.speakGerman) {
       window.speakGerman(text);
+    } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = 'de-DE';
+        utt.rate = 0.92;
+        window.speechSynthesis.speak(utt);
+      } catch (e) {
+        console.warn('TTS playback error:', e);
+      }
     }
+  };
+
+  const handleResetVerbIteration = () => {
+    const allIds = ALL_FIXED_VERBS.map(v => v.id);
+    setFestVerbsRemaining(allIds);
+    localStorage.setItem('b1_grammar_fest_verbs_remaining', JSON.stringify(allIds));
+  };
+
+  const handlePracticeSpecificVerb = (verbObj) => {
+    setQuestionMode('verbs');
+    localStorage.setItem('b1_grammar_question_mode', 'verbs');
+    setShowVerbListModal(false);
+    generateQuestion(verbObj);
   };
 
   // Deck Management Helpers
@@ -264,8 +319,8 @@ export default function GrammarPractice() {
     setShowDeckModal(false);
   };
 
-  const generateQuestion = async () => {
-    if (selectedPreps.length === 0) {
+  const generateQuestion = async (overrideTargetVerb = null) => {
+    if (questionMode !== 'verbs' && !overrideTargetVerb && selectedPreps.length === 0) {
       alert("Bitte wähle mindestens eine Präposition aus!");
       return;
     }
@@ -276,73 +331,176 @@ export default function GrammarPractice() {
     setUserInput('');
     setCurrentQuestion(null);
 
-    // Weighted sampling from active deck
-    let activeDeck = { ...deckRemaining };
-    let eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
-
-    // If deck for selected prepositions is empty, automatically refill for them
-    if (eligible.length === 0) {
-      selectedPreps.forEach(p => {
-        activeDeck[p] = Math.max(1, prepWeights[p] || 1);
-      });
-      eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
-    }
-
-    if (eligible.length === 0) {
-      eligible = selectedPreps;
-    }
-
-    // Weighted roll based on remaining counts
-    let totalWeight = 0;
-    eligible.forEach(p => {
-      totalWeight += Math.max(1, activeDeck[p] || 1);
-    });
-
-    let rand = Math.random() * totalWeight;
-    let targetPrep = eligible[0];
-    for (const p of eligible) {
-      const w = Math.max(1, activeDeck[p] || 1);
-      if (rand < w) {
-        targetPrep = p;
-        break;
-      }
-      rand -= w;
-    }
-
-    // Decrement counter for selected target preposition
-    const updatedDeck = {
-      ...activeDeck,
-      [targetPrep]: Math.max(0, (activeDeck[targetPrep] || 1) - 1)
-    };
-    setDeckRemaining(updatedDeck);
-    localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(updatedDeck));
-
-    // Anti-repetition context
+    // Anti-repetition context: previous 10 questions passed to Gemini
     const recentHistoryList = recentHistory.slice(0, 10);
     const recentAvoidBlock = recentHistoryList.length > 0
       ? `\nCRITICAL ANTI-REPETITION CONSTRAINT (PREVIOUS 10 QUESTIONS):
-Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create a completely different context, subject, and verb:
+Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create a completely different context, subject, and story:
 ${recentHistoryList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}\n`
       : '';
 
-    let modeConstraint = '';
-    if (questionMode === 'situational') {
-      modeConstraint = `CRITICAL FOCUS: SIMPLER SITUATIONAL PREPOSITION (NOT VERB-DEPENDENT).
+    const randomSeed = Math.floor(Math.random() * 1000000);
+    let targetPrep = '';
+    let targetCase = '';
+    let targetFormula = '';
+    let pickedVerb = null;
+    let promptText = '';
+    let systemInstruction = '';
+
+    if (questionMode === 'verbs' || overrideTargetVerb) {
+      // 1. Strictly select from the 65 high-frequency B1 verbs
+      if (overrideTargetVerb) {
+        pickedVerb = overrideTargetVerb;
+      } else {
+        let currentRemainingIds = [...festVerbsRemaining];
+        if (currentRemainingIds.length === 0) {
+          currentRemainingIds = ALL_FIXED_VERBS.map(v => v.id);
+          setFestVerbsIteration(it => {
+            const nextIt = it + 1;
+            localStorage.setItem('b1_grammar_fest_verbs_iteration', String(nextIt));
+            return nextIt;
+          });
+        }
+
+        let candidates = currentRemainingIds.map(id => ALL_FIXED_VERBS.find(v => v.id === id)).filter(Boolean);
+
+        // If user has filtered prepositions on the left, prioritize verbs matching selectedPreps
+        if (selectedPreps.length > 0 && selectedPreps.length < ALL_PREPOSITIONS.length) {
+          const filteredBySelectedPreps = candidates.filter(v => selectedPreps.includes(v.prep));
+          if (filteredBySelectedPreps.length > 0) {
+            candidates = filteredBySelectedPreps;
+          } else {
+            const allMatching = ALL_FIXED_VERBS.filter(v => selectedPreps.includes(v.prep));
+            if (allMatching.length > 0) candidates = allMatching;
+          }
+        }
+
+        if (candidates.length === 0) {
+          candidates = ALL_FIXED_VERBS;
+        }
+
+        // Pick one verb from candidates
+        pickedVerb = candidates[Math.floor(Math.random() * candidates.length)];
+
+        // Update remaining list
+        const nextRemaining = currentRemainingIds.filter(id => id !== pickedVerb.id);
+        if (nextRemaining.length === 0) {
+          const resetAll = ALL_FIXED_VERBS.map(v => v.id);
+          setFestVerbsRemaining(resetAll);
+          setFestVerbsIteration(it => {
+            const nextIt = it + 1;
+            localStorage.setItem('b1_grammar_fest_verbs_iteration', String(nextIt));
+            return nextIt;
+          });
+          localStorage.setItem('b1_grammar_fest_verbs_remaining', JSON.stringify(resetAll));
+        } else {
+          setFestVerbsRemaining(nextRemaining);
+          localStorage.setItem('b1_grammar_fest_verbs_remaining', JSON.stringify(nextRemaining));
+        }
+      }
+
+      setCurrentVerbTarget(pickedVerb);
+      targetPrep = pickedVerb.prep;
+      targetCase = (pickedVerb.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ';
+      targetFormula = `$$\\textbf{${pickedVerb.verb}} + \\textbf{${pickedVerb.prep}} + \\textbf{${targetCase}}$$`;
+
+      promptText = `Generate a single B1-level German sentence testing a fixed verb-preposition combination (Verben mit festen Präpositionen).
+
+MANDATORY TARGET VERB COLLOCATION:
+- Verb: "${pickedVerb.verb}"
+- Fixed Preposition: "${pickedVerb.prep}"
+- Required Case: ${targetCase} (${pickedVerb.case})
+- Verb Meaning: "${pickedVerb.meaning}"
+- Pronominal Adverbs (da-/wo-): "${pickedVerb.daWo}"
+
+CRITICAL FILL-IN-THE-BLANK RULE:
+1. Conjugate and naturally use the verb "${pickedVerb.verb}" in the main clause.
+2. Replace ONLY the preposition "${pickedVerb.prep}" with three underscores '___' for the blank challenge.
+3. The blank '___' must be followed by a noun, pronoun, or clause in the ${targetCase}.
+4. The sentence MUST unambiguously require "${pickedVerb.prep}" based strictly on the collocation with "${pickedVerb.verb}".
+
+CRITICAL FORMULA IN EXPLANATION:
+In the explanation field, you MUST prominently include this exact LaTeX formula:
+${targetFormula}
+Followed by a concise explanation in English of why "${pickedVerb.verb}" requires "${pickedVerb.prep}" with ${targetCase}, what it means, and its da-/wo- form (${pickedVerb.daWo}).
+
+${recentAvoidBlock}
+Requirements:
+1. Provide a diverse, natural, real-life B1 everyday situation (office, appointments, friends, home, transport, hobbies).
+2. DO NOT use generic textbook clichés.
+3. Vary sentence structure and grammatical subjects ('wir', 'die Kollegin', 'Herr Schmidt', 'unsere Nachbarn', formal 'Sie', etc.).
+Seed: ${randomSeed}`;
+
+      systemInstruction = `You are an expert German language teacher generating preposition fill-in-the-blank questions for B1 students.
+You must return a raw JSON object matching this schema exactly:
+{
+  "sentence": "German sentence with a single '___' blank representing the missing preposition '${pickedVerb.prep}'.",
+  "correctPreposition": "${pickedVerb.prep}",
+  "translation": "English translation of the German sentence.",
+  "category": "Feste Verbverbindung",
+  "targetVerb": "${pickedVerb.verb}",
+  "formula": "${targetFormula}",
+  "case": "${targetCase}",
+  "meaning": "${pickedVerb.meaning}",
+  "daWo": "${pickedVerb.daWo}",
+  "explanation": "A concise grammatical explanation in English detailing why '${pickedVerb.verb}' requires '${pickedVerb.prep}' with ${targetCase}. You MUST include '${targetFormula}'."
+}
+Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
+
+    } else {
+      // Situational or Mixed mode
+      setCurrentVerbTarget(null);
+      let activeDeck = { ...deckRemaining };
+      let eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
+
+      if (eligible.length === 0) {
+        selectedPreps.forEach(p => {
+          activeDeck[p] = Math.max(1, prepWeights[p] || 1);
+        });
+        eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
+      }
+
+      if (eligible.length === 0) {
+        eligible = selectedPreps;
+      }
+
+      let totalWeight = 0;
+      eligible.forEach(p => {
+        totalWeight += Math.max(1, activeDeck[p] || 1);
+      });
+
+      let rand = Math.random() * totalWeight;
+      targetPrep = eligible[0];
+      for (const p of eligible) {
+        const w = Math.max(1, activeDeck[p] || 1);
+        if (rand < w) {
+          targetPrep = p;
+          break;
+        }
+        rand -= w;
+      }
+
+      const updatedDeck = {
+        ...activeDeck,
+        [targetPrep]: Math.max(0, (activeDeck[targetPrep] || 1) - 1)
+      };
+      setDeckRemaining(updatedDeck);
+      localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(updatedDeck));
+
+      let modeConstraint = '';
+      if (questionMode === 'situational') {
+        modeConstraint = `CRITICAL FOCUS: SIMPLER SITUATIONAL PREPOSITION (NOT VERB-DEPENDENT).
 The sentence MUST use "${targetPrep}" purely for situational context:
 - Spatial / Location & Direction (Wo? / Wohin? e.g. location of an object or destination of movement in a room, city, street, or building)
 - Temporal (Wann? / Wie lange? e.g. times of day, before/after an appointment, days, months, seasons, duration)
 - Modal / Means / Cause / Circumstance (Wie? / Womit? / Warum? e.g. travel with a vehicle, food with/without ingredients, weather/circumstances)
 STRICT REQUIREMENT: DO NOT use fixed verb-preposition idioms ("Verben mit festen Präpositionen" like 'warten auf', 'denken an', 'sich freuen über', 'hoffen auf', 'abhängen von', 'teilnehmen an', 'gehören zu', etc.). The verb itself must be a normal action (e.g. schlafen, arbeiten, essen, gehen, fahren, ankommen, wohnen, stellen, liegen) that does NOT require this preposition. The preposition must be freely used to express place, time, manner, or reason.`;
-    } else if (questionMode === 'verbs') {
-      modeConstraint = `CRITICAL FOCUS: FIXED VERB-PREPOSITION COLLOCATION (VERBEN MIT PRÄPOSITIONEN).
-The sentence MUST specifically test a fixed verb-preposition combination (e.g. warten auf, denken an, sich freuen auf/über, träumen von, sich interessieren für, sich erinnern an, teilnehmen an, gehören zu, etc.) where "${targetPrep}" is governed directly by the verb idiom.`;
-    } else {
-      modeConstraint = `SENTENCE FOCUS: BALANCED MIX.
+      } else {
+        modeConstraint = `SENTENCE FOCUS: BALANCED MIX.
 You may generate either a simple situational preposition (Lokal: Wo/Wohin, Temporal: Wann, or Modal/Kausal) OR a fixed verb collocation (Verb mit Präposition). Vary the sentence structure naturally.`;
-    }
+      }
 
-    const randomSeed = Math.floor(Math.random() * 1000000);
-    const promptText = `Generate a single B1-level German sentence.
+      promptText = `Generate a single B1-level German sentence.
 CRITICAL TARGET PREPOSITION: The sentence MUST specifically and unambiguously test the preposition: "${targetPrep}".
 Replace "${targetPrep}" in the sentence with three underscores '___' for a blank challenge.
 The only natural and grammatically correct solution for the blank must be "${targetPrep}".
@@ -356,16 +514,19 @@ Requirements:
 
 Seed: ${randomSeed}`;
 
-    const systemInstruction = `You are an expert German language teacher generating preposition fill-in-the-blank questions for B1 students.
+      systemInstruction = `You are an expert German language teacher generating preposition fill-in-the-blank questions for B1 students.
 You must return a raw JSON object matching this schema exactly:
 {
   "sentence": "German sentence with a single '___' blank representing the missing preposition.",
   "correctPreposition": "${targetPrep}",
   "translation": "English translation of the German sentence.",
   "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
-  "explanation": "A concise grammatical explanation in English detailing why '${targetPrep}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage (e.g. Lokalangabe, Temporalangabe) or a fixed verb-preposition combination."
+  "targetVerb": "Verb used if fixed collocation, or null",
+  "formula": "LaTeX formula if fixed collocation, or null",
+  "explanation": "A concise grammatical explanation in English detailing why '${targetPrep}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage or a fixed verb-preposition combination."
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
+    }
 
     try {
       const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
@@ -392,10 +553,20 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         throw new Error('Invalid question format returned.');
       }
 
-      setCurrentQuestion(parsedQuestion);
+      // Ensure formula and verb details are attached
+      const enrichedQuestion = {
+        ...parsedQuestion,
+        targetVerb: parsedQuestion.targetVerb || (pickedVerb ? pickedVerb.verb : null),
+        formula: parsedQuestion.formula || (pickedVerb ? targetFormula : null),
+        case: parsedQuestion.case || (pickedVerb ? targetCase : null),
+        meaning: parsedQuestion.meaning || (pickedVerb ? pickedVerb.meaning : null),
+        daWo: parsedQuestion.daWo || (pickedVerb ? pickedVerb.daWo : null)
+      };
+
+      setCurrentQuestion(enrichedQuestion);
 
       // Save to recent 10-question history
-      const fullSentence = parsedQuestion.sentence.replace('___', parsedQuestion.correctPreposition);
+      const fullSentence = enrichedQuestion.sentence.replace('___', enrichedQuestion.correctPreposition);
       const nextHistory = [
         fullSentence,
         ...recentHistory.filter(s => s !== fullSentence)
@@ -536,6 +707,66 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               </option>
             </select>
           </div>
+
+          {/* Button: Show Verb List */}
+          <button
+            type="button"
+            onClick={() => setShowVerbListModal(true)}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: '700',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(168, 85, 247, 0.22))',
+              border: '1px solid rgba(168, 85, 247, 0.45)',
+              color: '#d8b4fe',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              transition: 'all 0.2s ease'
+            }}
+            title="65 B1 Verben mit festen Präpositionen nach Präpositionen gruppiert ansehen"
+          >
+            <span>📋 Show Verb List</span>
+            <span style={{ fontSize: '11px', opacity: 0.9, background: 'rgba(0,0,0,0.35)', padding: '1px 6px', borderRadius: '10px' }}>
+              {68 - festVerbsRemaining.length}/68
+            </span>
+          </button>
+
+          {/* If in verbs mode, show cycle badge and reset button */}
+          {questionMode === 'verbs' && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: 'rgba(139, 92, 246, 0.14)',
+              border: '1px solid rgba(139, 92, 246, 0.35)',
+              borderRadius: '8px',
+              padding: '3px 8px',
+              fontSize: '11px'
+            }}>
+              <span style={{ color: '#c4b5fd', fontWeight: '700' }}>Cycle #{festVerbsIteration}:</span>
+              <span style={{ color: '#fff', fontWeight: '600' }}>{68 - festVerbsRemaining.length}/68 covered</span>
+              <span style={{ color: 'var(--text-muted)' }}>({festVerbsRemaining.length} left)</span>
+              <button
+                type="button"
+                onClick={handleResetVerbIteration}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#93c5fd',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  padding: '0 2px',
+                  textDecoration: 'underline'
+                }}
+                title="Zyklus zurücksetzen (alle 68 wieder freischalten)"
+              >
+                Reset
+              </button>
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -868,6 +1099,469 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         </div>
       )}
 
+      {/* Floating Modal Overlay for 65 High-Frequency Fixed Verbs List */}
+      {showVerbListModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(5, 7, 15, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowVerbListModal(false);
+          }}
+        >
+          <div
+            className="glass-card animate-fade-in"
+            style={{
+              width: '100%',
+              maxWidth: '880px',
+              maxHeight: '92vh',
+              overflowY: 'auto',
+              background: 'rgba(15, 19, 36, 0.98)',
+              border: '1px solid rgba(168, 85, 247, 0.45)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+              <div>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📋 65 High-Frequency B1 Verbs with Fixed Prepositions</span>
+                </div>
+                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                  Prioritized B1 Verben mit festen Präpositionen, Kasus (Akkusativ/Dativ) und Pronominaladverbien (<em>da(r)-</em> / <em>wo(r)-</em>), gruppiert nach Präpositionen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVerbListModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '20px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Cycle / Iteration Tracker Bar */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '10px',
+              padding: '12px 16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🔄 Cycle #{festVerbsIteration} Fortschritt:</span>
+                  <span style={{ color: '#d8b4fe' }}>{68 - festVerbsRemaining.length} / 68 gedeckt</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({festVerbsRemaining.length} verbleibend)</span>
+                </div>
+                {/* Progress bar */}
+                <div style={{ width: '240px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.round(((68 - festVerbsRemaining.length) / 68) * 100)}%`,
+                    height: '100%',
+                    background: 'linear-gradient(90deg, #818cf8, #c084fc)',
+                    borderRadius: '3px',
+                    transition: 'width 0.3s ease'
+                  }} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={handleResetVerbIteration}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    color: '#e2e8f0',
+                    fontSize: '11.5px',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                  title="Iteration zurücksetzen (alle 68 wieder als unbenutzt markieren)"
+                >
+                  🔄 Zyklus Zurücksetzen
+                </button>
+              </div>
+            </div>
+
+            {/* Filters Bar: Search + Group selector + Tier + Status */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Suchen (z.B. warten, auf, freuen, wait, da-/wo-)..."
+                  value={verbSearchQuery}
+                  onChange={(e) => setVerbSearchQuery(e.target.value)}
+                  style={{
+                    flex: '1 1 240px',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: 'rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff',
+                    fontSize: '13px'
+                  }}
+                />
+                
+                {/* Tier filter */}
+                <select
+                  value={verbTierFilter}
+                  onChange={(e) => setVerbTierFilter(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff',
+                    fontSize: '12px'
+                  }}
+                >
+                  <option value="all">Alle Tiers</option>
+                  <option value="1">Tier 1 (High Frequency)</option>
+                  <option value="2">Tier 2</option>
+                </select>
+
+                {/* Status filter */}
+                <select
+                  value={verbStatusFilter}
+                  onChange={(e) => setVerbStatusFilter(e.target.value)}
+                  style={{
+                    padding: '7px 10px',
+                    borderRadius: '8px',
+                    background: 'rgba(0,0,0,0.4)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff',
+                    fontSize: '12px'
+                  }}
+                >
+                  <option value="all">Alle Status</option>
+                  <option value="remaining">⏳ Noch offen ({festVerbsRemaining.length})</option>
+                  <option value="covered">✅ Bereits geübt ({68 - festVerbsRemaining.length})</option>
+                </select>
+              </div>
+
+              {/* Quick Group Tabs */}
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', paddingBottom: '4px' }}>
+                <button
+                  type="button"
+                  onClick={() => setVerbGroupFilter('all')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    background: verbGroupFilter === 'all' ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255,255,255,0.04)',
+                    border: '1px solid',
+                    borderColor: verbGroupFilter === 'all' ? 'rgba(168, 85, 247, 0.6)' : 'rgba(255,255,255,0.08)',
+                    color: verbGroupFilter === 'all' ? '#d8b4fe' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Alle (68)
+                </button>
+                {FIXED_VERBS_GROUPS.map(g => {
+                  const isActive = verbGroupFilter === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setVerbGroupFilter(g.id)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        background: isActive ? 'rgba(168, 85, 247, 0.3)' : 'rgba(255,255,255,0.04)',
+                        border: '1px solid',
+                        borderColor: isActive ? 'rgba(168, 85, 247, 0.6)' : 'rgba(255,255,255,0.08)',
+                        color: isActive ? '#d8b4fe' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {g.title.split(' ')[0]} ({g.verbs.length})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Verb Groups & Tables */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '520px', overflowY: 'auto', paddingRight: '4px' }}>
+              {FIXED_VERBS_GROUPS
+                .filter(group => verbGroupFilter === 'all' || verbGroupFilter === group.id)
+                .map((group, groupIdx) => {
+                  const query = verbSearchQuery.trim().toLowerCase();
+                  const matchingVerbs = group.verbs.filter(v => {
+                    if (verbTierFilter !== 'all' && String(v.tier) !== verbTierFilter) return false;
+                    const isCovered = !festVerbsRemaining.includes(v.id);
+                    if (verbStatusFilter === 'remaining' && isCovered) return false;
+                    if (verbStatusFilter === 'covered' && !isCovered) return false;
+
+                    if (!query) return true;
+                    return (
+                      v.verb.toLowerCase().includes(query) ||
+                      v.prep.toLowerCase().includes(query) ||
+                      v.meaning.toLowerCase().includes(query) ||
+                      v.daWo.toLowerCase().includes(query) ||
+                      group.title.toLowerCase().includes(query) ||
+                      group.concept.toLowerCase().includes(query)
+                    );
+                  });
+
+                  if (matchingVerbs.length === 0) return null;
+
+                  return (
+                    <div
+                      key={group.id}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.02)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        borderRadius: '12px',
+                        padding: '14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px'
+                      }}
+                    >
+                      {/* Group Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px' }}>
+                        <div>
+                          <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+                            {groupIdx + 1}. {group.title}
+                          </span>
+                          <span style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                            ({group.concept})
+                          </span>
+                        </div>
+                        <span style={{ fontSize: '11px', color: '#c084fc', background: 'rgba(168, 85, 247, 0.15)', padding: '2px 8px', borderRadius: '6px' }}>
+                          {matchingVerbs.length} Verben
+                        </span>
+                      </div>
+
+                      {/* Group Table */}
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-muted)', fontSize: '11px' }}>
+                              <th style={{ padding: '6px 8px', width: '30px' }}>#</th>
+                              <th style={{ padding: '6px 8px', width: '50px' }}>Tier</th>
+                              <th style={{ padding: '6px 8px' }}>Verb</th>
+                              <th style={{ padding: '6px 8px', width: '50px' }}>Kasus</th>
+                              <th style={{ padding: '6px 8px' }}>Bedeutung</th>
+                              <th style={{ padding: '6px 8px' }}>da- / wo- Form</th>
+                              <th style={{ padding: '6px 8px', width: '80px' }}>Status</th>
+                              <th style={{ padding: '6px 8px', textAlign: 'right', width: '70px' }}>Aktion</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {matchingVerbs.map(v => {
+                              const isRemaining = festVerbsRemaining.includes(v.id);
+                              return (
+                                <tr
+                                  key={v.id}
+                                  style={{
+                                    borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                    background: isRemaining ? 'transparent' : 'rgba(34, 197, 94, 0.03)'
+                                  }}
+                                >
+                                  <td style={{ padding: '8px', color: 'var(--text-muted)', fontSize: '11px' }}>{v.id}</td>
+                                  <td style={{ padding: '8px' }}>
+                                    <span style={{
+                                      fontSize: '10px',
+                                      padding: '1px 6px',
+                                      borderRadius: '4px',
+                                      background: v.tier === 1 ? 'rgba(59, 130, 246, 0.2)' : 'rgba(148, 163, 184, 0.2)',
+                                      color: v.tier === 1 ? '#93c5fd' : '#cbd5e1',
+                                      fontWeight: '700'
+                                    }}>
+                                      T{v.tier}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '8px', fontWeight: '700', color: '#fff' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>{v.verb}</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => speakGermanText(v.verb)}
+                                        style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          color: 'var(--text-muted)',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          padding: 0
+                                        }}
+                                        title="Verb anhören"
+                                      >
+                                        🔊
+                                      </button>
+                                    </div>
+                                  </td>
+                                  <td style={{ padding: '8px' }}>
+                                    <span style={{
+                                      fontSize: '10.5px',
+                                      padding: '2px 6px',
+                                      borderRadius: '4px',
+                                      fontWeight: '700',
+                                      background: v.case === 'Akk' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                      color: v.case === 'Akk' ? '#fca5a5' : '#93c5fd',
+                                      border: v.case === 'Akk' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
+                                    }}>
+                                      {v.case}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '8px', color: 'var(--text-secondary)' }}>{v.meaning}</td>
+                                  <td style={{ padding: '8px' }}>
+                                    <code style={{ fontSize: '11px', color: '#facc15', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px' }}>
+                                      {v.daWo}
+                                    </code>
+                                  </td>
+                                  <td style={{ padding: '8px' }}>
+                                    {isRemaining ? (
+                                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>⏳ Offen</span>
+                                    ) : (
+                                      <span style={{ fontSize: '11px', color: '#4ade80', fontWeight: '600' }}>✅ Geübt</span>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '8px', textAlign: 'right' }}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePracticeSpecificVerb(v)}
+                                      style={{
+                                        padding: '3px 8px',
+                                        borderRadius: '6px',
+                                        background: 'rgba(59, 130, 246, 0.2)',
+                                        border: '1px solid rgba(59, 130, 246, 0.45)',
+                                        color: '#93c5fd',
+                                        fontSize: '11px',
+                                        fontWeight: '600',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                      title={`Diesen Satz mit "${v.verb} ${v.prep}" jetzt generieren`}
+                                    >
+                                      🎯 Üben
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Memory Pattern: The Linking "r" Rule Section */}
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.6), rgba(15, 23, 42, 0.8))',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#facc15', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>💡</span>
+                <span>Memory Pattern: The Linking "r" Rule</span>
+              </div>
+              <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+                Notice how the <em>da-</em> and <em>wo-</em> forms are assembled:
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '12px' }}>
+                {/* Vowel Rule */}
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(234, 179, 8, 0.25)',
+                  borderRadius: '8px',
+                  padding: '12px'
+                }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#fde047', marginBottom: '6px' }}>
+                    1. Vokal-Präpositionen (auf, über, um, an)
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Fügen ein <strong>-r-</strong> zur Ausspracheerleichterung ein:
+                  </div>
+                  <div style={{
+                    fontFamily: '"STIX Two Math", "Cambria Math", serif',
+                    fontSize: '13px',
+                    color: '#fff',
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '6px 10px',
+                    borderRadius: '6px'
+                  }}>
+                    da + <strong style={{ color: '#facc15' }}>r</strong> + auf ➔ <strong>darauf</strong> &nbsp;|&nbsp; wo + <strong style={{ color: '#facc15' }}>r</strong> + an ➔ <strong>woran</strong>
+                  </div>
+                </div>
+
+                {/* Consonant Rule */}
+                <div style={{
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  borderRadius: '8px',
+                  padding: '12px'
+                }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#93c5fd', marginBottom: '6px' }}>
+                    2. Konsonant-Präpositionen (für, mit, von, zu, nach, vor)
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                    Verbinden sich direkt ohne Zusatzbuchstaben:
+                  </div>
+                  <div style={{
+                    fontFamily: '"STIX Two Math", "Cambria Math", serif',
+                    fontSize: '13px',
+                    color: '#fff',
+                    background: 'rgba(0,0,0,0.4)',
+                    padding: '6px 10px',
+                    borderRadius: '6px'
+                  }}>
+                    da + für ➔ <strong>dafür</strong> &nbsp;|&nbsp; wo + mit ➔ <strong>womit</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setShowVerbListModal(false)}
+                className="feedback-btn good"
+                style={{ width: 'auto', maxWidth: 'none', padding: '8px 20px', borderRadius: '8px', fontSize: '12px' }}
+              >
+                Schließen ✔️
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main interface layout: Left compact selector and Right large question layout */}
       <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', width: '100%', alignItems: 'stretch' }}>
         
@@ -886,6 +1580,31 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               <span onClick={selectNonePreps} style={{ fontSize: '11px', color: '#ef4444', cursor: 'pointer', fontWeight: '600' }}>None</span>
             </div>
           </div>
+
+          {/* Quick link to 65 Fixed Verbs */}
+          <button
+            type="button"
+            onClick={() => setShowVerbListModal(true)}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '8px',
+              fontSize: '11px',
+              fontWeight: '700',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(168, 85, 247, 0.18))',
+              border: '1px solid rgba(168, 85, 247, 0.35)',
+              color: '#d8b4fe',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '6px'
+            }}
+          >
+            <span>📋 65 Verben-Liste</span>
+            <span style={{ fontSize: '10px', background: 'rgba(0,0,0,0.35)', padding: '1px 5px', borderRadius: '8px' }}>
+              {68 - festVerbsRemaining.length}/68
+            </span>
+          </button>
 
           <div style={{ overflowY: 'auto', maxHeight: '420px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {Object.keys(PREPOSITION_GROUPS).map(groupName => {
@@ -1112,6 +1831,76 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                         </span>
                       )}
                     </div>
+
+                    {/* Verb Collocation Formula Card: $$\textbf{Verb} + \textbf{Preposition} + \textbf{Case (Akk / Dat)}$$ */}
+                    {(currentQuestion.formula || currentQuestion.targetVerb || currentQuestion.category === 'Feste Verbverbindung') && (
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '16px 20px',
+                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9))',
+                        border: '1px solid rgba(139, 92, 246, 0.4)',
+                        borderRadius: '12px',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
+                        textAlign: 'center'
+                      }}>
+                        <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📐</span>
+                          <span>Feste Verbverbindung Formel</span>
+                        </div>
+
+                        {/* Visual equation with styled elements */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexWrap: 'wrap',
+                          gap: '10px',
+                          fontSize: '18px',
+                          fontFamily: '"STIX Two Math", "Cambria Math", "Latin Modern Math", serif'
+                        }}>
+                          <span style={{ fontWeight: '800', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.5)' }}>
+                            {currentQuestion.targetVerb || 'Verb'}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '300' }}>+</span>
+                          <span style={{ fontWeight: '800', color: '#fca5a5', background: 'rgba(239, 68, 68, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.5)' }}>
+                            {currentQuestion.correctPreposition}
+                          </span>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '300' }}>+</span>
+                          <span style={{ fontWeight: '800', color: '#86efac', background: 'rgba(34, 197, 94, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.5)' }}>
+                            {currentQuestion.case || (PREPOSITION_GROUPS.Akkusativ.includes(currentQuestion.correctPreposition) ? 'Akkusativ' : 'Dativ')}
+                          </span>
+                        </div>
+
+                        {/* Exact LaTeX representation requested */}
+                        <div style={{
+                          fontSize: '13px',
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                          color: '#e2e8f0',
+                          background: 'rgba(0,0,0,0.45)',
+                          padding: '5px 14px',
+                          borderRadius: '6px',
+                          border: '1px solid rgba(255,255,255,0.08)'
+                        }}>
+                          {currentQuestion.formula || `$$\\textbf{${currentQuestion.targetVerb || 'Verb'}} + \\textbf{${currentQuestion.correctPreposition}} + \\textbf{${currentQuestion.case || 'Case'}}$$`}
+                        </div>
+
+                        {/* Meaning & da-/wo- pronominal adverbs */}
+                        {(currentQuestion.meaning || currentQuestion.daWo) && (
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                            {currentQuestion.meaning && <span>🇬🇧 <em>{currentQuestion.meaning}</em></span>}
+                            {currentQuestion.meaning && currentQuestion.daWo && <span>•</span>}
+                            {currentQuestion.daWo && (
+                              <span style={{ color: '#facc15', fontWeight: '600' }}>
+                                🏷️ {currentQuestion.daWo}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Explanatory notes */}
                     <div style={{ 
