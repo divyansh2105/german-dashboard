@@ -1573,16 +1573,16 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
         bestTranslation: currentExercise.referenceTranslations[0],
         alternativeTranslations: currentExercise.referenceTranslations.slice(1),
         feedback: matches 
-          ? "Perfekt übersetzt! Deine Formulierung entspricht genau der Musterlösung." 
-          : "Guter Versuch! Vergleiche deine Antwort mit den Musterlösungen unten.",
+          ? "Perfect translation! Your formulation matches the reference solution exactly." 
+          : "Good attempt! Compare your answer with the model solutions below.",
         corrections: matches ? [] : [
           {
             original: userTranslation,
             corrected: currentExercise.referenceTranslations[0],
-            explanation: `Beachte den Fokus: ${currentExercise.grammarFocus || 'Korrekte Satzstellung und Kasus'}.`
+            explanation: `Pay attention to the target focus: ${currentExercise.grammarFocus || 'Correct sentence structure and case'}.`
           }
         ],
-        grammarNotes: currentExercise.grammarFocus || "Achte auf Wortstellung und korrekte Konjugation."
+        grammarNotes: currentExercise.grammarFocus || "Pay attention to word order and correct conjugation."
       };
 
       setEvaluation(fallbackEval);
@@ -1595,20 +1595,28 @@ Respond ONLY with raw JSON. No markdown ticks, no preamble.`;
       return;
     }
 
-    const evalSystemInstruction = `You are a strict yet encouraging German language examiner evaluating a B1 student's translation.
-English Source: "${currentExercise.english}"
+    const evalSystemInstruction = `You are a strict yet encouraging German language examiner evaluating an English-speaking B1 student's translation into German.
+English Source Sentence: "${currentExercise.english}"
+Target Grammar Focus: "${currentExercise.grammarFocus}"
 Reference Translations: ${JSON.stringify(currentExercise.referenceTranslations)}
-Grammar Focus: "${currentExercise.grammarFocus}"
 
-The user has translated it as:
+The user submitted this German translation:
 "${userTranslation.trim()}"
 
-Evaluate the user's German translation accurately:
-1. Is it grammatically correct German? Does it preserve the meaning of the English source?
-2. Assess word order (Verbposition in Haupt- und Nebensätzen), case endings (Akkusativ, Dativ, Genitiv), tense, and vocabulary.
-3. Minor punctuation or capitalization slips should deduct only 5-10 points. Grammar errors (wrong case, misplaced verb, wrong auxiliary) should deduct accordingly.
-4. Provide constructive feedback in German suitable for a B1 learner.
-5. If there are mistakes, break them down clearly into: original part, corrected part, and the grammatical explanation.
+CRITICAL LANGUAGE REQUIREMENT:
+All feedback, evaluation remarks, correction explanations, and grammar notes MUST BE WRITTEN IN ENGLISH (not German) so the student clearly understands what was correct, where mistakes occurred, and how to improve.
+
+Evaluation Guidelines:
+1. Meaning & Accuracy: Does the German translation faithfully convey the meaning of the English source?
+2. Grammatical Precision: Check verb position (V2 in main clauses, verb at end in subordinate clauses), auxiliary verbs, case inflections (Nominativ, Akkusativ, Dativ, Genitiv), adjective endings, and prepositions.
+3. Scoring & Deduction:
+   - Score >= 80: Mark "isCorrect": true. Minor punctuation or capitalization slips should deduct only 5-10 points.
+   - Significant grammatical errors (wrong case, misplaced verb, wrong preposition): deduct accordingly and mark "isCorrect": false if score < 80.
+4. Constructive Feedback: Write encouraging, pedagogical feedback IN ENGLISH explaining how well the student met the challenge and highlighting key grammar points.
+5. Corrections Breakdown: If there are any mistakes or suboptimal word choices, list each one with:
+   - "original": the exact German mistake from the student's translation
+   - "corrected": the corrected German formulation
+   - "explanation": a concise, clear explanation IN ENGLISH explaining the rule (e.g., "The verb must move to the end in a subordinate clause introduced by 'weil'", "The preposition 'mit' always requires Dative case", etc.)
 
 Output ONLY a JSON object matching this schema:
 {
@@ -1616,16 +1624,16 @@ Output ONLY a JSON object matching this schema:
   "score": integer (0 to 100),
   "rating": "excellent" | "good" | "needs_work",
   "bestTranslation": "Best natural German sentence",
-  "alternativeTranslations": ["Alternative valid sentence"],
-  "feedback": "Encouraging, clear explanation in German (2-3 sentences)",
+  "alternativeTranslations": ["Alternative valid German sentence"],
+  "feedback": "Encouraging, clear explanation written strictly in English (2-3 sentences)",
   "corrections": [
     {
-      "original": "part with mistake",
-      "corrected": "corrected version",
-      "explanation": "Why this change is needed"
+      "original": "part with mistake in German",
+      "corrected": "corrected German version",
+      "explanation": "Clear grammatical explanation written strictly in English"
     }
   ],
-  "grammarNotes": "Quick rule reminder for future practice"
+  "grammarNotes": "Quick rule reminder written strictly in English for future practice"
 }
 Output raw JSON only.`;
 
@@ -1634,7 +1642,10 @@ Output raw JSON only.`;
         apiKey,
         preferredModel: selectedModel,
         availableModels,
-        prompt: `Evaluate this translation: "${userTranslation.trim()}"`,
+        prompt: `Evaluate this German translation attempt for the English sentence: "${currentExercise.english}".
+Student's German translation: "${userTranslation.trim()}"
+
+CRITICAL: Provide all feedback, explanations, and notes strictly in ENGLISH.`,
         systemInstruction: evalSystemInstruction,
         jsonMode: true,
         onFallback: ({ failedModel, nextModel }) => {
@@ -2779,7 +2790,7 @@ Output raw JSON only.`;
                 {evaluation.corrections && evaluation.corrections.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
-                      Korrekturen / Detailed Notes:
+                      Corrections & Notes:
                     </span>
                     {evaluation.corrections.map((corr, idx) => (
                       <div
@@ -2808,6 +2819,28 @@ Output raw JSON only.`;
                   </div>
                 )}
 
+                {/* Grammar Tip if provided */}
+                {evaluation.grammarNotes && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '8px',
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    fontSize: '12.5px',
+                    color: '#93c5fd',
+                    lineHeight: 1.5
+                  }}>
+                    <span style={{ fontSize: '15px' }}>💡</span>
+                    <div>
+                      <strong style={{ color: '#bfdbfe', marginRight: '6px' }}>Grammar Tip:</strong>
+                      {evaluation.grammarNotes}
+                    </div>
+                  </div>
+                )}
+
                 {/* Reference translations */}
                 <div style={{
                   background: 'rgba(255, 255, 255, 0.03)',
@@ -2819,7 +2852,7 @@ Output raw JSON only.`;
                   gap: '6px'
                 }}>
                   <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                    Musterlösung / Ideal Translations:
+                    Ideal Reference Translations:
                   </span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
