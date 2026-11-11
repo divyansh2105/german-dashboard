@@ -1336,7 +1336,7 @@ ${lengthInstruction}
 Instructions:
 1. Provide a realistic, natural English sentence testing the selected B1 topic and designated scenario domain.
 2. If the sentence includes difficult, formal, or specialized nouns, verbs, or prepositions, provide their German equivalents as hints (including article/gender for nouns and auxiliary/participle for verbs).
-3. Provide 2-3 natural German reference translations.
+3. Provide 2-3 natural German reference translations. For past actions, provide reference translations in natural conversational Perfekt (haben/sein + Partizip II) rather than narrative Präteritum, reserving Präteritum only for modal verbs (musste, konnte, wollte), war, hatte, and es gab.
 4. Explain the key grammar focus tested in German.
 
 You MUST respond strictly with a valid JSON object matching this schema:
@@ -1608,12 +1608,17 @@ All feedback, evaluation remarks, correction explanations, and grammar notes MUS
 
 Evaluation Guidelines:
 1. Meaning & Accuracy: Does the German translation faithfully convey the meaning of the English source?
-2. Grammatical Precision: Check verb position (V2 in main clauses, verb at end in subordinate clauses), auxiliary verbs, case inflections (Nominativ, Akkusativ, Dativ, Genitiv), adjective endings, and prepositions.
-3. Scoring & Deduction:
+2. SPOKEN PAST TENSE DIRECTIVE (PERFEKT PREFERRED OVER PRÄTERITUM):
+   - The student will almost always use Perfekt (haben/sein + Partizip II) instead of Präteritum for past actions.
+   - NEVER penalize, deduct points, or mark Perfekt as an error when describing past actions (e.g. 'ich habe gearbeitet', 'wir sind gefahren', 'er hat angerufen'). Both are valid, and Perfekt is the authentic spoken German norm!
+   - In all your corrections, recommendations, and 'bestTranslation' suggestions, ALWAYS respect and favor Perfekt rather than written/bookish Präteritum, as long as it continues sounding natural to speak.
+   - Only recommend Präteritum where native German speakers truly prefer it in spoken German (specifically: 'war', 'hatte', 'konnte', 'musste', 'wollte', 'durfte', 'sollte', or 'es gab'). Full action verbs must remain in natural spoken Perfekt.
+3. Grammatical Precision: Check verb position (V2 in main clauses, verb at end in subordinate clauses), auxiliary verbs, case inflections (Nominativ, Akkusativ, Dativ, Genitiv), adjective endings, and prepositions.
+4. Scoring & Deduction:
    - Score >= 80: Mark "isCorrect": true. Minor punctuation or capitalization slips should deduct only 5-10 points.
    - Significant grammatical errors (wrong case, misplaced verb, wrong preposition): deduct accordingly and mark "isCorrect": false if score < 80.
-4. Constructive Feedback: Write encouraging, pedagogical feedback IN ENGLISH explaining how well the student met the challenge and highlighting key grammar points.
-5. Corrections Breakdown: If there are any mistakes or suboptimal word choices, list each one with:
+5. Constructive Feedback: Write encouraging, pedagogical feedback IN ENGLISH explaining how well the student met the challenge and highlighting key grammar points.
+6. Corrections Breakdown: If there are any mistakes or suboptimal word choices, list each one with:
    - "original": the exact German mistake from the student's translation
    - "corrected": the corrected German formulation
    - "explanation": a concise, clear explanation IN ENGLISH explaining the rule (e.g., "The verb must move to the end in a subordinate clause introduced by 'weil'", "The preposition 'mit' always requires Dative case", etc.)
@@ -1623,7 +1628,7 @@ Output ONLY a JSON object matching this schema:
   "isCorrect": boolean (true if score >= 80),
   "score": integer (0 to 100),
   "rating": "excellent" | "good" | "needs_work",
-  "bestTranslation": "Best natural German sentence",
+  "bestTranslation": "Best natural German sentence (favoring Perfekt for past actions)",
   "alternativeTranslations": ["Alternative valid German sentence"],
   "feedback": "Encouraging, clear explanation written strictly in English (2-3 sentences)",
   "corrections": [
@@ -1645,6 +1650,7 @@ Output raw JSON only.`;
         prompt: `Evaluate this German translation attempt for the English sentence: "${currentExercise.english}".
 Student's German translation: "${userTranslation.trim()}"
 
+NOTE: The student will almost always be using Perfekt instead of Präteritum for past actions, so provide feedback and recommendations based on Perfekt, as long as it continues sounding natural to speak.
 CRITICAL: Provide all feedback, explanations, and notes strictly in ENGLISH.`,
         systemInstruction: evalSystemInstruction,
         jsonMode: true,

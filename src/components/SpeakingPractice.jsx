@@ -203,7 +203,7 @@ export default function SpeakingPractice() {
         parts: [{ text: msg.text }]
       }));
 
-      const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
+      const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. The student will almost always use conversational Perfekt rather than Präteritum for past events; respect and support Perfekt (haben/sein + Partizip II) as it is the natural spoken German norm. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
 
       const { text: geminiText, usedModel, wasFallback } = await queryGemini({
         apiKey,
@@ -252,6 +252,12 @@ export default function SpeakingPractice() {
 
     const systemInstruction = `You are a helpful German grammar tutor evaluating a B1 student's written or spoken paragraph.
 Analyze the paragraph they provide sentence-by-sentence.
+
+CRITICAL SPOKEN PAST TENSE DIRECTIVE (PERFEKT PREFERRED OVER PRÄTERITUM):
+- The student will almost always use Perfekt (haben/sein + Partizip II) instead of Präteritum for past actions.
+- NEVER penalize or correct Perfekt to Präteritum when the student uses Perfekt for past events; Perfekt is the authentic spoken standard!
+- Base your corrections and recommendations on Perfekt as long as it continues sounding natural to speak (only favoring Präteritum for 'war', 'hatte', modal verbs 'konnte/musste/wollte', or 'es gab').
+
 You must output exactly a JSON object matching this schema:
 {
   "overallFeedback": "An encouraging summary of their paragraph in English, highlighting key strengths.",
