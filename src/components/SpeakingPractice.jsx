@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { queryGemini, fetchAvailableModels, DEFAULT_GEMINI_MODELS } from '../utils/geminiApi';
+import FluencyPractice from './FluencyPractice';
 
 const TOPIC_HELPERS = [
   {
@@ -43,8 +44,8 @@ export default function SpeakingPractice() {
     return DEFAULT_GEMINI_MODELS;
   });
 
-  // Mode: 'conversation' (chat partner) or 'evaluation' (essay analyzer)
-  const [activeMode, setActiveMode] = useState('conversation');
+  // Mode: 'fluency' (default), 'conversation' (chat partner), or 'evaluation' (essay analyzer)
+  const [activeMode, setActiveMode] = useState(() => localStorage.getItem('b1_speaking_active_mode') || 'fluency');
 
   // Conversation Mode states
   const [messages, setMessages] = useState(() => {
@@ -440,11 +441,23 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
       <div className="glass-card" style={{ width: '100%', minHeight: '520px', display: 'flex', flexDirection: 'column', padding: '20px', position: 'relative' }}>
         
         {/* Mode Selector Segmented Control */}
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: 'rgba(255,255,255,0.02)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)', alignSelf: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: 'rgba(255,255,255,0.02)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)', alignSelf: 'flex-start', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveMode('fluency');
+              localStorage.setItem('b1_speaking_active_mode', 'fluency');
+            }}
+            className={`nav-button ${activeMode === 'fluency' ? 'active' : ''}`}
+            style={{ padding: '6px 14px', fontSize: '12px', borderRadius: '8px', minWidth: 'auto', border: 'none' }}
+          >
+            ⚡ Fluency
+          </button>
           <button
             type="button"
             onClick={() => {
               setActiveMode('conversation');
+              localStorage.setItem('b1_speaking_active_mode', 'conversation');
               setUserInput('');
               setEvaluationResult(null);
               setActiveTopicHelp(null);
@@ -458,6 +471,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
             type="button"
             onClick={() => {
               setActiveMode('evaluation');
+              localStorage.setItem('b1_speaking_active_mode', 'evaluation');
               setUserInput('');
               setEvaluationResult(null);
               setActiveTopicHelp(null);
@@ -468,6 +482,18 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
             📝 Paragraph Evaluation
           </button>
         </div>
+
+        {/* MODE 0: Fluency Practice UI (Default) */}
+        {activeMode === 'fluency' && (
+          <FluencyPractice
+            apiKey={apiKey}
+            selectedModel={selectedModel}
+            availableModels={availableModels}
+            fallbackNotice={fallbackNotice}
+            setFallbackNotice={setFallbackNotice}
+            speakGermanText={speakGermanText}
+          />
+        )}
 
         {/* MODE 1: Conversation Chat UI */}
         {activeMode === 'conversation' && (
