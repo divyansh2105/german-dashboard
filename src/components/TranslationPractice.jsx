@@ -1674,9 +1674,9 @@ CRITICAL: Provide all feedback, explanations, and notes strictly in ENGLISH.`,
     }
   };
 
-  // Load first exercise on mount
+  // Do not auto-generate on mount; wait for user to click button like in Grammar
   useEffect(() => {
-    generateNewExercise(selectedTopic, selectedLength);
+    // Keep empty mount effect for any one-time initializations if needed
   }, []);
 
   const handleSaveKey = (e) => {
@@ -2907,7 +2907,35 @@ CRITICAL: Provide all feedback, explanations, and notes strictly in ENGLISH.`,
               </div>
             )}
           </>
-        ) : null}
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '20px', minHeight: '280px', textAlign: 'center', padding: '40px 20px' }}>
+            <div style={{ fontSize: '48px' }}>🌐</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>B1 Übersetzungs-Training</h3>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: '420px', lineHeight: '1.5' }}>
+                Wähle oben dein Wunsch-Thema und die Satzlänge aus, und starte die Übung per Knopfdruck.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <button 
+                type="button"
+                onClick={() => generateNewExercise(selectedTopic, selectedLength)} 
+                className="feedback-btn good" 
+                style={{ padding: '12px 28px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', width: 'auto', maxWidth: 'none' }}
+              >
+                Satz Generieren ➔
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCustomModal(true)}
+                className="nav-button"
+                style={{ padding: '12px 20px', borderRadius: '10px', fontSize: '13px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.3)' }}
+              >
+                ✏️ Eigenen Satz eingeben
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
 

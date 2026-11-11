@@ -40,19 +40,60 @@ const PRESET_SITUATIONS = [
   }
 ];
 
+export const FLUENCY_GRAMMAR_AREAS = [
+  {
+    id: 'perfekt',
+    label: 'Perfekt',
+    shortClue: 'conversational spoken past tense',
+    rule: 'haben/sein + Partizip II'
+  },
+  {
+    id: 'nebensaetze',
+    label: 'Nebensätze',
+    shortClue: 'weil, obwohl, dass, wenn, da',
+    rule: 'subordinate clauses with verb at end'
+  },
+  {
+    id: 'infinitiv_zu',
+    label: 'Infinitiv mit zu',
+    shortClue: 'versuchen ... zu, hoffen ... zu, Zeit haben ... zu',
+    rule: 'infinitival clause with zu'
+  },
+  {
+    id: 'konjunktiv2',
+    label: 'Konjunktiv II',
+    shortClue: 'hätte, wäre, könnte, würde gern',
+    rule: 'polite requests & hypotheticals'
+  },
+  {
+    id: 'relative_clauses',
+    label: 'Relative clauses',
+    shortClue: 'der, die, das, in dem, mit dem, worüber',
+    rule: 'Relativsätze with relative pronoun and verb placed at the very end'
+  },
+  {
+    id: 'subordinate_clauses',
+    label: 'Subordinate clauses',
+    shortClue: 'nachdem, bevor, während, als, falls, sodass, damit, ob',
+    rule: 'advanced temporal/conditional/concessive clauses with verb at end'
+  }
+];
+
 const FALLBACK_SCENARIO = {
   scenarioTitle: "Running Late for a Meeting",
   scenarioContext: "You are texting your colleague explaining why you haven't arrived at the office yet.",
-  englishParagraph: "I am really sorry that I am running so late today. My morning train was canceled because there was a technical problem on the tracks. I tried to catch a bus instead, but the traffic was completely stuck. If I had known about the delay earlier, I would have taken my bicycle. I hope to be at the office in about twenty minutes.",
+  englishParagraph: "I am really sorry that I am running so late today. The morning train that I usually take was canceled because there was a technical problem on the tracks. I tried to catch a bus instead, but the traffic was completely stuck before we could reach the station. If I had known about the delay earlier, I would have taken my bicycle. I hope to be at the office in about twenty minutes.",
   sentences: [
     "I am really sorry that I am running so late today.",
-    "My morning train was canceled because there was a technical problem on the tracks.",
-    "I tried to catch a bus instead, but the traffic was completely stuck.",
+    "The morning train that I usually take was canceled because there was a technical problem on the tracks.",
+    "I tried to catch a bus instead, but the traffic was completely stuck before we could reach the station.",
     "If I had known about the delay earlier, I would have taken my bicycle.",
     "I hope to be at the office in about twenty minutes."
   ],
   targetGrammarPoints: [
     { name: "Nebensätze (dass, weil)", description: "Verb moved to the very end of the subordinate clause" },
+    { name: "Relative clauses (Relativsätze)", description: "Relative pronoun (den ich normalerweise nehme) with verb placed at the very end" },
+    { name: "Subordinate clauses (bevor)", description: "Advanced temporal clause with verb at end" },
     { name: "Perfekt / Passiv", description: "Spoken past tense / past action (wurde abgesagt, bin steckengeblieben)" },
     { name: "Infinitiv mit zu", description: "Infinitiv phrase with zu (versucht ... zu erwischen, hoffe ... zu sein)" },
     { name: "Konjunktiv II", description: "Hypothetical condition (Wenn ich ... gewusst hätte, hätte ich ... genommen)" }
@@ -63,8 +104,8 @@ const FALLBACK_SCENARIO = {
     { english: "completely stuck", germanHint: "völlig überlastet / im Stau stehen" },
     { english: "delay", germanHint: "die Verspätung" }
   ],
-  referenceGermanTranslation: "Es tut mir wirklich leid, dass ich heute so spät dran bin. Mein Morgenzug ist ausgefallen, weil es ein technisches Problem auf den Gleisen gab. Ich habe stattdessen versucht, einen Bus zu nehmen, aber der Verkehr hat komplett gestanden. Wenn ich früher von der Verspätung gewusst hätte, hätte ich mein Fahrrad genommen. Ich hoffe, in etwa zwanzig Minuten im Büro zu sein.",
-  nativeColloquialGerman: "Tut mir echt leid, dass ich heute so spät bin! Mein Zug ist heute früh ausgefallen, weil's 'ne technische Störung gab. Hab dann versucht, den Bus zu kriegen, aber es ging gar nichts mehr auf den Straßen. Wenn ich das vorher gewusst hätte, wär ich einfach mit'm Rad gefahren. Müsste aber in so zwanzig Minuten da sein!"
+  referenceGermanTranslation: "Es tut mir wirklich leid, dass ich heute so spät dran bin. Der Morgenzug, den ich normalerweise nehme, ist ausgefallen, weil es ein technisches Problem auf den Gleisen gab. Ich habe stattdessen versucht, einen Bus zu nehmen, aber der Verkehr hat komplett gestanden, bevor wir den Bahnhof erreichen konnten. Wenn ich früher von der Verspätung gewusst hätte, hätte ich mein Fahrrad genommen. Ich hoffe, in etwa zwanzig Minuten im Büro zu sein.",
+  nativeColloquialGerman: "Tut mir echt leid, dass ich heute so spät bin! Mein normaler Zug, den ich sonst immer nehme, ist heute früh ausgefallen, weil's 'ne technische Störung gab. Hab dann versucht, den Bus zu kriegen, aber es ging gar nichts mehr, noch bevor wir überhaupt am Bahnhof waren. Wenn ich das vorher gewusst hätte, wär ich einfach mit'm Rad gefahren. Müsste aber in so zwanzig Minuten da sein!"
 };
 
 export default function FluencyPractice({
@@ -81,6 +122,11 @@ export default function FluencyPractice({
   });
   const [customSituation, setCustomSituation] = useState('');
   const [activePreset, setActivePreset] = useState('late');
+
+  const [selectedGrammarFocus, setSelectedGrammarFocus] = useState(() => {
+    const saved = localStorage.getItem('b1_fluency_grammar_focus');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const [userTranslation, setUserTranslation] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -209,6 +255,10 @@ export default function FluencyPractice({
 
     const randomSeed = Math.floor(Math.random() * 1000000);
 
+    const activeGrammarLabels = selectedGrammarFocus.length > 0
+      ? FLUENCY_GRAMMAR_AREAS.filter(ga => selectedGrammarFocus.includes(ga.id)).map(ga => `${ga.label} (${ga.shortClue})`)
+      : FLUENCY_GRAMMAR_AREAS.map(ga => `${ga.label} (${ga.shortClue})`);
+
     const promptText = `Generate a 4-to-5 sentence conversational English paragraph suitable for B1 German practice.
 Target Situation: "${situationToUse}".
 
@@ -216,10 +266,13 @@ CRITICAL REQUIREMENTS:
 1. TONE & STYLE: It must sound like everyday natural spoken speech between people (e.g., explaining why I was late, talking about weekend plans, resolving a mix-up at work, an apartment issue, or making plans). Casual, spontaneous, and realistic!
 2. SENTENCE COUNT: Exactly 4 or 5 sentences.
 3. GRAMMAR EMBEDDING: You MUST naturally embed at least TWO of these key B1 German grammar structures:
-   - Perfekt (conversational spoken past: haben/sein + Partizip II)
+   - Perfekt (conversational spoken past tense: haben/sein + Partizip II)
    - Nebensätze with connectors (weil, obwohl, dass, wenn, da)
    - Infinitiv mit zu (e.g., versuchen ... zu, hoffen ... zu, Lust haben ... zu, Zeit haben ... zu)
    - Konjunktiv II (polite request, suggestion, or hypothetical: könnte, hätte, wäre, würde gern)
+   - Relative clauses (Relativsätze: der, die, das, in dem, mit dem, worüber - relative pronoun matching gender/case with verb at the end)
+   - Subordinate clauses (advanced temporal, conditional, or consecutive clauses: nachdem, bevor, während, als, falls, sodass, damit, ob)
+${selectedGrammarFocus.length > 0 ? `\nUSER SPECIFIC GRAMMAR FOCUS FOR THIS SCENARIO: Prioritize embedding: ${activeGrammarLabels.join('; ')}.` : ''}
 4. DO NOT provide the German translation yet to the student.
 
 Seed: ${randomSeed}`;
@@ -363,8 +416,15 @@ The student has submitted this German translation:
 
 CRITICAL EVALUATION TASKS:
 1. CRITIQUE WORD ORDER:
-   - Analyze verb placement in detail: main clauses (Verb in Position 2), subordinate clauses (Verb at the very end with weil/obwohl/dass/wenn/als), separable verbs (prefix at end), modal verbs + infinitive, and infinitives with 'zu'.
-   - Analyze connector usage (e.g., weil vs denn, obwohl vs trotzdem, dass vs sodass).
+   - Analyze verb placement in detail:
+     * Main clauses: conjugated verb in Position 2 (V2).
+     * Subordinate clauses (Nebensätze): conjugated verb placed at the very end (weil, obwohl, dass, wenn, als, nachdem, bevor, während, falls, sodass, damit, ob).
+     * Relative clauses (Relativsätze): relative pronoun agreement (der/die/das/dem/den/dessen/mit dem/in der/worüber) and conjugated verb placed at the very end of the relative clause!
+     * Infinitives with 'zu': 'zu' + infinitive placed at the end of the infinitive clause.
+     * Konjunktiv II forms (hätte, wäre, könnte, würde gern).
+     * Perfekt: auxiliary verb (haben/sein) placement + Partizip II at clause end.
+     * Separable prefixes placed at the end of main clauses.
+   - Analyze connectors (weil vs. denn, obwohl vs. trotzdem, dass vs. sodass, als vs. wenn) and relative pronouns (der, die, das, dem, den, dessen, mit dem, in der).
 2. ERROR CORRECTION:
    - Check case inflections (Akkusativ, Dativ, Genitiv), prepositions, adjective endings, noun gender, and tense formation.
 3. 100% NATURAL, COLLOQUIAL GERMAN:
@@ -550,6 +610,69 @@ Output raw JSON only.`;
           >
             Generate Custom ➔
           </button>
+        </div>
+
+        {/* Grammar Focus Areas (User filter & preview) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)' }}>
+              Grammar Focus (Embedded in Scenarios):
+            </span>
+            {selectedGrammarFocus.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedGrammarFocus([]);
+                  localStorage.removeItem('b1_fluency_grammar_focus');
+                }}
+                style={{ background: 'none', border: 'none', color: '#93c5fd', fontSize: '11px', cursor: 'pointer', padding: '0 4px', textDecoration: 'underline' }}
+              >
+                Reset to All (Any 2+)
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {FLUENCY_GRAMMAR_AREAS.map(ga => {
+              const isActive = selectedGrammarFocus.length === 0 || selectedGrammarFocus.includes(ga.id);
+              const isExplicit = selectedGrammarFocus.includes(ga.id);
+              return (
+                <button
+                  key={ga.id}
+                  type="button"
+                  onClick={() => {
+                    let next;
+                    if (selectedGrammarFocus.includes(ga.id)) {
+                      next = selectedGrammarFocus.filter(id => id !== ga.id);
+                    } else {
+                      next = [...selectedGrammarFocus, ga.id];
+                    }
+                    setSelectedGrammarFocus(next);
+                    localStorage.setItem('b1_fluency_grammar_focus', JSON.stringify(next));
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '11.5px',
+                    fontWeight: isExplicit ? '700' : '500',
+                    background: isExplicit ? 'rgba(139, 92, 246, 0.3)' : (isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(255, 255, 255, 0.03)'),
+                    border: isExplicit ? '1px solid rgba(139, 92, 246, 0.8)' : (isActive ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)'),
+                    color: isExplicit ? '#f3e8ff' : (isActive ? '#c4b5fd' : 'var(--text-muted)'),
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title={`${ga.label}: ${ga.shortClue} (${ga.rule})`}
+                >
+                  <span style={{ fontSize: '11px' }}>{isExplicit ? '🎯' : (isActive ? '✨' : '⚪')}</span>
+                  <span>{ga.label}</span>
+                  <span style={{ fontSize: '10px', opacity: 0.7, fontStyle: 'italic' }}>({ga.shortClue})</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
