@@ -128,6 +128,32 @@ export default function FluencyPractice({
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [sentenceLength, setSentenceLength] = useState(() => {
+    const saved = localStorage.getItem('b1_fluency_sentence_length');
+    return saved ? parseInt(saved, 10) : 5;
+  });
+
+  const [sentenceComplexity, setSentenceComplexity] = useState(() => {
+    const saved = localStorage.getItem('b1_fluency_sentence_complexity');
+    return saved ? parseInt(saved, 10) : 5;
+  });
+
+  const getLengthDescriptor = (val) => {
+    if (val <= 2) return { label: 'Very Short', count: '~5–8 words/sent', color: '#60a5fa' };
+    if (val <= 4) return { label: 'Short', count: '~8–11 words/sent', color: '#38bdf8' };
+    if (val <= 6) return { label: 'Medium', count: '~12–15 words/sent', color: '#34d399' };
+    if (val <= 8) return { label: 'Long', count: '~16–21 words/sent', color: '#fbbf24' };
+    return { label: 'Extended', count: '~22–30+ words/sent', color: '#f87171' };
+  };
+
+  const getComplexityDescriptor = (val) => {
+    if (val <= 2) return { label: 'Basic Spoken', detail: 'Simple daily words & direct clauses', color: '#60a5fa' };
+    if (val <= 4) return { label: 'Accessible B1', detail: 'Everyday vocabulary & direct connectors', color: '#38bdf8' };
+    if (val <= 6) return { label: 'Solid B1', detail: 'Authentic spoken rhythm & common idioms', color: '#a78bfa' };
+    if (val <= 8) return { label: 'Upper B1', detail: 'Rich colloquial particles & varied clauses', color: '#c084fc' };
+    return { label: 'Colloquial Mastery', detail: 'Deep native idioms & expressive flow', color: '#f472b6' };
+  };
+
   const [userTranslation, setUserTranslation] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
@@ -259,21 +285,28 @@ export default function FluencyPractice({
       ? FLUENCY_GRAMMAR_AREAS.filter(ga => selectedGrammarFocus.includes(ga.id)).map(ga => `${ga.label} (${ga.shortClue})`)
       : FLUENCY_GRAMMAR_AREAS.map(ga => `${ga.label} (${ga.shortClue})`);
 
+    const lengthDesc = getLengthDescriptor(sentenceLength);
+    const complexityDesc = getComplexityDescriptor(sentenceComplexity);
+
     const promptText = `Generate a 4-to-5 sentence conversational English paragraph suitable for B1 German practice.
 Target Situation: "${situationToUse}".
 
 CRITICAL REQUIREMENTS:
 1. TONE & STYLE: It must sound like everyday natural spoken speech between people (e.g., explaining why I was late, talking about weekend plans, resolving a mix-up at work, an apartment issue, or making plans). Casual, spontaneous, and realistic!
 2. SENTENCE COUNT: Exactly 4 or 5 sentences.
-3. GRAMMAR EMBEDDING: You MUST naturally embed at least TWO of these key B1 German grammar structures:
+3. SENTENCE LENGTH (Level ${sentenceLength}/10 - ${lengthDesc.label}): Target average length of ${lengthDesc.count}. Ensure the English sentences reflect this target length.
+4. SENTENCE COMPLEXITY (Level ${sentenceComplexity}/10 - ${complexityDesc.label}): ${complexityDesc.detail}. Structure the conversational dialogue to match this B1 fluency depth.
+5. GRAMMAR EMBEDDING: ${selectedGrammarFocus.length > 0 
+    ? `You MUST specifically embed these selected B1 grammar structures:
+${activeGrammarLabels.map(l => `   - ${l}`).join('\n')}`
+    : `You MUST naturally embed at least TWO of these key B1 German grammar structures:
    - Perfekt (conversational spoken past tense: haben/sein + Partizip II)
    - Nebensätze with connectors (weil, obwohl, dass, wenn, da)
    - Infinitiv mit zu (e.g., versuchen ... zu, hoffen ... zu, Lust haben ... zu, Zeit haben ... zu)
    - Konjunktiv II (polite request, suggestion, or hypothetical: könnte, hätte, wäre, würde gern)
    - Relative clauses (Relativsätze: der, die, das, in dem, mit dem, worüber - relative pronoun matching gender/case with verb at the end)
-   - Subordinate clauses (advanced temporal, conditional, or consecutive clauses: nachdem, bevor, während, als, falls, sodass, damit, ob)
-${selectedGrammarFocus.length > 0 ? `\nUSER SPECIFIC GRAMMAR FOCUS FOR THIS SCENARIO: Prioritize embedding: ${activeGrammarLabels.join('; ')}.` : ''}
-4. DO NOT provide the German translation yet to the student.
+   - Subordinate clauses (advanced temporal, conditional, or consecutive clauses: nachdem, bevor, während, als, falls, sodass, damit, ob)`}
+6. DO NOT provide the German translation yet to the student.
 
 Seed: ${randomSeed}`;
 
@@ -501,8 +534,10 @@ Output raw JSON only.`;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
       
-      {/* Top Banner / Situation Selection Bar */}
-      <div className="glass-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '14px', background: 'rgba(255, 255, 255, 0.02)' }}>
+      {/* Top Banner / Controls & Persistent Filters */}
+      <div className="glass-card" style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255, 255, 255, 0.02)' }}>
+        
+        {/* Title row & Generate action */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '20px' }}>⚡</span>
@@ -511,7 +546,7 @@ Output raw JSON only.`;
                 Fluency Builder: Conversational German
               </h3>
               <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)' }}>
-                Translate 4–5 sentence spoken scenarios. Get instant word order critique &amp; 100% native colloquial phrasing.
+                Practice spoken everyday German with custom grammar targets, sentence length, and complexity sliders.
               </p>
             </div>
           </div>
@@ -521,13 +556,213 @@ Output raw JSON only.`;
             onClick={() => handleGenerateScenario()}
             disabled={isGenerating}
             className="feedback-btn good"
-            style={{ padding: '8px 16px', fontSize: '13px', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            style={{ padding: '8px 18px', fontSize: '13px', width: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            {isGenerating ? '🔄 Generating...' : '🎲 New Scenario'}
+            {isGenerating ? '🔄 Generating...' : '🎲 Generate Scenario'}
           </button>
         </div>
 
-        {/* Quick Situation Presets */}
+        {/* 1. GRAMMAR FILTERS (Top) */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          padding: '12px 14px',
+          borderRadius: '12px',
+          background: 'rgba(0, 0, 0, 0.25)',
+          border: '1px solid rgba(255, 255, 255, 0.06)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '13px' }}>🎯</span>
+              <span style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#e2e8f0' }}>
+                Grammar Filters ({selectedGrammarFocus.length > 0 ? `${selectedGrammarFocus.length} selected` : 'All 6 active'}):
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {selectedGrammarFocus.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedGrammarFocus([]);
+                    localStorage.removeItem('b1_fluency_grammar_focus');
+                  }}
+                  style={{ background: 'none', border: 'none', color: '#93c5fd', fontSize: '11px', cursor: 'pointer', padding: '0 4px', textDecoration: 'underline' }}
+                >
+                  Reset to All (Any 2+)
+                </button>
+              ) : (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Click to filter specific targets
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {FLUENCY_GRAMMAR_AREAS.map(ga => {
+              const isExplicit = selectedGrammarFocus.includes(ga.id);
+              const isAllActive = selectedGrammarFocus.length === 0;
+              return (
+                <button
+                  key={ga.id}
+                  type="button"
+                  onClick={() => {
+                    let next;
+                    if (isExplicit) {
+                      next = selectedGrammarFocus.filter(id => id !== ga.id);
+                    } else {
+                      next = [...selectedGrammarFocus, ga.id];
+                    }
+                    setSelectedGrammarFocus(next);
+                    localStorage.setItem('b1_fluency_grammar_focus', JSON.stringify(next));
+                  }}
+                  style={{
+                    padding: '7px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: isExplicit ? '700' : '500',
+                    background: isExplicit ? 'rgba(139, 92, 246, 0.35)' : (isAllActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(255, 255, 255, 0.04)'),
+                    border: isExplicit ? '1px solid rgba(167, 139, 250, 0.8)' : (isAllActive ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)'),
+                    color: isExplicit ? '#f3e8ff' : (isAllActive ? '#c4b5fd' : 'var(--text-muted)'),
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title={`${ga.label}: ${ga.shortClue} (${ga.rule})`}
+                >
+                  <span style={{ fontSize: '12px' }}>{isExplicit ? '✅' : (isAllActive ? '✨' : '⚪')}</span>
+                  <span>{ga.label}</span>
+                  <span style={{ fontSize: '10.5px', opacity: 0.7, fontStyle: 'italic' }}>({ga.shortClue})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. DUAL SLIDERS: SENTENCE LENGTH (1-10) & COMPLEXITY (1-10) */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '14px',
+          padding: '14px 16px',
+          borderRadius: '12px',
+          background: 'rgba(0, 0, 0, 0.25)',
+          border: '1px solid rgba(255, 255, 255, 0.06)'
+        }}>
+          {/* Slider 1: Sentence Length */}
+          {(() => {
+            const desc = getLengthDescriptor(sentenceLength);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>📏</span>
+                    <span>Sentence Length:</span>
+                  </label>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.2)',
+                    color: desc.color,
+                    border: '1px solid rgba(59, 130, 246, 0.3)'
+                  }}>
+                    Level {sentenceLength}/10 • {desc.label} ({desc.count})
+                  </span>
+                </div>
+
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={sentenceLength}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setSentenceLength(val);
+                    localStorage.setItem('b1_fluency_sentence_length', val.toString());
+                  }}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                    accentColor: '#3b82f6',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: 'rgba(255, 255, 255, 0.15)',
+                    margin: '4px 0'
+                  }}
+                />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                  <span>1 (Short ~6w)</span>
+                  <span style={{ opacity: 0.6 }}>5 (Medium ~14w)</span>
+                  <span>10 (Long ~28w+)</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Slider 2: Sentence Complexity */}
+          {(() => {
+            const desc = getComplexityDescriptor(sentenceComplexity);
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>🧠</span>
+                    <span>Sentence Complexity:</span>
+                  </label>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    background: 'rgba(168, 85, 247, 0.2)',
+                    color: desc.color,
+                    border: '1px solid rgba(168, 85, 247, 0.3)'
+                  }}>
+                    Level {sentenceComplexity}/10 • {desc.label}
+                  </span>
+                </div>
+
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={sentenceComplexity}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    setSentenceComplexity(val);
+                    localStorage.setItem('b1_fluency_sentence_complexity', val.toString());
+                  }}
+                  style={{
+                    width: '100%',
+                    cursor: 'pointer',
+                    accentColor: '#a855f7',
+                    height: '6px',
+                    borderRadius: '3px',
+                    background: 'rgba(255, 255, 255, 0.15)',
+                    margin: '4px 0'
+                  }}
+                />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-muted)' }}>
+                  <span>1 (Simple)</span>
+                  <span style={{ opacity: 0.6 }}>5 (Solid B1)</span>
+                  <span>10 (Native-like)</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* 3. SITUATION PRESETS & CUSTOM INPUT */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)' }}>
             Choose or Customize Situation:
@@ -612,68 +847,6 @@ Output raw JSON only.`;
           </button>
         </div>
 
-        {/* Grammar Focus Areas (User filter & preview) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.6px', color: 'var(--text-muted)' }}>
-              Grammar Focus (Embedded in Scenarios):
-            </span>
-            {selectedGrammarFocus.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedGrammarFocus([]);
-                  localStorage.removeItem('b1_fluency_grammar_focus');
-                }}
-                style={{ background: 'none', border: 'none', color: '#93c5fd', fontSize: '11px', cursor: 'pointer', padding: '0 4px', textDecoration: 'underline' }}
-              >
-                Reset to All (Any 2+)
-              </button>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {FLUENCY_GRAMMAR_AREAS.map(ga => {
-              const isActive = selectedGrammarFocus.length === 0 || selectedGrammarFocus.includes(ga.id);
-              const isExplicit = selectedGrammarFocus.includes(ga.id);
-              return (
-                <button
-                  key={ga.id}
-                  type="button"
-                  onClick={() => {
-                    let next;
-                    if (selectedGrammarFocus.includes(ga.id)) {
-                      next = selectedGrammarFocus.filter(id => id !== ga.id);
-                    } else {
-                      next = [...selectedGrammarFocus, ga.id];
-                    }
-                    setSelectedGrammarFocus(next);
-                    localStorage.setItem('b1_fluency_grammar_focus', JSON.stringify(next));
-                  }}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '11.5px',
-                    fontWeight: isExplicit ? '700' : '500',
-                    background: isExplicit ? 'rgba(139, 92, 246, 0.3)' : (isActive ? 'rgba(139, 92, 246, 0.12)' : 'rgba(255, 255, 255, 0.03)'),
-                    border: isExplicit ? '1px solid rgba(139, 92, 246, 0.8)' : (isActive ? '1px solid rgba(139, 92, 246, 0.35)' : '1px solid rgba(255, 255, 255, 0.08)'),
-                    color: isExplicit ? '#f3e8ff' : (isActive ? '#c4b5fd' : 'var(--text-muted)'),
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.15s ease'
-                  }}
-                  title={`${ga.label}: ${ga.shortClue} (${ga.rule})`}
-                >
-                  <span style={{ fontSize: '11px' }}>{isExplicit ? '🎯' : (isActive ? '✨' : '⚪')}</span>
-                  <span>{ga.label}</span>
-                  <span style={{ fontSize: '10px', opacity: 0.7, fontStyle: 'italic' }}>({ga.shortClue})</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
       {/* Main Challenge Card */}
@@ -685,7 +858,7 @@ Output raw JSON only.`;
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '3px 8px', borderRadius: '6px', background: 'rgba(139, 92, 246, 0.2)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.4)' }}>
-                  {currentScenario.sentences?.length || 5} Sentences • Spoken B1
+                  {currentScenario.sentences?.length || 5} Sentences • Length {sentenceLength}/10 • Complexity {sentenceComplexity}/10
                 </span>
                 <h4 style={{ margin: 0, fontSize: '17px', fontWeight: '800', color: '#fff' }}>
                   {currentScenario.scenarioTitle || "Conversational Scenario"}
