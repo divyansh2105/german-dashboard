@@ -18,6 +18,18 @@ const ALL_PREPOSITIONS = [
 
 const DEFAULT_PREP_WEIGHTS = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 2]));
 
+// Helper to strip any raw LaTeX math syntax ($$\textbf{...}$$) and return clean plain text
+export const cleanFormulaText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\$\$\s*\\textbf\{([^}]+)\}\s*\+\s*\\textbf\{([^}]+)\}\s*\+\s*\\textbf\{([^}]+)\}\s*\$\$/g, '$1 + $2 + $3')
+    .replace(/\$\$\s*\\textbf\{([^}]+)\}\s*\$\$/g, '$1')
+    .replace(/\$\$(.*?)\$\$/g, '$1')
+    .replace(/\\textbf\{([^}]+)\}/g, '$1')
+    .replace(/\\textbf/g, '')
+    .trim();
+};
+
 export default function GrammarPractice() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('b1_gemini_api_key') || '');
   const [showKeyInput, setShowKeyInput] = useState(!apiKey);
@@ -329,7 +341,12 @@ export default function GrammarPractice() {
     setShowDeckModal(false);
   };
 
-  const generateQuestion = async (overrideTargetVerb = null) => {
+  const generateQuestion = async (targetVerbInput = null) => {
+    // Sanitize targetVerbInput: if invoked as an event handler (e.g. onClick={generateQuestion}), ignore the event object!
+    const overrideTargetVerb = (targetVerbInput && typeof targetVerbInput === 'object' && targetVerbInput.verb)
+      ? targetVerbInput
+      : null;
+
     if (questionMode !== 'verbs' && !overrideTargetVerb && selectedPreps.length === 0) {
       alert("Bitte wähle mindestens eine Präposition aus!");
       return;
@@ -404,7 +421,7 @@ export default function GrammarPractice() {
       setCurrentVerbTarget(pickedVerb);
       targetPrep = pickedVerb.prep;
       targetCase = (pickedVerb.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ';
-      targetFormula = `$$\\textbf{${pickedVerb.verb}} + \\textbf{${pickedVerb.prep}} + \\textbf{${targetCase}}$$`;
+      targetFormula = `${pickedVerb.verb} + ${pickedVerb.prep} + ${targetCase}`;
 
       // Specific topic keys for preposition and verb
       const prepTopicKey = `prep_${targetPrep}`;
@@ -444,9 +461,9 @@ CRITICAL FILL-IN-THE-BLANK RULE:
 4. The sentence MUST unambiguously require "${pickedVerb.prep}" based strictly on the collocation with "${pickedVerb.verb}".
 
 CRITICAL FORMULA IN EXPLANATION:
-In the explanation field, you MUST prominently include this exact LaTeX formula:
-${targetFormula}
-Followed by a concise explanation in English of why "${pickedVerb.verb}" requires "${pickedVerb.prep}" with ${targetCase}, what it means, and its da-/wo- form (${pickedVerb.daWo}).
+In the explanation field, explain clearly in plain English why "${pickedVerb.verb}" requires "${pickedVerb.prep}" with ${targetCase}, what it means ("${pickedVerb.meaning}"), and its da-/wo- form (${pickedVerb.daWo}).
+State the collocation formula simply in clean plain text (e.g., "${targetFormula}").
+DO NOT use LaTeX formatting, dollar signs ($$), or \\textbf. Write in normal, clean plain text.
 
 ${recentAvoidBlock}
 Requirements:
@@ -467,7 +484,7 @@ You must return a raw JSON object matching this schema exactly:
   "case": "${targetCase}",
   "meaning": "${pickedVerb.meaning}",
   "daWo": "${pickedVerb.daWo}",
-  "explanation": "A concise grammatical explanation in English detailing why '${pickedVerb.verb}' requires '${pickedVerb.prep}' with ${targetCase}. You MUST include '${targetFormula}'."
+  "explanation": "A concise grammatical explanation in English detailing why '${pickedVerb.verb}' requires '${pickedVerb.prep}' with ${targetCase}. State the formula simply as '${targetFormula}'. Output purely in normal English text without LaTeX math syntax."
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
@@ -1660,7 +1677,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             <div style={{ textAlign: 'center', color: '#ef4444', display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', justifyContent: 'center', minHeight: '260px' }}>
               <div style={{ fontSize: '36px' }}>⚠️</div>
               <p style={{ fontSize: '14px', maxWidth: '380px', lineHeight: '1.5' }}>{errorMsg}</p>
-              <button onClick={generateQuestion} className="feedback-btn good" style={{ maxWidth: '180px', padding: '10px' }}>
+              <button onClick={() => generateQuestion()} className="feedback-btn good" style={{ maxWidth: '180px', padding: '10px' }}>
                 Erneut versuchen 🔄
               </button>
             </div>
@@ -1676,7 +1693,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                 </p>
               </div>
               <button 
-                onClick={generateQuestion} 
+                onClick={() => generateQuestion()} 
                 className="feedback-btn good" 
                 style={{ padding: '12px 24px', borderRadius: '10px', fontSize: '14px', fontWeight: '700', width: 'auto', maxWidth: 'none' }}
                 disabled={selectedPreps.length === 0}
@@ -1827,33 +1844,19 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                           justifyContent: 'center',
                           flexWrap: 'wrap',
                           gap: '10px',
-                          fontSize: '18px',
-                          fontFamily: '"STIX Two Math", "Cambria Math", "Latin Modern Math", serif'
+                          fontSize: '18px'
                         }}>
-                          <span style={{ fontWeight: '800', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.5)' }}>
+                          <span style={{ fontWeight: '800', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.5)' }}>
                             {currentQuestion.targetVerb || 'Verb'}
                           </span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '300' }}>+</span>
-                          <span style={{ fontWeight: '800', color: '#fca5a5', background: 'rgba(239, 68, 68, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.5)' }}>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '400' }}>+</span>
+                          <span style={{ fontWeight: '800', color: '#fca5a5', background: 'rgba(239, 68, 68, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.5)' }}>
                             {currentQuestion.correctPreposition}
                           </span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '300' }}>+</span>
-                          <span style={{ fontWeight: '800', color: '#86efac', background: 'rgba(34, 197, 94, 0.22)', padding: '3px 12px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.5)' }}>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '400' }}>+</span>
+                          <span style={{ fontWeight: '800', color: '#86efac', background: 'rgba(34, 197, 94, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.5)' }}>
                             {currentQuestion.case || (PREPOSITION_GROUPS.Akkusativ.includes(currentQuestion.correctPreposition) ? 'Akkusativ' : 'Dativ')}
                           </span>
-                        </div>
-
-                        {/* Exact LaTeX representation requested */}
-                        <div style={{
-                          fontSize: '13px',
-                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                          color: '#e2e8f0',
-                          background: 'rgba(0,0,0,0.45)',
-                          padding: '5px 14px',
-                          borderRadius: '6px',
-                          border: '1px solid rgba(255,255,255,0.08)'
-                        }}>
-                          {currentQuestion.formula || `$$\\textbf{${currentQuestion.targetVerb || 'Verb'}} + \\textbf{${currentQuestion.correctPreposition}} + \\textbf{${currentQuestion.case || 'Case'}}$$`}
                         </div>
 
                         {/* Meaning & da-/wo- pronominal adverbs */}
@@ -1881,7 +1884,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       color: 'var(--text-secondary)',
                       lineHeight: '1.5'
                     }}>
-                      <strong>Grammatik-Erklärung:</strong> {currentQuestion.explanation}
+                      <strong>Grammatik-Erklärung:</strong> {cleanFormulaText(currentQuestion.explanation)}
                     </div>
                   </div>
                 )}
@@ -1899,7 +1902,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                 ) : (
                   <button 
                     type="button" 
-                    onClick={generateQuestion} 
+                    onClick={() => generateQuestion()} 
                     className="feedback-btn good"
                     style={{ width: '100%', maxWidth: '240px', padding: '12px', borderRadius: '10px', fontSize: '14px', background: 'var(--color-verb)', border: '1px solid rgba(59,130,246,0.3)' }}
                   >
