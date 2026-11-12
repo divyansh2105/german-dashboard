@@ -478,29 +478,43 @@ Output raw JSON only. Do not wrap in markdown code fences.`;
       return;
     }
 
-    const evalPrompt = `Here is my German translation for the English paragraph:
+    const evalPrompt = `Here is my German response for this scenario:
 "${userTranslation.trim()}"
 
-Critique my word order (especially verb placement and connectors), correct any errors, and give me a 100% natural, colloquial German version of how a native speaker would say this in casual conversation. Note: I will almost always be using Perfekt instead of Präteritum for past actions, so provide feedback and recommendations based on Perfekt, as long as it continues sounding natural to speak.`;
+Critique my word order (especially verb placement and connectors), correct any errors, and give me a 100% natural, colloquial German version of how a native speaker would say this in casual conversation.
 
-    const evalSystemInstruction = `You are an expert, encouraging German language coach and native speaker evaluating a B1 student's translation of an everyday conversational paragraph.
+IMPORTANT CONVERSATIONAL DIRECTIVES:
+1. CREATIVE FLEXIBILITY & ADDED INFORMATION:
+   - I take flexibility in forming sentences in this Fluency practice, including rephrasing ideas naturally or adding extra context/information on my own (e.g. personal details, reasons, emotional flavor, extra sentences).
+   - Please keep this in mind! Do NOT penalize me or treat my answer as wrong simply because it deviates from a literal 1:1 translation of the English prompt or includes extra details.
+   - Evaluate whether my German is grammatically accurate, well-ordered, and natural to speak.
+2. SPOKEN PERFEKT TENSE:
+   - I will almost always be using Perfekt instead of Präteritum for past actions, so provide feedback and recommendations based on Perfekt, as long as it continues sounding natural to speak.`;
 
-English Source Paragraph:
+    const evalSystemInstruction = `You are an expert, encouraging German language coach and native speaker evaluating a B1 student's translation and conversational response for an everyday scenario.
+
+English Scenario Prompt:
 "${currentScenario.englishParagraph}"
 
 Targeted B1 Grammar:
 ${JSON.stringify(currentScenario.targetGrammarPoints || [])}
 
-The student has submitted this German translation:
+The student has submitted this German response:
 "${userTranslation.trim()}"
 
 CRITICAL EVALUATION TASKS:
-1. SPOKEN PAST TENSE DIRECTIVE (PERFEKT PREFERRED OVER PRÄTERITUM):
+1. CREATIVE FLEXIBILITY & ADDED INFORMATION (HIGH PRIORITY):
+   - The student has full conversational freedom in this fluency exercise. They often rephrase ideas flexibly or add extra information, personal context, thoughts, or story details on their own.
+   - NEVER penalize, deduct points, or consider the response incorrect for adding extra information or deviating from a rigid word-for-word translation of the English prompt.
+   - The English prompt serves as scenario inspiration, NOT a strict translation key. Evaluate the student's German on its own linguistic merits: grammatical accuracy, word order (verbs, connectors), case endings, and natural conversational flow.
+   - If the student added extra information or creative expressions, positively acknowledge their conversational initiative in the summary.
+   - In your 'nativeColloquialGerman' version, preserve and polish their added ideas and details into smooth native German rather than throwing them away or reverting to the original English prompt.
+2. SPOKEN PAST TENSE DIRECTIVE (PERFEKT PREFERRED OVER PRÄTERITUM):
    - The student will almost always use Perfekt (haben/sein + Partizip II) instead of Präteritum for past actions.
    - NEVER penalize, deduct points, or treat Perfekt as inferior when the student describes past actions using Perfekt (e.g., 'ich habe gearbeitet', 'wir sind gefahren', 'er hat gesagt'). Both are grammatically correct, and Perfekt is the primary natural spoken form in German!
    - In all your corrections, suggested improvements, and 'nativeColloquialGerman', ALWAYS favor and recommend Perfekt rather than converting sentences into bookish/narrative Präteritum, as long as it continues sounding natural to speak.
    - Only suggest Präteritum where native German speakers genuinely prefer it in casual speech (specifically: 'sein' -> war, 'haben' -> hatte, modal verbs -> musste/konnte/wollte/durfte/sollte, or 'es gab'). Full action verbs must remain in Perfekt.
-2. CRITIQUE WORD ORDER:
+3. CRITIQUE WORD ORDER:
    - Analyze verb placement in detail:
      * Main clauses: conjugated verb in Position 2 (V2).
      * Subordinate clauses (Nebensätze): conjugated verb placed at the very end (weil, obwohl, dass, wenn, als, nachdem, bevor, während, falls, sodass, damit, ob).
@@ -510,11 +524,12 @@ CRITICAL EVALUATION TASKS:
      * Perfekt: auxiliary verb (haben/sein) placement + Partizip II at clause end.
      * Separable prefixes placed at the end of main clauses.
    - Analyze connectors (weil vs. denn, obwohl vs. trotzdem, dass vs. sodass, als vs. wenn) and relative pronouns (der, die, das, dem, den, dessen, mit dem, in der).
-3. ERROR CORRECTION:
+4. ERROR CORRECTION:
    - Check case inflections (Akkusativ, Dativ, Genitiv), prepositions, adjective endings, noun gender, and tense formation.
-4. 100% NATURAL, COLLOQUIAL GERMAN:
-   - Provide a 100% natural, colloquial German version of how a native German speaker would say this exact paragraph in casual conversation (using natural colloquial particles like 'halt', 'mal', 'eben', smooth idioms, spoken rhythm, and conversational Perfekt).
-5. CRITICAL LANGUAGE REQUIREMENT:
+   - Only flag genuine linguistic errors in German grammar and vocabulary. Do NOT flag differences in content or added information as errors!
+5. 100% NATURAL, COLLOQUIAL GERMAN:
+   - Provide a 100% natural, colloquial German version of what the student said (incorporating their added details and personal phrasing) as a native German speaker would casually express it in everyday conversation (using natural colloquial particles like 'halt', 'mal', 'eben', smooth idioms, spoken rhythm, and conversational Perfekt).
+6. CRITICAL LANGUAGE REQUIREMENT:
    - All critique remarks, explanations, rules, and notes MUST BE WRITTEN IN ENGLISH so the student clearly grasps why their word order or grammar was incorrect.
 
 Output ONLY a JSON object matching this schema:
@@ -1189,8 +1204,8 @@ Output raw JSON only.`;
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <label style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>🇩🇪 Your German Translation:</span>
-                  <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)' }}>
-                    (Type or click Speak to dictate)
+                  <span style={{ fontSize: '11px', fontWeight: '500', color: '#a5b4fc' }}>
+                    (Feel free to rephrase naturally or add extra details!)
                   </span>
                 </label>
 
@@ -1237,7 +1252,7 @@ Output raw JSON only.`;
               <textarea
                 value={userTranslation}
                 onChange={(e) => setUserTranslation(e.target.value)}
-                placeholder="Hier auf Deutsch übersetzen (z.B. 'Es tut mir leid, dass ich mich verspätet habe...')"
+                placeholder="Hier auf Deutsch übersetzen — formuliere frei und füge gern eigene Details oder Notizen hinzu..."
                 rows={4}
                 style={{
                   width: '100%',
