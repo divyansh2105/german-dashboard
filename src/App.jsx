@@ -1625,7 +1625,7 @@ function App() {
 
 
   return (
-    <div className="app-container" style={!isMobileOrTablet ? { zoom: fontScale } : {}}>
+    <div className="app-container" style={!isMobileOrTablet && fontScale !== 1 ? { zoom: fontScale } : {}}>
       <header className="app-header">
         <div className="logo-section" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { queryGemini } from '../utils/geminiApi';
 
 const PRESET_SITUATIONS = [
@@ -169,6 +170,40 @@ export default function FluencyPractice({
       setTimeout(() => setCopiedAnswer(false), 2000);
     }
   };
+
+  const answerAnchorRef = useRef(null);
+  const feedbackContainerRef = useRef(null);
+  const [isFloating, setIsFloating] = useState(false);
+
+  // Monitor scroll to float user's answer static at top of viewport when reviewing feedback
+  useEffect(() => {
+    if (!critiqueResult) {
+      setIsFloating(false);
+      return;
+    }
+
+    const checkScroll = () => {
+      if (!answerAnchorRef.current) return;
+      const anchorRect = answerAnchorRef.current.getBoundingClientRect();
+      const feedbackRect = feedbackContainerRef.current?.getBoundingClientRect();
+
+      // Float as static fixed header when user scrolls down past the inline position
+      const hasScrolledPastAnswer = anchorRect.top < 16;
+      // Remain floating while user is actively reviewing feedback
+      const isStillInFeedback = feedbackRect ? feedbackRect.bottom > 140 : true;
+
+      setIsFloating(hasScrolledPastAnswer && isStillInFeedback);
+    };
+
+    window.addEventListener('scroll', checkScroll, { passive: true });
+    window.addEventListener('resize', checkScroll, { passive: true });
+    checkScroll();
+
+    return () => {
+      window.removeEventListener('scroll', checkScroll);
+      window.removeEventListener('resize', checkScroll);
+    };
+  }, [critiqueResult]);
 
   // Speech Recognition state
   const [isListening, setIsListening] = useState(false);
@@ -547,6 +582,164 @@ Output raw JSON only.`;
       setIsEvaluating(false);
     }
   };
+
+  const renderAnswerCard = (isFixed = false) => (
+    <div className={isFixed ? "fluency-floating-answer-fixed" : "fluency-floating-answer"}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{
+            fontSize: '11px',
+            fontWeight: '800',
+            textTransform: 'uppercase',
+            letterSpacing: '0.6px',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))',
+            border: '1px solid rgba(168, 85, 247, 0.4)',
+            color: '#d8b4fe',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <span>✍️</span>
+            <span>Dein Text</span>
+          </span>
+          <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+            ({userTranslation.trim().split(/\s+/).filter(Boolean).length} Wörter)
+          </span>
+          <button
+            type="button"
+            onClick={() => speakGermanText(userTranslation)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '6px',
+              padding: '3px 9px',
+              color: '#cbd5e1',
+              fontSize: '11.5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Deine deutsche Übersetzung vorlesen"
+          >
+            <span>🔊</span>
+            <span>Anhören</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyAnswer}
+            style={{
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '6px',
+              padding: '3px 9px',
+              color: copiedAnswer ? '#4ade80' : '#cbd5e1',
+              fontSize: '11.5px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="In die Zwischenablage kopieren"
+          >
+            <span>{copiedAnswer ? '✓' : '📋'}</span>
+            <span>{copiedAnswer ? 'Kopiert' : 'Kopieren'}</span>
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <button
+            type="button"
+            onClick={() => setIsEditingAfterCritique(!isEditingAfterCritique)}
+            style={{
+              background: isEditingAfterCritique ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+              border: isEditingAfterCritique ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '6px',
+              padding: '3px 10px',
+              color: isEditingAfterCritique ? '#93c5fd' : 'var(--text-secondary)',
+              fontSize: '11.5px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+            title="Übersetzung bearbeiten & neu prüfen"
+          >
+            <span>✏️</span>
+            <span>{isEditingAfterCritique ? 'Schließen' : 'Bearbeiten'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Full preview with zero scrollbar, or inline editor */}
+      {!isEditingAfterCritique ? (
+        <div className="fluency-floating-answer-text">
+          "{userTranslation}"
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+          <textarea
+            value={userTranslation}
+            onChange={(e) => setUserTranslation(e.target.value)}
+            rows={4}
+            style={{
+              width: '100%',
+              padding: '12px 14px',
+              borderRadius: '10px',
+              background: 'rgba(0, 0, 0, 0.5)',
+              border: '1px solid rgba(99, 102, 241, 0.5)',
+              color: '#fff',
+              fontSize: '14.5px',
+              lineHeight: 1.6,
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box'
+            }}
+            autoFocus
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={() => setIsEditingAfterCritique(false)}
+              style={{
+                padding: '7px 16px',
+                fontSize: '12.5px',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                color: 'var(--text-muted)',
+                cursor: 'pointer'
+              }}
+            >
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditingAfterCritique(false);
+                handleCheckTranslation();
+              }}
+              disabled={!userTranslation.trim() || isEvaluating}
+              className="feedback-btn good"
+              style={{
+                padding: '7px 20px',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                width: 'auto',
+                borderRadius: '8px',
+                background: 'var(--color-verb)'
+              }}
+            >
+              {isEvaluating ? '🔄 Prüfe...' : 'Neu auswerten ➔'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
@@ -1088,170 +1281,25 @@ Output raw JSON only.`;
               </div>
             </form>
           ) : (
-            /* Floating Sticky Answer Reference Pill/Card (Keeps user's answer floating while scrolling feedback) */
-            <div className="fluency-floating-answer animate-fade-in">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{
-                    fontSize: '11px',
-                    fontWeight: '800',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.6px',
-                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))',
-                    border: '1px solid rgba(168, 85, 247, 0.4)',
-                    color: '#d8b4fe',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px'
-                  }}>
-                    <span>✍️</span>
-                    <span>Dein Text</span>
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    ({userTranslation.trim().split(/\s+/).filter(Boolean).length} Wörter)
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => speakGermanText(userTranslation)}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '6px',
-                      padding: '3px 8px',
-                      color: '#cbd5e1',
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="Deine deutsche Übersetzung vorlesen"
-                  >
-                    <span>🔊</span>
-                    <span>Anhören</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCopyAnswer}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.06)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '6px',
-                      padding: '3px 8px',
-                      color: copiedAnswer ? '#4ade80' : '#cbd5e1',
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="In die Zwischenablage kopieren"
-                  >
-                    <span>{copiedAnswer ? '✓' : '📋'}</span>
-                    <span>{copiedAnswer ? 'Kopiert' : 'Kopieren'}</span>
-                  </button>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingAfterCritique(!isEditingAfterCritique)}
-                    style={{
-                      background: isEditingAfterCritique ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
-                      border: isEditingAfterCritique ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '6px',
-                      padding: '3px 10px',
-                      color: isEditingAfterCritique ? '#93c5fd' : 'var(--text-secondary)',
-                      fontSize: '11.5px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px'
-                    }}
-                    title="Übersetzung bearbeiten & neu prüfen"
-                  >
-                    <span>✏️</span>
-                    <span>{isEditingAfterCritique ? 'Schließen' : 'Bearbeiten'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Compact preview or inline editor */}
-              {!isEditingAfterCritique ? (
-                <div className="fluency-floating-answer-text">
-                  "{userTranslation}"
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                  <textarea
-                    value={userTranslation}
-                    onChange={(e) => setUserTranslation(e.target.value)}
-                    rows={3}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      background: 'rgba(0, 0, 0, 0.45)',
-                      border: '1px solid rgba(99, 102, 241, 0.4)',
-                      color: '#fff',
-                      fontSize: '14px',
-                      lineHeight: 1.5,
-                      resize: 'vertical',
-                      outline: 'none',
-                      boxSizing: 'border-box'
-                    }}
-                    autoFocus
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditingAfterCritique(false)}
-                      style={{
-                        padding: '6px 14px',
-                        fontSize: '12px',
-                        background: 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '8px',
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Abbrechen
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsEditingAfterCritique(false);
-                        handleCheckTranslation();
-                      }}
-                      disabled={!userTranslation.trim() || isEvaluating}
-                      className="feedback-btn good"
-                      style={{
-                        padding: '6px 18px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        width: 'auto',
-                        borderRadius: '8px',
-                        background: 'var(--color-verb)'
-                      }}
-                    >
-                      {isEvaluating ? '🔄 Prüfe...' : 'Neu auswerten ➔'}
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div ref={answerAnchorRef} style={{ width: '100%' }}>
+              {renderAnswerCard(false)}
             </div>
+          )}
+
+          {/* When user scrolls down through the feedback, float the answer static at top of viewport via Portal */}
+          {critiqueResult && isFloating && typeof document !== 'undefined' && createPortal(
+            renderAnswerCard(true),
+            document.body
           )}
 
           {/* Feedback & Native Colloquial Output */}
           {critiqueResult && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '18px',
+            <div
+              ref={feedbackContainerRef}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '18px',
               padding: '24px',
               borderRadius: '14px',
               background: 'rgba(0, 0, 0, 0.3)',
