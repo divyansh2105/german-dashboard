@@ -444,7 +444,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
       )}
 
       {/* Main chat window container */}
-      <div className="glass-card" style={{ width: '100%', minHeight: '520px', display: 'flex', flexDirection: 'column', padding: '20px', position: 'relative' }}>
+      <div className="glass-card" style={{ width: '100%', minHeight: '520px', display: 'flex', flexDirection: 'column', padding: '20px', position: 'relative', overflow: 'visible' }}>
         
         {/* Mode Selector Segmented Control */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: 'rgba(255,255,255,0.02)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border-color)', alignSelf: 'flex-start', flexWrap: 'wrap' }}>

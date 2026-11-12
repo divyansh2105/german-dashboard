@@ -1474,4 +1474,51 @@ h2.section-title {
   }
 }
 
+/* ========================================================
+   Fluency Practice Floating Answer Reference
+   ======================================================== */
+
+.fluency-floating-answer {
+  position: sticky;
+  top: 12px;
+  z-index: 60;
+  background: rgba(13, 17, 30, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7), 0 0 16px rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.fluency-floating-answer-text {
+  max-height: 56px;
+  overflow-y: auto;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #f8fafc;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 8px;
+  border-left: 3px solid #818cf8;
+  word-break: break-word;
+}
+
+@media (max-width: 768px) {
+  .fluency-floating-answer {
+    top: 8px;
+    padding: 8px 12px;
+  }
+  .fluency-floating-answer-text {
+    max-height: 50px;
+    font-size: 12.5px;
+  }
+}
+
 

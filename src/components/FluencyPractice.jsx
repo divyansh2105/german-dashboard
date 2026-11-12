@@ -159,6 +159,16 @@ export default function FluencyPractice({
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [critiqueResult, setCritiqueResult] = useState(null);
   const [showVocabHints, setShowVocabHints] = useState(false);
+  const [isEditingAfterCritique, setIsEditingAfterCritique] = useState(false);
+  const [copiedAnswer, setCopiedAnswer] = useState(false);
+
+  const handleCopyAnswer = () => {
+    if (navigator?.clipboard?.writeText && userTranslation) {
+      navigator.clipboard.writeText(userTranslation);
+      setCopiedAnswer(true);
+      setTimeout(() => setCopiedAnswer(false), 2000);
+    }
+  };
 
   // Speech Recognition state
   const [isListening, setIsListening] = useState(false);
@@ -858,7 +868,7 @@ Output raw JSON only.`;
 
       {/* Main Challenge Card */}
       {currentScenario && (
-        <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', overflow: 'visible' }}>
           
           {/* Scenario Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -980,102 +990,261 @@ Output raw JSON only.`;
             </p>
           </div>
 
-          {/* Student German Translation Form */}
-          <form onSubmit={handleCheckTranslation} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-              <label style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span>🇩🇪 Your German Translation:</span>
-                <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)' }}>
-                  (Type or click Speak to dictate)
-                </span>
-              </label>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {/* Microphone Dictation Button */}
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  style={{
-                    padding: '6px 14px',
-                    borderRadius: '20px',
-                    border: isListening ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.15)',
-                    background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.06)',
-                    color: isListening ? '#fca5a5' : '#fff',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    transition: 'all 0.2s ease'
-                  }}
-                  title={isListening ? "Click to stop dictation" : "Click to speak in German"}
-                >
-                  <span style={{ fontSize: '14px', animation: isListening ? 'pulse 1s infinite' : 'none' }}>
-                    {isListening ? '🛑' : '🎙️'}
+          {/* Student German Translation Form (Shown when no feedback active) */}
+          {!critiqueResult ? (
+            <form onSubmit={handleCheckTranslation} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🇩🇪 Your German Translation:</span>
+                  <span style={{ fontSize: '11px', fontWeight: '500', color: 'var(--text-muted)' }}>
+                    (Type or click Speak to dictate)
                   </span>
-                  <span>{isListening ? 'Listening (Speaking)...' : 'Dictate German'}</span>
-                </button>
+                </label>
 
-                {userTranslation && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  {/* Microphone Dictation Button */}
                   <button
                     type="button"
-                    onClick={() => setUserTranslation('')}
-                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
+                    onClick={toggleMic}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      border: isListening ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.15)',
+                      background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                      color: isListening ? '#fca5a5' : '#fff',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    title={isListening ? "Click to stop dictation" : "Click to speak in German"}
                   >
-                    Clear
+                    <span style={{ fontSize: '14px', animation: isListening ? 'pulse 1s infinite' : 'none' }}>
+                      {isListening ? '🛑' : '🎙️'}
+                    </span>
+                    <span>{isListening ? 'Listening (Speaking)...' : 'Dictate German'}</span>
                   </button>
-                )}
+
+                  {userTranslation && (
+                    <button
+                      type="button"
+                      onClick={() => setUserTranslation('')}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Translation Textarea */}
+              <textarea
+                value={userTranslation}
+                onChange={(e) => setUserTranslation(e.target.value)}
+                placeholder="Hier auf Deutsch übersetzen (z.B. 'Es tut mir leid, dass ich mich verspätet habe...')"
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: isListening ? '1px solid #ef4444' : '1px solid var(--border-color)',
+                  color: '#fff',
+                  fontSize: '15px',
+                  lineHeight: 1.6,
+                  resize: 'vertical',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+
+              {/* Submit & Navigation Triggers */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  {userTranslation.trim().split(/\s+/).filter(Boolean).length} words
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    type="submit"
+                    disabled={!userTranslation.trim() || isEvaluating}
+                    className="feedback-btn good"
+                    style={{
+                      padding: '10px 24px',
+                      fontSize: '14px',
+                      fontWeight: '700',
+                      width: 'auto',
+                      borderRadius: '10px',
+                      background: 'var(--color-verb)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)'
+                    }}
+                  >
+                    {isEvaluating ? '🔄 Evaluating Word Order & Grammar...' : 'Critique Translation & Native Version ➔'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          ) : (
+            /* Floating Sticky Answer Reference Pill/Card (Keeps user's answer floating while scrolling feedback) */
+            <div className="fluency-floating-answer animate-fade-in">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.6px',
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
+                    color: '#d8b4fe',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <span>✍️</span>
+                    <span>Dein Text</span>
+                  </span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    ({userTranslation.trim().split(/\s+/).filter(Boolean).length} Wörter)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => speakGermanText(userTranslation)}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      color: '#cbd5e1',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Deine deutsche Übersetzung vorlesen"
+                  >
+                    <span>🔊</span>
+                    <span>Anhören</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyAnswer}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      color: copiedAnswer ? '#4ade80' : '#cbd5e1',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="In die Zwischenablage kopieren"
+                  >
+                    <span>{copiedAnswer ? '✓' : '📋'}</span>
+                    <span>{copiedAnswer ? 'Kopiert' : 'Kopieren'}</span>
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingAfterCritique(!isEditingAfterCritique)}
+                    style={{
+                      background: isEditingAfterCritique ? 'rgba(59, 130, 246, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                      border: isEditingAfterCritique ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.12)',
+                      borderRadius: '6px',
+                      padding: '3px 10px',
+                      color: isEditingAfterCritique ? '#93c5fd' : 'var(--text-secondary)',
+                      fontSize: '11.5px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Übersetzung bearbeiten & neu prüfen"
+                  >
+                    <span>✏️</span>
+                    <span>{isEditingAfterCritique ? 'Schließen' : 'Bearbeiten'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Compact preview or inline editor */}
+              {!isEditingAfterCritique ? (
+                <div className="fluency-floating-answer-text">
+                  "{userTranslation}"
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                  <textarea
+                    value={userTranslation}
+                    onChange={(e) => setUserTranslation(e.target.value)}
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      background: 'rgba(0, 0, 0, 0.45)',
+                      border: '1px solid rgba(99, 102, 241, 0.4)',
+                      color: '#fff',
+                      fontSize: '14px',
+                      lineHeight: 1.5,
+                      resize: 'vertical',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                    autoFocus
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingAfterCritique(false)}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '12px',
+                        background: 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingAfterCritique(false);
+                        handleCheckTranslation();
+                      }}
+                      disabled={!userTranslation.trim() || isEvaluating}
+                      className="feedback-btn good"
+                      style={{
+                        padding: '6px 18px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        width: 'auto',
+                        borderRadius: '8px',
+                        background: 'var(--color-verb)'
+                      }}
+                    >
+                      {isEvaluating ? '🔄 Prüfe...' : 'Neu auswerten ➔'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Translation Textarea */}
-            <textarea
-              value={userTranslation}
-              onChange={(e) => setUserTranslation(e.target.value)}
-              placeholder="Hier auf Deutsch übersetzen (z.B. 'Es tut mir leid, dass ich mich verspätet habe...')"
-              rows={4}
-              style={{
-                width: '100%',
-                padding: '14px 16px',
-                borderRadius: '12px',
-                background: 'rgba(0, 0, 0, 0.35)',
-                border: isListening ? '1px solid #ef4444' : '1px solid var(--border-color)',
-                color: '#fff',
-                fontSize: '15px',
-                lineHeight: 1.6,
-                resize: 'vertical',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
-            />
-
-            {/* Submit & Navigation Triggers */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginTop: '6px' }}>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                {userTranslation.trim().split(/\s+/).filter(Boolean).length} words
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  type="submit"
-                  disabled={!userTranslation.trim() || isEvaluating}
-                  className="feedback-btn good"
-                  style={{
-                    padding: '10px 24px',
-                    fontSize: '14px',
-                    fontWeight: '700',
-                    width: 'auto',
-                    borderRadius: '10px',
-                    background: 'var(--color-verb)',
-                    border: '1px solid rgba(59, 130, 246, 0.4)'
-                  }}
-                >
-                  {isEvaluating ? '🔄 Evaluating Word Order & Grammar...' : 'Critique Translation & Native Version ➔'}
-                </button>
-              </div>
-            </div>
-          </form>
+          )}
 
           {/* Feedback & Native Colloquial Output */}
           {critiqueResult && (
