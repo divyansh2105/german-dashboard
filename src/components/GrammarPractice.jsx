@@ -140,6 +140,7 @@ export default function GrammarPractice() {
   const [verbGroupFilter, setVerbGroupFilter] = useState('all');
 
   const [showDeckModal, setShowDeckModal] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [questionMode, setQuestionMode] = useState(() => {
     try {
       const saved = localStorage.getItem('b1_grammar_question_mode');
@@ -721,21 +722,21 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
   const allTotalRemaining = ALL_PREPOSITIONS.reduce((acc, p) => acc + (deckRemaining[p] || 0), 0);
 
   return (
-    <div className="flashcard-layout animate-fade-in" style={{ maxWidth: '1040px', width: '100%', gap: '22px' }}>
+    <div className="grammar-container animate-fade-in">
       
       {/* Settings bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '4px', gap: '10px', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
-            📝 Grammar Prepositions
+      <div className="grammar-top-bar">
+        <div className="grammar-top-left">
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', whiteSpace: 'nowrap' }}>
+            📝 Prepositions
           </div>
           <button
             type="button"
             onClick={handleOpenWeightsModal}
             style={{
-              padding: '5px 12px',
+              padding: '5px 10px',
               borderRadius: '8px',
-              fontSize: '12px',
+              fontSize: '11.5px',
               fontWeight: '600',
               background: 'rgba(59, 130, 246, 0.15)',
               border: '1px solid rgba(59, 130, 246, 0.4)',
@@ -743,13 +744,13 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease'
+              gap: '5px',
+              whiteSpace: 'nowrap'
             }}
             title="Präpositionen-Gewichtung manuell bearbeiten"
           >
-            <span>⚖️ Edit Weights</span>
-            <span style={{ fontSize: '11px', opacity: 0.85 }}>({totalRemainingForSelected}/{totalWeightsForSelected} left)</span>
+            <span>⚖️ Weights</span>
+            <span style={{ fontSize: '10.5px', opacity: 0.85 }}>({totalRemainingForSelected}/{totalWeightsForSelected})</span>
           </button>
 
           {/* Question Mode: Situational (Non-verb) vs Verbs vs Mixed */}
@@ -769,18 +770,19 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                 border: '1px solid var(--border-color)',
                 color: '#fff',
                 borderRadius: '8px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                maxWidth: '180px'
               }}
               title="Wähle den Fragestil: Einfach/Situativ, Feste Verben oder Gemischt"
             >
               <option value="situational" style={{ background: '#090a0f', color: '#fff' }}>
-                📍 Einfach / Situativ (Lokal, Temporal, Modal)
+                📍 Situativ (Lokal/Temporal)
               </option>
               <option value="verbs" style={{ background: '#090a0f', color: '#fff' }}>
-                🔗 Feste Verbverbindungen (warten auf...)
+                🔗 Feste Verben (warten auf...)
               </option>
               <option value="all" style={{ background: '#090a0f', color: '#fff' }}>
-                🎲 Gemischt (Alle Typen)
+                🎲 Gemischt (Alle)
               </option>
             </select>
           </div>
@@ -790,9 +792,9 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             type="button"
             onClick={() => setShowVerbListModal(true)}
             style={{
-              padding: '5px 12px',
+              padding: '5px 10px',
               borderRadius: '8px',
-              fontSize: '12px',
+              fontSize: '11.5px',
               fontWeight: '700',
               background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(168, 85, 247, 0.22))',
               border: '1px solid rgba(168, 85, 247, 0.45)',
@@ -800,13 +802,13 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease'
+              gap: '5px',
+              whiteSpace: 'nowrap'
             }}
             title="65 B1 Verben mit festen Präpositionen nach Präpositionen gruppiert ansehen"
           >
-            <span>📋 Show Verb List</span>
-            <span style={{ fontSize: '11px', opacity: 0.9, background: 'rgba(0,0,0,0.35)', padding: '1px 6px', borderRadius: '10px' }}>
+            <span>📋 65 Verben</span>
+            <span style={{ fontSize: '10.5px', opacity: 0.9, background: 'rgba(0,0,0,0.35)', padding: '1px 5px', borderRadius: '8px' }}>
               {68 - festVerbsRemaining.length}/68
             </span>
           </button>
@@ -821,11 +823,11 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               border: '1px solid rgba(139, 92, 246, 0.35)',
               borderRadius: '8px',
               padding: '3px 8px',
-              fontSize: '11px'
+              fontSize: '11px',
+              whiteSpace: 'nowrap'
             }}>
               <span style={{ color: '#c4b5fd', fontWeight: '700' }}>Cycle #{festVerbsIteration}:</span>
-              <span style={{ color: '#fff', fontWeight: '600' }}>{68 - festVerbsRemaining.length}/68 covered</span>
-              <span style={{ color: 'var(--text-muted)' }}>({festVerbsRemaining.length} left)</span>
+              <span style={{ color: '#fff', fontWeight: '600' }}>{68 - festVerbsRemaining.length}/68</span>
               <button
                 type="button"
                 onClick={handleResetVerbIteration}
@@ -846,7 +848,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="grammar-top-right">
           <select
             value={selectedModel}
             onChange={(e) => {
@@ -861,7 +863,8 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               border: '1px solid var(--border-color)',
               color: '#fff',
               borderRadius: '8px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              maxWidth: '140px'
             }}
             title="Wähle das Gemini-Modell"
           >
@@ -876,7 +879,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             onClick={handleRemoveKey}
             className="sound-btn"
             title="API-Schlüssel verwalten"
-            style={{ fontSize: '12px', padding: '4px 10px', height: '28px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', borderRadius: '8px' }}
+            style={{ fontSize: '11.5px', padding: '4px 10px', height: '28px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', borderRadius: '8px' }}
           >
             ⚙️ Key
           </button>
@@ -890,12 +893,12 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             position: 'fixed',
             inset: 0,
             zIndex: 9999,
-            background: 'rgba(5, 7, 15, 0.8)',
+            background: 'rgba(5, 7, 15, 0.85)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px'
+            padding: '12px'
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowDeckModal(false);
@@ -906,16 +909,16 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             style={{
               width: '100%',
               maxWidth: '740px',
-              maxHeight: '90vh',
+              maxHeight: '92vh',
               overflowY: 'auto',
               background: 'rgba(16, 20, 36, 0.98)',
               border: '1px solid rgba(59, 130, 246, 0.45)',
               borderRadius: '16px',
               boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-              padding: '24px',
+              padding: '18px 16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px'
+              gap: '14px'
             }}
           >
             {/* Dialog Header */}
@@ -1188,7 +1191,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '20px'
+            padding: '12px'
           }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowVerbListModal(false);
@@ -1205,20 +1208,20 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               border: '1px solid rgba(168, 85, 247, 0.45)',
               borderRadius: '16px',
               boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-              padding: '24px',
+              padding: '18px 14px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px'
+              gap: '14px'
             }}
           >
             {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
               <div>
-                <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>📋 65 High-Frequency B1 Verbs with Fixed Prepositions</span>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📋 65 High-Frequency B1 Verbs</span>
                 </div>
-                <p style={{ fontSize: '12.5px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
-                  Prioritized B1 Verben mit festen Präpositionen, Kasus (Akkusativ/Dativ) und Pronominaladverbien (<em>da(r)-</em> / <em>wo(r)-</em>), gruppiert nach Präpositionen.
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                  Prioritized B1 Verben mit festen Präpositionen, Kasus (Akkusativ/Dativ) und Pronominaladverbien (<em>da(r)-</em> / <em>wo(r)-</em>).
                 </p>
               </div>
               <button
@@ -1235,21 +1238,21 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
               border: '1px solid rgba(168, 85, 247, 0.3)',
               borderRadius: '10px',
-              padding: '12px 16px',
+              padding: '12px 14px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
               flexWrap: 'wrap',
-              gap: '12px'
+              gap: '10px'
             }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🔄 Cycle #{festVerbsIteration} Fortschritt:</span>
-                  <span style={{ color: '#d8b4fe' }}>{68 - festVerbsRemaining.length} / 68 gedeckt</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({festVerbsRemaining.length} verbleibend)</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%', maxWidth: '320px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: '700', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span>🔄 Cycle #{festVerbsIteration}:</span>
+                  <span style={{ color: '#d8b4fe' }}>{68 - festVerbsRemaining.length}/68</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>({festVerbsRemaining.length} left)</span>
                 </div>
                 {/* Progress bar */}
-                <div style={{ width: '240px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                <div style={{ width: '100%', maxWidth: '240px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
                   <div style={{
                     width: `${Math.round(((68 - festVerbsRemaining.length) / 68) * 100)}%`,
                     height: '100%',
@@ -1414,8 +1417,8 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                         </span>
                       </div>
 
-                      {/* Group Table */}
-                      <div style={{ overflowX: 'auto' }}>
+                      {/* Desktop Table View */}
+                      <div className="grammar-verb-table-desktop">
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px', textAlign: 'left' }}>
                           <thead>
                             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: 'var(--text-muted)', fontSize: '11px' }}>
@@ -1528,6 +1531,99 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Mobile Cards View (Clean readable cards for phone screens) */}
+                      <div className="grammar-verb-cards-mobile">
+                        {matchingVerbs.map(v => (
+                          <div
+                            key={`m-${v.id}`}
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px solid rgba(255, 255, 255, 0.08)',
+                              borderRadius: '10px',
+                              padding: '12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '8px'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>#{v.id}</span>
+                                <strong style={{ fontSize: '14.5px', color: '#fff' }}>{v.verb}</strong>
+                                <button
+                                  type="button"
+                                  onClick={() => speakGermanText(v.verb)}
+                                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '13px', padding: 0 }}
+                                  title="Verb anhören"
+                                >
+                                  🔊
+                                </button>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                  fontSize: '10.5px',
+                                  padding: '2px 7px',
+                                  borderRadius: '5px',
+                                  fontWeight: '700',
+                                  background: v.case === 'Akk' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                  color: v.case === 'Akk' ? '#fca5a5' : '#93c5fd',
+                                  border: v.case === 'Akk' ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(59, 130, 246, 0.3)'
+                                }}>
+                                  {v.case}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePracticeSpecificVerb(v)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    background: 'rgba(59, 130, 246, 0.2)',
+                                    border: '1px solid rgba(59, 130, 246, 0.45)',
+                                    color: '#93c5fd',
+                                    fontSize: '11px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  🎯 Üben
+                                </button>
+                              </div>
+                            </div>
+
+                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                              🇬🇧 {v.meaning}
+                            </div>
+
+                            {v.example && (
+                              <div style={{
+                                fontSize: '12px',
+                                color: '#e2e8f0',
+                                background: 'rgba(0, 0, 0, 0.25)',
+                                padding: '8px 10px',
+                                borderRadius: '6px',
+                                borderLeft: '2px solid var(--color-conn)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                  <span style={{ lineHeight: 1.4 }}>{v.example}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => speakGermanText(v.example)}
+                                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', padding: 0, flexShrink: 0 }}
+                                  >
+                                    🔊
+                                  </button>
+                                </div>
+                                {v.exampleEn && (
+                                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '3px' }}>
+                                    🇬🇧 {v.exampleEn}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   );
                 })}
@@ -1548,11 +1644,27 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         </div>
       )}
 
-      {/* Main interface layout: Left compact selector and Right large question layout */}
-      <div style={{ display: 'flex', flexDirection: 'row', gap: '24px', width: '100%', alignItems: 'stretch' }}>
+      {/* Main interface layout: Responsive layout for Desktop & Mobile */}
+      <div className="grammar-main-layout">
         
-        {/* Left Side: Prepositions filter list (compact) */}
-        <div className="glass-card" style={{ flex: '0 0 250px', padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Mobile Filter Accordion Toggle (Visible only on phone <= 768px) */}
+        <button
+          type="button"
+          className="grammar-mobile-filter-toggle"
+          onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
+          aria-expanded={mobileFiltersOpen}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>⚙️</span>
+            <span>Präpositionen Filter ({selectedPreps.length}/{ALL_PREPOSITIONS.length} aktiv)</span>
+          </span>
+          <span style={{ fontSize: '13px', transform: mobileFiltersOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}>
+            ▼
+          </span>
+        </button>
+
+        {/* Prepositions filter list (Desktop: Left sidebar; Mobile: Collapsible card) */}
+        <div className={`glass-card grammar-sidebar ${!mobileFiltersOpen ? 'mobile-collapsed' : ''}`}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
             <div>
               <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#fff' }}>Präpositionen</span>
@@ -1662,7 +1774,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         </div>
 
         {/* Right Side: Large Question Card */}
-        <div className="glass-card" style={{ flex: '1 1 500px', minWidth: '320px', padding: '36px 32px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: '440px', position: 'relative' }}>
+        <div className="glass-card grammar-question-card">
           
           {isLoading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', width: '100%', height: '100%', minHeight: '260px' }}>
@@ -1704,26 +1816,16 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           )}
 
           {currentQuestion && !isLoading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', animation: 'fadeIn 0.3s ease' }}>
               
               {/* Question display */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
                   Setze die richtige Präposition ein:
                 </div>
                 
                 {/* Large sentence display */}
-                <div style={{ 
-                  fontSize: '22px', 
-                  fontWeight: '700', 
-                  lineHeight: '1.6', 
-                  color: '#fff', 
-                  padding: '16px', 
-                  background: 'rgba(255, 255, 255, 0.02)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: '12px',
-                  textAlign: 'center'
-                }}>
+                <div className="grammar-sentence-box">
                   {hasChecked ? (
                     <span>
                       {currentQuestion.sentence.split('___')[0]}
@@ -1744,7 +1846,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               </div>
 
               {/* Form Input */}
-              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', width: '100%' }}>
                 <div style={{ display: 'flex', width: '100%', gap: '10px' }}>
                   <input
                     type="text"
@@ -1818,50 +1920,32 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       )}
                     </div>
 
-                    {/* Verb Collocation Formula Card: $$\textbf{Verb} + \textbf{Preposition} + \textbf{Case (Akk / Dat)}$$ */}
+                    {/* Verb Collocation Formula Card */}
                     {(currentQuestion.formula || currentQuestion.targetVerb || currentQuestion.category === 'Feste Verbverbindung') && (
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        gap: '10px',
-                        padding: '16px 20px',
-                        background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9))',
-                        border: '1px solid rgba(139, 92, 246, 0.4)',
-                        borderRadius: '12px',
-                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
-                        textAlign: 'center'
-                      }}>
+                      <div className="grammar-formula-card">
                         <div style={{ fontSize: '11px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#c4b5fd', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>📐</span>
                           <span>Feste Verbverbindung Formel</span>
                         </div>
 
                         {/* Visual equation with styled elements */}
-                        <div style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexWrap: 'wrap',
-                          gap: '10px',
-                          fontSize: '18px'
-                        }}>
-                          <span style={{ fontWeight: '800', color: '#93c5fd', background: 'rgba(59, 130, 246, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(59, 130, 246, 0.5)' }}>
+                        <div className="grammar-formula-equation">
+                          <span className="grammar-formula-chip" style={{ color: '#93c5fd', background: 'rgba(59, 130, 246, 0.22)', border: '1px solid rgba(59, 130, 246, 0.5)' }}>
                             {currentQuestion.targetVerb || 'Verb'}
                           </span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '400' }}>+</span>
-                          <span style={{ fontWeight: '800', color: '#fca5a5', background: 'rgba(239, 68, 68, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.5)' }}>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>+</span>
+                          <span className="grammar-formula-chip" style={{ color: '#fca5a5', background: 'rgba(239, 68, 68, 0.22)', border: '1px solid rgba(239, 68, 68, 0.5)' }}>
                             {currentQuestion.correctPreposition}
                           </span>
-                          <span style={{ color: 'var(--text-muted)', fontSize: '18px', fontWeight: '400' }}>+</span>
-                          <span style={{ fontWeight: '800', color: '#86efac', background: 'rgba(34, 197, 94, 0.22)', padding: '4px 14px', borderRadius: '8px', border: '1px solid rgba(34, 197, 94, 0.5)' }}>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: '400' }}>+</span>
+                          <span className="grammar-formula-chip" style={{ color: '#86efac', background: 'rgba(34, 197, 94, 0.22)', border: '1px solid rgba(34, 197, 94, 0.5)' }}>
                             {currentQuestion.case || (PREPOSITION_GROUPS.Akkusativ.includes(currentQuestion.correctPreposition) ? 'Akkusativ' : 'Dativ')}
                           </span>
                         </div>
 
                         {/* Meaning & da-/wo- pronominal adverbs */}
                         {(currentQuestion.meaning || currentQuestion.daWo) && (
-                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', fontSize: '12.5px', color: 'var(--text-secondary)' }}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', fontSize: '12px', color: 'var(--text-secondary)' }}>
                             {currentQuestion.meaning && <span>🇬🇧 <em>{currentQuestion.meaning}</em></span>}
                             {currentQuestion.meaning && currentQuestion.daWo && <span>•</span>}
                             {currentQuestion.daWo && (
@@ -1878,9 +1962,9 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                     <div style={{ 
                       background: 'rgba(255, 255, 255, 0.03)', 
                       borderLeft: isCorrect ? '3px solid var(--color-noun)' : '3px solid #ef4444', 
-                      padding: '12px 16px', 
+                      padding: '12px 14px', 
                       borderRadius: '4px',
-                      fontSize: '13px',
+                      fontSize: '12.5px',
                       color: 'var(--text-secondary)',
                       lineHeight: '1.5'
                     }}>
@@ -1895,7 +1979,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                     type="submit" 
                     className="feedback-btn good"
                     disabled={!userInput.trim()}
-                    style={{ width: '100%', maxWidth: '240px', padding: '12px', borderRadius: '10px', fontSize: '14px' }}
+                    style={{ width: '100%', maxWidth: '320px', padding: '12px', borderRadius: '10px', fontSize: '14px' }}
                   >
                     Antwort prüfen ✔️
                   </button>
@@ -1904,7 +1988,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                     type="button" 
                     onClick={() => generateQuestion()} 
                     className="feedback-btn good"
-                    style={{ width: '100%', maxWidth: '240px', padding: '12px', borderRadius: '10px', fontSize: '14px', background: 'var(--color-verb)', border: '1px solid rgba(59,130,246,0.3)' }}
+                    style={{ width: '100%', maxWidth: '320px', padding: '12px', borderRadius: '10px', fontSize: '14px', background: 'var(--color-verb)', border: '1px solid rgba(59,130,246,0.3)' }}
                   >
                     Nächster Satz ➔
                   </button>

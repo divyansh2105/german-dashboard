@@ -1267,4 +1267,211 @@ h2.section-title {
   font-weight: 700;
 }
 
+/* ========================================================
+   Grammar Section Responsive Mobile Styles
+   ======================================================== */
+
+.grammar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.grammar-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.grammar-top-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.grammar-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grammar-main-layout {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  width: 100%;
+  align-items: stretch;
+}
+
+.grammar-sidebar {
+  flex: 0 0 250px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.grammar-mobile-filter-toggle {
+  display: none;
+}
+
+.grammar-question-card {
+  flex: 1 1 500px;
+  min-width: 0;
+  padding: 36px 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 440px;
+  position: relative;
+}
+
+.grammar-sentence-box {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #fff;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  text-align: center;
+  word-break: break-word;
+}
+
+.grammar-formula-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.9));
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  width: 100%;
+}
+
+.grammar-formula-equation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 18px;
+}
+
+.grammar-formula-chip {
+  font-weight: 800;
+  padding: 4px 14px;
+  border-radius: 8px;
+  font-size: 15px;
+}
+
+.grammar-verb-table-desktop {
+  display: block;
+  overflow-x: auto;
+}
+
+.grammar-verb-cards-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .grammar-container {
+    gap: 12px;
+  }
+
+  .grammar-top-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .grammar-top-left {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .grammar-top-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .grammar-main-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .grammar-mobile-filter-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    color: #e2e8f0;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .grammar-sidebar {
+    flex: none;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .grammar-sidebar.mobile-collapsed {
+    display: none;
+  }
+
+  .grammar-question-card {
+    padding: 20px 16px;
+    min-height: auto;
+  }
+
+  .grammar-sentence-box {
+    font-size: 18px;
+    padding: 14px;
+    line-height: 1.5;
+  }
+
+  .grammar-formula-card {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .grammar-formula-equation {
+    gap: 6px;
+    font-size: 14px;
+  }
+
+  .grammar-formula-chip {
+    padding: 4px 10px;
+    font-size: 13px;
+  }
+
+  .grammar-verb-table-desktop {
+    display: none;
+  }
+
+  .grammar-verb-cards-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
 
