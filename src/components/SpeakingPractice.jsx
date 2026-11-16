@@ -69,9 +69,27 @@ export default function SpeakingPractice() {
   const [fallbackNotice, setFallbackNotice] = useState('');
   
   const chatEndRef = useRef(null);
+  const chatInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
+
+  // Auto-resize chat textarea to fit user's text dynamically without scrolling
+  useEffect(() => {
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = 'auto';
+      const newHeight = Math.max(46, Math.min(chatInputRef.current.scrollHeight, 280));
+      chatInputRef.current.style.height = `${newHeight}px`;
+    }
+  }, [userInput, activeMode]);
+
+  // Handle Enter to send, Shift+Enter for new line
+  const handleChatKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
+    }
+  };
 
   // Persist messages and auto-scroll
   useEffect(() => {
@@ -595,10 +613,10 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
             )}
 
             {/* Input box section */}
-            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <div style={{ position: 'relative', flexGrow: 1, display: 'flex', alignItems: 'center' }}>
-                <input
-                  type="text"
+            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+              <div style={{ position: 'relative', flexGrow: 1, display: 'flex', alignItems: 'flex-end' }}>
+                <textarea
+                  ref={chatInputRef}
                   className="search-input"
                   style={{
                     width: '100%',
@@ -607,18 +625,26 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                     borderRadius: '10px',
                     border: '1px solid var(--border-color)',
                     outline: 'none',
-                    height: '46px'
+                    minHeight: '46px',
+                    maxHeight: '280px',
+                    lineHeight: '1.45',
+                    resize: 'none',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    overflowY: userInput.length > 250 ? 'auto' : 'hidden'
                   }}
                   placeholder={isListening ? "Ich höre zu... Sprich jetzt..." : "Schreibe oder sprich deine Antwort..."}
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
+                  onKeyDown={handleChatKeyDown}
                   disabled={isLoading}
+                  rows={1}
                   autoFocus
                   autoComplete="off"
                   spellCheck="false"
                 />
                 
-                <div style={{ position: 'absolute', right: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {userInput.length > 0 && (
                     <button
                       type="button"
@@ -658,7 +684,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                 type="submit" 
                 className="feedback-btn good"
                 disabled={!userInput.trim() || isLoading}
-                style={{ width: '46px', height: '46px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '10px', flexShrink: 0, maxWidth: 'none', minHeight: 'auto' }}
+                style={{ width: '46px', height: '46px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '10px', flexShrink: 0, maxWidth: 'none', minHeight: 'auto', alignSelf: 'flex-end', marginBottom: '1px' }}
               >
                 ➔
               </button>

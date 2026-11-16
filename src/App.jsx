@@ -1234,15 +1234,46 @@ function App() {
     localStorage.setItem('b1_font_scale', fontScale.toString());
   }, [fontScale]);
 
+  const isGermanVoiceLang = (lang) => {
+    const l = (lang || '').toLowerCase();
+    return l.startsWith('de') || l.includes('de-') || l.includes('de_') || l.includes('ger') || l.includes('deu');
+  };
+
+  const getVoiceSortScore = (v) => {
+    const nameLower = (v.name || '').toLowerCase();
+    const isGerman = isGermanVoiceLang(v.lang);
+    if (!isGerman) return -100;
+    if (nameLower.includes('samsung')) return -50;
+    // Studio / Enhanced / Premium Apple German voices (macOS / iOS)
+    if (nameLower.includes('enhanced') || nameLower.includes('premium')) return 100;
+    if (nameLower.includes('siri')) return 95;
+    // Anna: Apple's native German voice (the natural voice shown on iPhone & Mac)
+    if (nameLower.includes('anna')) return 90;
+    // Helena / Martin (Apple high quality)
+    if (nameLower.includes('helena') || nameLower.includes('martin')) return 85;
+    // Google Deutsch / Neural
+    if (nameLower.includes('google') || nameLower.includes('neural') || nameLower.includes('natural')) return 75;
+    return 50;
+  };
+
   useEffect(() => {
     const loadVoices = () => {
       if ('speechSynthesis' in window) {
         const allVoices = window.speechSynthesis.getVoices();
         const matchedVoices = allVoices.filter(v => {
           const lang = v.lang.toLowerCase();
-          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu') ||
+          return isGermanVoiceLang(lang) ||
                  lang.startsWith('en') || lang.includes('en-') || lang.includes('en_') || lang.includes('eng');
         });
+
+        // Sort German voices to the top, prioritizing natural Apple voices (Anna/Siri/Enhanced) so Mac matches iPhone!
+        matchedVoices.sort((a, b) => {
+          const scoreA = getVoiceSortScore(a);
+          const scoreB = getVoiceSortScore(b);
+          if (scoreA !== scoreB) return scoreB - scoreA;
+          return a.name.localeCompare(b.name);
+        });
+
         if (matchedVoices.length > 0) {
           setVoices(prev => {
             const isSame = prev.length === matchedVoices.length && prev.every((v, i) => v.name === matchedVoices[i].name);
@@ -1251,18 +1282,13 @@ function App() {
 
           const savedVoice = localStorage.getItem('b1_selected_voice');
           const hasSavedVoice = matchedVoices.some(v => v.name === savedVoice);
+          const isAppleDevice = /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const hasAppleGermanVoice = matchedVoices.some(v => isGermanVoiceLang(v.lang) && (v.name.toLowerCase().includes('anna') || v.name.toLowerCase().includes('siri')));
 
-          if (!savedVoice || !hasSavedVoice) {
-            const preferred = matchedVoices.find(v => {
-              const nameLower = v.name.toLowerCase();
-              const langLower = v.lang.toLowerCase();
-              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
-              return isGerman && (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
-            }) || matchedVoices.find(v => {
-              const langLower = v.lang.toLowerCase();
-              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
-              return isGerman && !v.name.toLowerCase().includes('samsung');
-            }) || matchedVoices[0];
+          // Auto-pick if no voice saved, or if saved voice not on device,
+          // OR if previously defaulted to 'Google Deutsch' on a Mac/Apple device where Anna/Siri is available so Mac matches iPhone!
+          if (!savedVoice || !hasSavedVoice || (isAppleDevice && hasAppleGermanVoice && savedVoice.toLowerCase().includes('google'))) {
+            const preferred = matchedVoices.find(v => getVoiceSortScore(v) >= 75) || matchedVoices.find(v => isGermanVoiceLang(v.lang)) || matchedVoices[0];
             setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
             localStorage.setItem('b1_selected_voice', preferred.name);
           }
@@ -1313,9 +1339,16 @@ function App() {
         const allVoices = window.speechSynthesis.getVoices();
         const matchedVoices = allVoices.filter(v => {
           const lang = v.lang.toLowerCase();
-          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu') ||
+          return isGermanVoiceLang(lang) ||
                  lang.startsWith('en') || lang.includes('en-') || lang.includes('en_') || lang.includes('eng');
         });
+        matchedVoices.sort((a, b) => {
+          const scoreA = getVoiceSortScore(a);
+          const scoreB = getVoiceSortScore(b);
+          if (scoreA !== scoreB) return scoreB - scoreA;
+          return a.name.localeCompare(b.name);
+        });
+
         if (matchedVoices.length > 0 && voices.length === 0) {
           setVoices(matchedVoices);
         }
@@ -1327,20 +1360,25 @@ function App() {
         const isAndroid = /Android/i.test(navigator.userAgent);
         const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
 
+        let activeVoice = null;
         if (selectedVoiceName) {
-          const voice = allVoices.find(v => v.name === selectedVoiceName);
-          if (voice) {
-            if (!isIOS || !hasModifiers) {
-              utterance.voice = voice;
-              utterance.lang = voice.lang; // Match the selected voice's language
-            }
+          activeVoice = allVoices.find(v => v.name === selectedVoiceName);
+        }
+        if (!activeVoice) {
+          // Graceful fallback to Anna / preferred German voice on this device
+          activeVoice = allVoices.find(v => isGermanVoiceLang(v.lang) && v.name.toLowerCase().includes('anna'))
+            || allVoices.find(v => isGermanVoiceLang(v.lang) && (v.name.toLowerCase().includes('siri') || v.name.toLowerCase().includes('google')))
+            || allVoices.find(v => isGermanVoiceLang(v.lang));
+        }
+
+        if (activeVoice) {
+          if (!isIOS || !hasModifiers) {
+            utterance.voice = activeVoice;
+            utterance.lang = activeVoice.lang; // Match the selected voice's language
           }
         } else if (isAndroid) {
           // Android Google TTS requires explicit voice binding for rate adjustments to take effect
-          const defaultGermanVoice = allVoices.find(v => {
-            const lang = v.lang.toLowerCase();
-            return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_');
-          });
+          const defaultGermanVoice = allVoices.find(v => isGermanVoiceLang(v.lang));
           if (defaultGermanVoice) {
             utterance.voice = defaultGermanVoice;
           }
@@ -1751,18 +1789,56 @@ function App() {
                       fontWeight: '700',
                       outline: 'none',
                       cursor: 'pointer',
-                      maxWidth: '120px'
+                      maxWidth: '185px',
+                      textOverflow: 'ellipsis'
                     }}
+                    title={selectedVoiceName || "Stimme auswählen"}
                   >
                     {voices.length === 0 ? (
                       <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
                     ) : (
-                      voices.map(v => (
-                        <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
-                          {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
-                          {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
-                        </option>
-                      ))
+                      <>
+                        <optgroup label="🇩🇪 Deutsche Stimmen (German)" style={{ background: '#090a0f', color: '#93c5fd', fontWeight: 'bold' }}>
+                          {voices.filter(v => isGermanVoiceLang(v.lang)).map(v => {
+                            const nameLower = v.name.toLowerCase();
+                            let clean = v.name
+                              .replace(/Microsoft/i, '')
+                              .replace(/Google/i, '')
+                              .replace(/Apple/i, '')
+                              .replace(/\(German \(Germany\)\)/i, '')
+                              .replace(/\(Germany\)/i, '')
+                              .trim();
+
+                            let prefix = '🇩🇪 ';
+                            if (nameLower.includes('anna')) {
+                              prefix = '🇩🇪 🍎 Anna (iOS/Mac) ';
+                              clean = clean.replace(/^Anna\b/i, '').trim();
+                            } else if (nameLower.includes('siri')) {
+                              prefix = '🇩🇪 🍎 Siri ';
+                            } else if (nameLower.includes('google')) {
+                              prefix = '🇩🇪 🌐 Google ';
+                              clean = clean.replace(/^Deutsch\b/i, 'Deutsch').trim();
+                            } else if (nameLower.includes('enhanced') || nameLower.includes('premium')) {
+                              prefix = '🇩🇪 🌟 ';
+                            }
+
+                            return (
+                              <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                                {prefix}{clean || 'Stimme'}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                        {voices.some(v => !isGermanVoiceLang(v.lang)) && (
+                          <optgroup label="🌐 Andere Stimmen (English/System)" style={{ background: '#090a0f', color: '#9ca3af' }}>
+                            {voices.filter(v => !isGermanVoiceLang(v.lang)).map(v => (
+                              <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                                🇬🇧 {v.name.replace(/Microsoft|Google|Apple/gi, '').trim()}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
                     )}
                   </select>
                 </div>

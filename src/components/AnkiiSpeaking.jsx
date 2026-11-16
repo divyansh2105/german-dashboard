@@ -580,6 +580,14 @@ export default function AnkiiSpeaking({
     utterance.lang = 'de-DE';
     utterance.rate = 0.92;
 
+    const savedVoice = typeof localStorage !== 'undefined' ? localStorage.getItem('b1_selected_voice') : null;
+    const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (savedVoice && !isIOS && 'speechSynthesis' in window) {
+      const allVoices = window.speechSynthesis.getVoices();
+      const matched = allVoices.find(v => v.name === savedVoice);
+      if (matched) utterance.voice = matched;
+    }
+
     isSpeakingRef.current = true;
     setIsSpeaking(true);
     setSpeakingPhase('de');
@@ -723,6 +731,11 @@ export default function AnkiiSpeaking({
         const utterDe = new SpeechSynthesisUtterance(deSentence);
         utterDe.lang = 'de-DE';
         utterDe.rate = 0.92;
+        if (savedVoice && !isIOS && 'speechSynthesis' in window) {
+          const allVoices = window.speechSynthesis.getVoices();
+          const matched = allVoices.find(v => v.name === savedVoice);
+          if (matched) utterDe.voice = matched;
+        }
 
         if (typeof window !== 'undefined' && window.__ankiActiveUtterances) {
           window.__ankiActiveUtterances.add(utterDe);
