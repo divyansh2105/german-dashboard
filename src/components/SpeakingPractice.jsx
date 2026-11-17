@@ -17,6 +17,41 @@ const TOPIC_HELPERS = [
   }
 ];
 
+// Helper to extract parenthetical feedback tips in Conversation mode
+const parseConversationMessage = (text) => {
+  if (!text) return { tip: null, cleanText: '' };
+  
+  // 1. Matches leading parenthetical tip: (Tip: ...), (Word Order Tip: ...), (Grammar Tip: ...), (Grammatik-Tipp: ...)
+  const leadingMatch = text.match(/^\s*\(((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)[\s\S]*?)\)/i);
+  if (leadingMatch) {
+    const rawTip = leadingMatch[1];
+    const cleanText = text.replace(leadingMatch[0], '').trim();
+    const tipBody = rawTip.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
+    return { tip: tipBody || rawTip, cleanText };
+  }
+  
+  // 2. Matches any parenthetical tip anywhere in the response
+  const generalMatch = text.match(/\(((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—][\s\S]*?)\)/i);
+  if (generalMatch) {
+    const rawTip = generalMatch[1];
+    const cleanText = text.replace(generalMatch[0], '').trim();
+    const tipBody = rawTip.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
+    return { tip: tipBody || rawTip, cleanText };
+  }
+
+  // 3. Fallback: if there's any legacy (Grammatik-Tipp: ...)
+  if (text.includes('(Grammatik-Tipp:')) {
+    const match = text.match(/\((Grammatik-Tipp:[\s\S]*?)\)/);
+    if (match) {
+      const cleanText = text.replace(match[0], '').trim();
+      const tipBody = match[1].replace(/^Grammatik-Tipp:\s*/i, '').trim();
+      return { tip: tipBody, cleanText };
+    }
+  }
+
+  return { tip: null, cleanText: text };
+};
+
 export default function SpeakingPractice() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('b1_gemini_api_key') || '');
   const [showKeyInput, setShowKeyInput] = useState(!apiKey);
@@ -193,8 +228,8 @@ export default function SpeakingPractice() {
   // Speaks complete German sentences out loud
   const speakGermanText = (text) => {
     if (window.speakGerman) {
-      // Remove any parenthetical grammar tips from the audio output
-      const cleanAudioText = text.replace(/\(.*?\)/g, '').trim();
+      // Remove any parenthetical tips/feedback from audio output so TTS only speaks German
+      const cleanAudioText = text.replace(/\([\s\S]*?\)/g, '').trim();
       window.speakGerman(cleanAudioText);
     }
   };
@@ -221,7 +256,36 @@ export default function SpeakingPractice() {
         parts: [{ text: msg.text }]
       }));
 
-      const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. The student will almost always use conversational Perfekt rather than Präteritum for past events; respect and support Perfekt (haben/sein + Partizip II) as it is the natural spoken German norm. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
+      const systemInstructionText = `You are an encouraging, friendly German conversation partner helping a student practice speaking for their Goethe/telc B1 German exam.
+Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your conversational responses relatively short (2-3 sentences max) so it feels like a real, lively spoken dialogue. Occasionally ask natural B1-level questions to keep the dialogue flowing.
+
+CRITICAL FEEDBACK & TIP DIRECTIVES FOR USER'S SPOKEN RESPONSES:
+1. TIPS MUST BE IN ENGLISH:
+   - Any tip, correction, or feedback for the student MUST be written in clear, concise ENGLISH.
+   - Format: Place the tip inside parentheses at the very beginning of your response on its own line: \`(Tip: <feedback in English>)\` before continuing with your conversational German response.
+   - If the student's response has no significant grammatical or word order issues, DO NOT include any tip at all—proceed directly with your German conversation reply.
+
+2. PRIMARY EMPHASIS: GERMAN WORD ORDER (SATZSTELLUNG):
+   - Always prioritize and focus your tips on German word order, which is the most critical hurdle in B1 spoken German:
+     * Verb in Position 2 (V2 rule) in main clauses.
+     * Inversion: When a sentence begins with an adverb, time expression, or prepositional phrase (e.g. "Gestern", "Leider", "Am Wochenende", "Normalerweise"), the conjugated verb MUST stay in position 2 immediately followed by the subject (e.g. "Gestern habe ich...", NOT "Gestern ich habe...").
+     * Subordinate clauses (Nebensätze with weil, dass, wenn, ob, obwohl, da, damit, etc.): The conjugated verb MUST kick to the very end of the clause.
+     * Two-part verb brackets (Satzklammer):
+       - Perfekt: Auxiliary (haben/sein) in position 2, Partizip II at the very end.
+       - Modal verbs: Conjugated modal in position 2, Infinitive at the very end.
+       - Separable verbs (trennbare Verben): Prefix separated and placed at the very end.
+     * TeKaMoLo ordering (Temporal, Kausal, Modal, Lokal) where helpful.
+
+3. MICROPHONE & SPEECH RECOGNITION AWARENESS (DO NOT OVER-CORRECT):
+   - The user is SPEAKING their response into a microphone via speech-to-text recognition.
+   - Voice recognition often has minor acoustic imperfections, phonetic approximations, missing commas/periods, or lack of capitalization.
+   - Charitably understand what the user intended to say based on phonetic and conversational context.
+   - NEVER complain about punctuation, capitalization, or minor phonetic speech-to-text slips (e.g. "ein" vs "einen", minor word endings, or homophones) unless it genuinely alters the sentence meaning.
+   - Focus your English tips strictly on actual spoken sentence structure, verb positions, and word order.
+
+4. AUTHENTIC SPOKEN PAST TENSE (PERFEKT PREFERRED OVER PRÄTERITUM):
+   - The student will almost always use conversational Perfekt (haben/sein + Partizip II) for past actions.
+   - Respect Perfekt as the authentic standard in spoken German. NEVER tell the user to use narrative Präteritum instead of Perfekt for past actions (reserve Präteritum only for war, hatte, modal verbs, or es gab).`;
 
       const { text: geminiText, usedModel, wasFallback } = await queryGemini({
         apiKey,
@@ -550,15 +614,39 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                         position: 'relative'
                       }}
                     >
-                      {/* Grammar tips styling highlight */}
-                      {msg.text.includes('(Grammatik-Tipp:') ? (
-                        <div>
-                          <div style={{ background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3.5px solid var(--color-adj)', padding: '6px 10px', borderRadius: '4px', fontSize: '13px', color: 'var(--color-adj)', marginBottom: '8px', fontStyle: 'italic' }}>
-                            💡 {msg.text.match(/\((Grammatik-Tipp:.*?)\)/)?.[1] || 'Grammatik-Tipp'}
-                          </div>
-                          <div>{msg.text.replace(/\(Grammatik-Tipp:.*?\)/g, '').trim()}</div>
-                        </div>
-                      ) : msg.text}
+                      {/* Grammar & Word Order tips styling highlight */}
+                      {(() => {
+                        const { tip, cleanText } = parseConversationMessage(msg.text);
+                        if (tip) {
+                          return (
+                            <div>
+                              <div style={{
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                borderLeft: '3.5px solid #f59e0b',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: '#fef3c7',
+                                marginBottom: '10px',
+                                lineHeight: '1.45',
+                                textAlign: 'left'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                  <span style={{ fontSize: '14px' }}>💡</span>
+                                  <strong style={{ color: '#fbbf24', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Word Order & Grammar Tip (Spoken Feedback)
+                                  </strong>
+                                </div>
+                                <div style={{ color: '#fde68a', fontSize: '13px' }}>
+                                  {tip}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'left' }}>{cleanText}</div>
+                            </div>
+                          );
+                        }
+                        return <div style={{ textAlign: 'left' }}>{msg.text}</div>;
+                      })()}
 
                       {/* Play audio button on Gemini bubble */}
                       {!isUser && (
