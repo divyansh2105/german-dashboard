@@ -103,7 +103,17 @@ function App() {
     return saved ? parseFloat(saved) : 1.0;
   });
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => {
-    return localStorage.getItem('b1_selected_voice') || '';
+    const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isIOS) {
+      localStorage.removeItem('b1_selected_voice');
+      return '';
+    }
+    const saved = localStorage.getItem('b1_selected_voice');
+    if (saved === 'Anna' || saved === 'anna') {
+      localStorage.removeItem('b1_selected_voice');
+      return '';
+    }
+    return saved || '';
   });
   const [voices, setVoices] = useState([]);
   const [speechRate, setSpeechRate] = useState(() => {
@@ -1249,22 +1259,28 @@ function App() {
             return isSame ? prev : matchedVoices;
           });
 
+          const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
           const savedVoice = localStorage.getItem('b1_selected_voice');
           const hasSavedVoice = matchedVoices.some(v => v.name === savedVoice);
 
-          if (!savedVoice || !hasSavedVoice) {
+          if (isIOS) {
+            localStorage.removeItem('b1_selected_voice');
+            setSelectedVoiceName('');
+          } else if (!savedVoice || !hasSavedVoice) {
             const preferred = matchedVoices.find(v => {
               const nameLower = v.name.toLowerCase();
               const langLower = v.lang.toLowerCase();
               const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
-              return isGerman && (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
+              return isGerman && (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural')) && !nameLower.includes('samsung');
             }) || matchedVoices.find(v => {
               const langLower = v.lang.toLowerCase();
               const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
               return isGerman && !v.name.toLowerCase().includes('samsung');
             }) || matchedVoices[0];
-            setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
-            localStorage.setItem('b1_selected_voice', preferred.name);
+            if (preferred) {
+              setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
+              localStorage.setItem('b1_selected_voice', preferred.name);
+            }
           }
         }
       }
@@ -1291,7 +1307,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedVoiceName) {
+    const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isIOS) {
+      localStorage.removeItem('b1_selected_voice');
+    } else if (selectedVoiceName) {
       localStorage.setItem('b1_selected_voice', selectedVoiceName);
     }
   }, [selectedVoiceName]);
@@ -1306,9 +1325,16 @@ function App() {
 
   // Expose global speech helper
   useEffect(() => {
-    window.speakGerman = (text) => {
-      if ('speechSynthesis' in window) {
+    window.speakGerman = (text, onEnd) => {
+      if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
+        if (onEnd) onEnd();
+        return;
+      }
+      try {
         window.speechSynthesis.cancel(); // Stop current speech instantly
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
 
         const allVoices = window.speechSynthesis.getVoices();
         const matchedVoices = allVoices.filter(v => {
@@ -1325,15 +1351,17 @@ function App() {
 
         const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
         const isAndroid = /Android/i.test(navigator.userAgent);
-        const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
 
-        if (selectedVoiceName) {
+        if (isIOS) {
+          // On iPhone, NEVER assign utterance.voice!
+          // Leaving utterance.voice unassigned lets WebKit play Apple's natural neural Siri voice
+          // (exactly matching Ankii Speaking).
+          utterance.rate = 0.92;
+        } else if (selectedVoiceName) {
           const voice = allVoices.find(v => v.name === selectedVoiceName);
           if (voice) {
-            if (!isIOS || !hasModifiers) {
-              utterance.voice = voice;
-              utterance.lang = voice.lang; // Match the selected voice's language
-            }
+            utterance.voice = voice;
+            utterance.lang = voice.lang || 'de-DE';
           }
         } else if (isAndroid) {
           // Android Google TTS requires explicit voice binding for rate adjustments to take effect
@@ -1353,7 +1381,23 @@ function App() {
           utterance.pitch = speechPitch;
         }
 
+        if (typeof window !== 'undefined') {
+          window.__globalActiveUtterances = window.__globalActiveUtterances || new Set();
+          window.__globalActiveUtterances.add(utterance);
+        }
+        const cleanupUtterance = () => {
+          if (typeof window !== 'undefined' && window.__globalActiveUtterances) {
+            window.__globalActiveUtterances.delete(utterance);
+          }
+          if (onEnd) onEnd();
+        };
+        utterance.onend = cleanupUtterance;
+        utterance.onerror = cleanupUtterance;
+
         window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.warn('speakGerman error:', err);
+        if (onEnd) onEnd();
       }
     };
   }, [selectedVoiceName, speechRate, speechPitch, voices]);
@@ -1751,19 +1795,18 @@ function App() {
                       fontWeight: '700',
                       outline: 'none',
                       cursor: 'pointer',
-                      maxWidth: '120px'
+                      maxWidth: '135px'
                     }}
                   >
-                    {voices.length === 0 ? (
-                      <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
-                    ) : (
-                      voices.map(v => (
-                        <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
-                          {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
-                          {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
-                        </option>
-                      ))
-                    )}
+                    <option value="" style={{ background: '#090a0f', color: '#10b981' }}>
+                      {typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) ? '✨ Natural System Voice' : 'Default System Voice'}
+                    </option>
+                    {voices.map(v => (
+                      <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                        {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
+                        {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
