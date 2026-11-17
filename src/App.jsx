@@ -103,12 +103,7 @@ function App() {
     return saved ? parseFloat(saved) : 1.0;
   });
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => {
-    const saved = localStorage.getItem('b1_selected_voice');
-    if (saved === 'Anna' || saved === 'anna') {
-      localStorage.removeItem('b1_selected_voice');
-      return '';
-    }
-    return saved || '';
+    return localStorage.getItem('b1_selected_voice') || '';
   });
   const [voices, setVoices] = useState([]);
   const [speechRate, setSpeechRate] = useState(() => {
@@ -1254,11 +1249,22 @@ function App() {
             return isSame ? prev : matchedVoices;
           });
 
-          // Clear legacy robotic Anna if present in localStorage so system natural voice is used
           const savedVoice = localStorage.getItem('b1_selected_voice');
-          if (savedVoice === 'Anna' || savedVoice === 'anna') {
-            localStorage.removeItem('b1_selected_voice');
-            setSelectedVoiceName('');
+          const hasSavedVoice = matchedVoices.some(v => v.name === savedVoice);
+
+          if (!savedVoice || !hasSavedVoice) {
+            const preferred = matchedVoices.find(v => {
+              const nameLower = v.name.toLowerCase();
+              const langLower = v.lang.toLowerCase();
+              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
+              return isGerman && (nameLower.includes('google') || nameLower.includes('siri') || nameLower.includes('neural') || nameLower.includes('anna')) && !nameLower.includes('samsung');
+            }) || matchedVoices.find(v => {
+              const langLower = v.lang.toLowerCase();
+              const isGerman = langLower.startsWith('de') || langLower.includes('de-') || langLower.includes('de_') || langLower.includes('ger') || langLower.includes('deu');
+              return isGerman && !v.name.toLowerCase().includes('samsung');
+            }) || matchedVoices[0];
+            setSelectedVoiceName(prev => prev === preferred.name ? prev : preferred.name);
+            localStorage.setItem('b1_selected_voice', preferred.name);
           }
         }
       }
@@ -1285,10 +1291,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedVoiceName && selectedVoiceName !== 'Anna') {
+    if (selectedVoiceName) {
       localStorage.setItem('b1_selected_voice', selectedVoiceName);
-    } else {
-      localStorage.removeItem('b1_selected_voice');
     }
   }, [selectedVoiceName]);
 
@@ -1300,7 +1304,7 @@ function App() {
     localStorage.setItem('b1_speech_pitch', speechPitch.toString());
   }, [speechPitch]);
 
-  // Expose global speech helper matching Ankii Speaking's natural system voice
+  // Expose global speech helper
   useEffect(() => {
     window.speakGerman = (text, onEnd) => {
       if (!text || typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -1313,21 +1317,47 @@ function App() {
           window.speechSynthesis.resume();
         }
 
+        const allVoices = window.speechSynthesis.getVoices();
+        const matchedVoices = allVoices.filter(v => {
+          const lang = v.lang.toLowerCase();
+          return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_') || lang.includes('ger') || lang.includes('deu') ||
+                 lang.startsWith('en') || lang.includes('en-') || lang.includes('en_') || lang.includes('eng');
+        });
+        if (matchedVoices.length > 0 && voices.length === 0) {
+          setVoices(matchedVoices);
+        }
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'de-DE';
-        utterance.rate = 0.92; // Natural, conversational speed matching Ankii Speaking
 
-        // ONLY bind utterance.voice if the user explicitly picked a custom voice
-        // (excluding legacy robotic Anna or empty/default).
-        // Leaving utterance.voice unassigned is REQUIRED for iOS/macOS WebKit to use
-        // the modern, natural sounding system neural voice (Siri / Enhanced).
-        if (selectedVoiceName && selectedVoiceName !== '' && selectedVoiceName !== 'Anna') {
-          const allVoices = window.speechSynthesis.getVoices();
+        const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        const hasModifiers = speechRate !== 1.0 || speechPitch !== 1.0;
+
+        if (selectedVoiceName) {
           const voice = allVoices.find(v => v.name === selectedVoiceName);
           if (voice) {
-            utterance.voice = voice;
-            utterance.lang = voice.lang || 'de-DE';
+            if (!isIOS || !hasModifiers) {
+              utterance.voice = voice;
+              utterance.lang = voice.lang; // Match the selected voice's language
+            }
           }
+        } else if (isAndroid) {
+          // Android Google TTS requires explicit voice binding for rate adjustments to take effect
+          const defaultGermanVoice = allVoices.find(v => {
+            const lang = v.lang.toLowerCase();
+            return lang.startsWith('de') || lang.includes('de-') || lang.includes('de_');
+          });
+          if (defaultGermanVoice) {
+            utterance.voice = defaultGermanVoice;
+          }
+        }
+
+        // Set rate and pitch only on desktop platforms, letting mobile platforms use system default preferences
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        if (!isMobile) {
+          utterance.rate = speechRate;
+          utterance.pitch = speechPitch;
         }
 
         // Retain utterance in global Set so iOS WebKit doesn't garbage collect mid-sentence
@@ -1350,7 +1380,7 @@ function App() {
         if (onEnd) onEnd();
       }
     };
-  }, [selectedVoiceName]);
+  }, [selectedVoiceName, speechRate, speechPitch, voices]);
 
   // Fetch vocabulary JSON dataset
   useEffect(() => {
@@ -1736,15 +1766,7 @@ function App() {
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Voice:</span>
                   <select
                     value={selectedVoiceName}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedVoiceName(val);
-                      if (val) {
-                        localStorage.setItem('b1_selected_voice', val);
-                      } else {
-                        localStorage.removeItem('b1_selected_voice');
-                      }
-                    }}
+                    onChange={(e) => setSelectedVoiceName(e.target.value)}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -1753,18 +1775,19 @@ function App() {
                       fontWeight: '700',
                       outline: 'none',
                       cursor: 'pointer',
-                      maxWidth: '140px'
+                      maxWidth: '120px'
                     }}
                   >
-                    <option value="" style={{ background: '#090a0f', color: '#10b981' }}>
-                      ✨ System Natural Voice (Recommended)
-                    </option>
-                    {voices.map(v => (
-                      <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
-                        {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
-                        {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
-                      </option>
-                    ))}
+                    {voices.length === 0 ? (
+                      <option value="" style={{ background: '#090a0f', color: '#fff' }}>Default System Voice</option>
+                    ) : (
+                      voices.map(v => (
+                        <option key={v.name} value={v.name} style={{ background: '#090a0f', color: '#fff' }}>
+                          {v.lang.toLowerCase().startsWith('de') ? '🇩🇪 ' : '🇬🇧 '}
+                          {v.name.replace('Microsoft', '').replace('Google', 'Google 🌐').replace('Apple', 'Apple 🍎').trim()}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
