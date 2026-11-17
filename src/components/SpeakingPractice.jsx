@@ -17,33 +17,99 @@ const TOPIC_HELPERS = [
   }
 ];
 
-// Helper to extract parenthetical feedback tips in Conversation mode
-const parseConversationMessage = (text) => {
-  if (!text) return { tip: null, cleanText: '' };
-  
-  // 1. Matches leading parenthetical tip: (Tip: ...), (Word Order Tip: ...), (Grammar Tip: ...), (Grammatik-Tipp: ...)
-  const leadingMatch = text.match(/^\s*\(((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)[\s\S]*?)\)/i);
-  if (leadingMatch) {
-    const rawTip = leadingMatch[1];
-    const cleanText = text.replace(leadingMatch[0], '').trim();
-    const tipBody = rawTip.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
-    return { tip: tipBody || rawTip, cleanText };
+// Helper for inline markdown rendering (bold, italics, quotes) in tips
+export const renderInlineMarkdown = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  const parts = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|"[^"]+")/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      parts.push(<strong key={key++} style={{ color: '#fff', fontWeight: 600 }}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(<em key={key++} style={{ fontStyle: 'italic', color: '#fef08a' }}>{token.slice(1, -1)}</em>);
+    } else if (token.startsWith('"') && token.endsWith('"')) {
+      parts.push(<span key={key++} style={{ color: '#93c5fd', fontWeight: 500 }}>{token}</span>);
+    } else {
+      parts.push(token);
+    }
+    lastIndex = regex.lastIndex;
   }
-  
-  // 2. Matches any parenthetical tip anywhere in the response
-  const generalMatch = text.match(/\(((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—][\s\S]*?)\)/i);
-  if (generalMatch) {
-    const rawTip = generalMatch[1];
-    const cleanText = text.replace(generalMatch[0], '').trim();
-    const tipBody = rawTip.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
-    return { tip: tipBody || rawTip, cleanText };
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+};
+
+// Helper to extract feedback tips in Conversation mode with full support for nested parentheses & brackets
+export const parseConversationMessage = (text) => {
+  if (!text || typeof text !== 'string') return { tip: null, cleanText: '' };
+  const trimmed = text.trim();
+
+  // 1. Tagged format: [TIP]...[/TIP] or <tip>...</tip>
+  const tagMatch = trimmed.match(/^\[TIP\]([\s\S]*?)\[\/TIP\]/i) || trimmed.match(/^<tip>([\s\S]*?)<\/tip>/i);
+  if (tagMatch) {
+    return {
+      tip: tagMatch[1].trim(),
+      cleanText: trimmed.slice(tagMatch[0].length).trim()
+    };
   }
 
-  // 3. Fallback: if there's any legacy (Grammatik-Tipp: ...)
-  if (text.includes('(Grammatik-Tipp:')) {
-    const match = text.match(/\((Grammatik-Tipp:[\s\S]*?)\)/);
+  // Helper for balanced brackets/parentheses depth scanning
+  const extractBalanced = (str, openChar, closeChar, prefixRegex) => {
+    const match = str.match(prefixRegex);
+    if (!match) return null;
+    const startIdx = match.index;
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < str.length; i++) {
+      if (str[i] === openChar) depth++;
+      else if (str[i] === closeChar) {
+        depth--;
+        if (depth === 0) {
+          endIdx = i;
+          break;
+        }
+      }
+    }
+    if (endIdx !== -1) {
+      const rawBlock = str.slice(startIdx + 1, endIdx);
+      const clean = (str.slice(0, startIdx) + ' ' + str.slice(endIdx + 1)).trim();
+      const tip = rawBlock.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
+      return { tip: tip || rawBlock, cleanText: clean };
+    }
+    return null;
+  };
+
+  // 2. Bracket format: [Tip: ...] with balanced square brackets
+  const bracketResult = extractBalanced(trimmed, '[', ']', /^\s*\[(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\b/i);
+  if (bracketResult) return bracketResult;
+
+  // 3. Parenthesis format: (Tip: ...) with balanced parentheses (handles nested parens like (to place))
+  const parenResult = extractBalanced(trimmed, '(', ')', /^\s*\((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\b/i);
+  if (parenResult) return parenResult;
+
+  // 4. Any parenthetical tip anywhere with balanced parentheses
+  const generalParen = extractBalanced(trimmed, '(', ')', /\((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]/i);
+  if (generalParen) return generalParen;
+
+  // 5. Line prefix: "Tip: ..." followed by newline
+  const lineMatch = trimmed.match(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*([^\n]+(?:\n(?!\n|[A-ZÄÖÜ][a-zäöüß]+ (?:ist|sind|war|habe|hat|hatte|kann|muss|soll|will|geht|macht|finde))[^\n]+)*)\n\n?([\s\S]+)$/i);
+  if (lineMatch) {
+    return { tip: lineMatch[1].trim(), cleanText: lineMatch[2].trim() };
+  }
+
+  // 6. Fallback for legacy (Grammatik-Tipp: ...)
+  if (trimmed.includes('(Grammatik-Tipp:')) {
+    const match = trimmed.match(/\((Grammatik-Tipp:[\s\S]*?)\)/);
     if (match) {
-      const cleanText = text.replace(match[0], '').trim();
+      const cleanText = trimmed.replace(match[0], '').trim();
       const tipBody = match[1].replace(/^Grammatik-Tipp:\s*/i, '').trim();
       return { tip: tipBody, cleanText };
     }
@@ -228,9 +294,22 @@ export default function SpeakingPractice() {
   // Speaks complete German sentences out loud
   const speakGermanText = (text) => {
     if (window.speakGerman) {
-      // Remove any parenthetical tips/feedback from audio output so TTS only speaks German
-      const cleanAudioText = text.replace(/\([\s\S]*?\)/g, '').trim();
-      window.speakGerman(cleanAudioText);
+      // Extract ONLY clean German conversation, completely stripping any English tip/feedback
+      const { cleanText } = parseConversationMessage(text);
+      
+      // Secondary safety check: strip any residual bracketed or parenthetical notes if any remain
+      let cleanAudioText = (cleanText || text)
+        .replace(/\[TIP[\s\S]*?\[\/TIP\]/gi, '')
+        .replace(/\[[\s\S]*?\]/g, '')
+        .replace(/\((?:Tip|Word\s*Order|Grammar|Grammatik)[\s\S]*?\)/gi, '')
+        .trim();
+
+      // Clean leading stray punctuation (e.g. closing parens/quotes left by broken fragments)
+      cleanAudioText = cleanAudioText.replace(/^[)\]"'\s]+/, '').trim();
+
+      if (cleanAudioText) {
+        window.speakGerman(cleanAudioText);
+      }
     }
   };
 
@@ -262,7 +341,7 @@ Speak ONLY in clear, natural, grammatically correct German suitable for a B1 lea
 CRITICAL FEEDBACK & TIP DIRECTIVES FOR USER'S SPOKEN RESPONSES:
 1. TIPS MUST BE IN ENGLISH:
    - Any tip, correction, or feedback for the student MUST be written in clear, concise ENGLISH.
-   - Format: Place the tip inside parentheses at the very beginning of your response on its own line: \`(Tip: <feedback in English>)\` before continuing with your conversational German response.
+   - Format: Place the tip inside brackets or parentheses at the very beginning of your response on its own line: \`[TIP: <feedback in English>]\` or \`(Tip: <feedback in English>)\` before continuing with your conversational German response.
    - If the student's response has no significant grammatical or word order issues, DO NOT include any tip at all—proceed directly with your German conversation reply.
 
 2. PRIMARY EMPHASIS: GERMAN WORD ORDER (SATZSTELLUNG):
@@ -638,14 +717,14 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                                   </strong>
                                 </div>
                                 <div style={{ color: '#fde68a', fontSize: '13px' }}>
-                                  {tip}
+                                  {renderInlineMarkdown(tip)}
                                 </div>
                               </div>
                               <div style={{ textAlign: 'left' }}>{cleanText}</div>
                             </div>
                           );
                         }
-                        return <div style={{ textAlign: 'left' }}>{msg.text}</div>;
+                        return <div style={{ textAlign: 'left' }}>{cleanText || msg.text}</div>;
                       })()}
 
                       {/* Play audio button on Gemini bubble */}
