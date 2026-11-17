@@ -17,6 +17,107 @@ const TOPIC_HELPERS = [
   }
 ];
 
+// Helper for inline markdown rendering (bold, italics, quotes) in tips
+export const renderInlineMarkdown = (text) => {
+  if (!text || typeof text !== 'string') return text;
+  const parts = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|"[^"]+")/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const token = match[0];
+    if (token.startsWith('**') && token.endsWith('**')) {
+      parts.push(<strong key={key++} style={{ color: '#fff', fontWeight: 600 }}>{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith('*') && token.endsWith('*')) {
+      parts.push(<em key={key++} style={{ fontStyle: 'italic', color: '#fef08a' }}>{token.slice(1, -1)}</em>);
+    } else if (token.startsWith('"') && token.endsWith('"')) {
+      parts.push(<span key={key++} style={{ color: '#93c5fd', fontWeight: 500 }}>{token}</span>);
+    } else {
+      parts.push(token);
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+  return parts.length > 0 ? parts : text;
+};
+
+// Helper to extract feedback tips in Conversation mode with full support for nested parentheses & brackets
+export const parseConversationMessage = (text) => {
+  if (!text || typeof text !== 'string') return { tip: null, cleanText: '' };
+  const trimmed = text.trim();
+
+  // 1. Tagged format: [TIP]...[/TIP] or <tip>...</tip>
+  const tagMatch = trimmed.match(/^\[TIP\]([\s\S]*?)\[\/TIP\]/i) || trimmed.match(/^<tip>([\s\S]*?)<\/tip>/i);
+  if (tagMatch) {
+    return {
+      tip: tagMatch[1].trim(),
+      cleanText: trimmed.slice(tagMatch[0].length).trim()
+    };
+  }
+
+  // Helper for balanced brackets/parentheses depth scanning
+  const extractBalanced = (str, openChar, closeChar, prefixRegex) => {
+    const match = str.match(prefixRegex);
+    if (!match) return null;
+    const startIdx = match.index;
+    let depth = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < str.length; i++) {
+      if (str[i] === openChar) depth++;
+      else if (str[i] === closeChar) {
+        depth--;
+        if (depth === 0) {
+          endIdx = i;
+          break;
+        }
+      }
+    }
+    if (endIdx !== -1) {
+      const rawBlock = str.slice(startIdx + 1, endIdx);
+      const clean = (str.slice(0, startIdx) + ' ' + str.slice(endIdx + 1)).trim();
+      const tip = rawBlock.replace(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*/i, '').trim();
+      return { tip: tip || rawBlock, cleanText: clean };
+    }
+    return null;
+  };
+
+  // 2. Bracket format: [Tip: ...] with balanced square brackets
+  const bracketResult = extractBalanced(trimmed, '[', ']', /^\s*\[(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\b/i);
+  if (bracketResult) return bracketResult;
+
+  // 3. Parenthesis format: (Tip: ...) with balanced parentheses (handles nested parens like (to place))
+  const parenResult = extractBalanced(trimmed, '(', ')', /^\s*\((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\b/i);
+  if (parenResult) return parenResult;
+
+  // 4. Any parenthetical tip anywhere with balanced parentheses
+  const generalParen = extractBalanced(trimmed, '(', ')', /\((?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]/i);
+  if (generalParen) return generalParen;
+
+  // 5. Line prefix: "Tip: ..." followed by newline
+  const lineMatch = trimmed.match(/^(?:Tip|Word\s*Order(?:\s*Tip)?|Grammar\s*Tip|Grammar\s*&\s*Word\s*Order\s*Tip|Grammatik-Tipp)\s*[:\-–—]\s*([^\n]+(?:\n(?!\n|[A-ZÄÖÜ][a-zäöüß]+ (?:ist|sind|war|habe|hat|hatte|kann|muss|soll|will|geht|macht|finde))[^\n]+)*)\n\n?([\s\S]+)$/i);
+  if (lineMatch) {
+    return { tip: lineMatch[1].trim(), cleanText: lineMatch[2].trim() };
+  }
+
+  // 6. Fallback for legacy (Grammatik-Tipp: ...)
+  if (trimmed.includes('(Grammatik-Tipp:')) {
+    const match = trimmed.match(/\((Grammatik-Tipp:[\s\S]*?)\)/);
+    if (match) {
+      const cleanText = trimmed.replace(match[0], '').trim();
+      const tipBody = match[1].replace(/^Grammatik-Tipp:\s*/i, '').trim();
+      return { tip: tipBody, cleanText };
+    }
+  }
+
+  return { tip: null, cleanText: text };
+};
+
 export default function SpeakingPractice() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('b1_gemini_api_key') || '');
   const [showKeyInput, setShowKeyInput] = useState(!apiKey);
@@ -69,9 +170,27 @@ export default function SpeakingPractice() {
   const [fallbackNotice, setFallbackNotice] = useState('');
   
   const chatEndRef = useRef(null);
+  const chatInputRef = useRef(null);
   const recognitionRef = useRef(null);
   const isListeningRef = useRef(false);
   const sessionBaseTextRef = useRef('');
+
+  // Auto-resize chat textarea to fit user's text dynamically without scrolling
+  useEffect(() => {
+    if (chatInputRef.current) {
+      chatInputRef.current.style.height = 'auto';
+      const newHeight = Math.max(46, Math.min(chatInputRef.current.scrollHeight, 280));
+      chatInputRef.current.style.height = `${newHeight}px`;
+    }
+  }, [userInput, activeMode]);
+
+  // Handle Enter to send, Shift+Enter for new line
+  const handleChatKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
+    }
+  };
 
   // Persist messages and auto-scroll
   useEffect(() => {
@@ -175,9 +294,22 @@ export default function SpeakingPractice() {
   // Speaks complete German sentences out loud
   const speakGermanText = (text) => {
     if (window.speakGerman) {
-      // Remove any parenthetical grammar tips from the audio output
-      const cleanAudioText = text.replace(/\(.*?\)/g, '').trim();
-      window.speakGerman(cleanAudioText);
+      // Extract ONLY clean German conversation, completely stripping any English tip/feedback
+      const { cleanText } = parseConversationMessage(text);
+      
+      // Secondary safety check: strip any residual bracketed or parenthetical notes if any remain
+      let cleanAudioText = (cleanText || text)
+        .replace(/\[TIP[\s\S]*?\[\/TIP\]/gi, '')
+        .replace(/\[[\s\S]*?\]/g, '')
+        .replace(/\((?:Tip|Word\s*Order|Grammar|Grammatik)[\s\S]*?\)/gi, '')
+        .trim();
+
+      // Clean leading stray punctuation (e.g. closing parens/quotes left by broken fragments)
+      cleanAudioText = cleanAudioText.replace(/^[)\]"'\s]+/, '').trim();
+
+      if (cleanAudioText) {
+        window.speakGerman(cleanAudioText);
+      }
     }
   };
 
@@ -203,7 +335,36 @@ export default function SpeakingPractice() {
         parts: [{ text: msg.text }]
       }));
 
-      const systemInstructionText = `You are a friendly German conversation partner helping a student practice for their B1 German exam. Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your responses relatively short (2-3 sentences max) so it feels like a real conversation. Occasionally ask B1-level questions to keep the conversation going. Try to use common B1 vocabulary. The student will almost always use conversational Perfekt rather than Präteritum for past events; respect and support Perfekt (haben/sein + Partizip II) as it is the natural spoken German norm. If the user makes a minor grammatical or spelling error, briefly correct them inside parentheses at the very start of your response, e.g. '(Grammatik-Tipp: "Ich habe gegangen" -> "Ich bin gegangen")' before continuing the conversation.`;
+      const systemInstructionText = `You are an encouraging, friendly German conversation partner helping a student practice speaking for their Goethe/telc B1 German exam.
+Speak ONLY in clear, natural, grammatically correct German suitable for a B1 learner. Keep your conversational responses relatively short (2-3 sentences max) so it feels like a real, lively spoken dialogue. Occasionally ask natural B1-level questions to keep the dialogue flowing.
+
+CRITICAL FEEDBACK & TIP DIRECTIVES FOR USER'S SPOKEN RESPONSES:
+1. TIPS MUST BE IN ENGLISH:
+   - Any tip, correction, or feedback for the student MUST be written in clear, concise ENGLISH.
+   - Format: Place the tip inside brackets or parentheses at the very beginning of your response on its own line: \`[TIP: <feedback in English>]\` or \`(Tip: <feedback in English>)\` before continuing with your conversational German response.
+   - If the student's response has no significant grammatical or word order issues, DO NOT include any tip at all—proceed directly with your German conversation reply.
+
+2. PRIMARY EMPHASIS: GERMAN WORD ORDER (SATZSTELLUNG):
+   - Always prioritize and focus your tips on German word order, which is the most critical hurdle in B1 spoken German:
+     * Verb in Position 2 (V2 rule) in main clauses.
+     * Inversion: When a sentence begins with an adverb, time expression, or prepositional phrase (e.g. "Gestern", "Leider", "Am Wochenende", "Normalerweise"), the conjugated verb MUST stay in position 2 immediately followed by the subject (e.g. "Gestern habe ich...", NOT "Gestern ich habe...").
+     * Subordinate clauses (Nebensätze with weil, dass, wenn, ob, obwohl, da, damit, etc.): The conjugated verb MUST kick to the very end of the clause.
+     * Two-part verb brackets (Satzklammer):
+       - Perfekt: Auxiliary (haben/sein) in position 2, Partizip II at the very end.
+       - Modal verbs: Conjugated modal in position 2, Infinitive at the very end.
+       - Separable verbs (trennbare Verben): Prefix separated and placed at the very end.
+     * TeKaMoLo ordering (Temporal, Kausal, Modal, Lokal) where helpful.
+
+3. MICROPHONE & SPEECH RECOGNITION AWARENESS (DO NOT OVER-CORRECT):
+   - The user is SPEAKING their response into a microphone via speech-to-text recognition.
+   - Voice recognition often has minor acoustic imperfections, phonetic approximations, missing commas/periods, or lack of capitalization.
+   - Charitably understand what the user intended to say based on phonetic and conversational context.
+   - NEVER complain about punctuation, capitalization, or minor phonetic speech-to-text slips (e.g. "ein" vs "einen", minor word endings, or homophones) unless it genuinely alters the sentence meaning.
+   - Focus your English tips strictly on actual spoken sentence structure, verb positions, and word order.
+
+4. AUTHENTIC SPOKEN PAST TENSE (PERFEKT PREFERRED OVER PRÄTERITUM):
+   - The student will almost always use conversational Perfekt (haben/sein + Partizip II) for past actions.
+   - Respect Perfekt as the authentic standard in spoken German. NEVER tell the user to use narrative Präteritum instead of Perfekt for past actions (reserve Präteritum only for war, hatte, modal verbs, or es gab).`;
 
       const { text: geminiText, usedModel, wasFallback } = await queryGemini({
         apiKey,
@@ -532,15 +693,39 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                         position: 'relative'
                       }}
                     >
-                      {/* Grammar tips styling highlight */}
-                      {msg.text.includes('(Grammatik-Tipp:') ? (
-                        <div>
-                          <div style={{ background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3.5px solid var(--color-adj)', padding: '6px 10px', borderRadius: '4px', fontSize: '13px', color: 'var(--color-adj)', marginBottom: '8px', fontStyle: 'italic' }}>
-                            💡 {msg.text.match(/\((Grammatik-Tipp:.*?)\)/)?.[1] || 'Grammatik-Tipp'}
-                          </div>
-                          <div>{msg.text.replace(/\(Grammatik-Tipp:.*?\)/g, '').trim()}</div>
-                        </div>
-                      ) : msg.text}
+                      {/* Grammar & Word Order tips styling highlight */}
+                      {(() => {
+                        const { tip, cleanText } = parseConversationMessage(msg.text);
+                        if (tip) {
+                          return (
+                            <div>
+                              <div style={{
+                                background: 'rgba(245, 158, 11, 0.12)',
+                                borderLeft: '3.5px solid #f59e0b',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: '#fef3c7',
+                                marginBottom: '10px',
+                                lineHeight: '1.45',
+                                textAlign: 'left'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                                  <span style={{ fontSize: '14px' }}>💡</span>
+                                  <strong style={{ color: '#fbbf24', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    Word Order & Grammar Tip (Spoken Feedback)
+                                  </strong>
+                                </div>
+                                <div style={{ color: '#fde68a', fontSize: '13px' }}>
+                                  {renderInlineMarkdown(tip)}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'left' }}>{cleanText}</div>
+                            </div>
+                          );
+                        }
+                        return <div style={{ textAlign: 'left' }}>{cleanText || msg.text}</div>;
+                      })()}
 
                       {/* Play audio button on Gemini bubble */}
                       {!isUser && (
@@ -595,10 +780,10 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
             )}
 
             {/* Input box section */}
-            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <div style={{ position: 'relative', flexGrow: 1, display: 'flex', alignItems: 'center' }}>
-                <input
-                  type="text"
+            <form onSubmit={handleSendMessage} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+              <div style={{ position: 'relative', flexGrow: 1, display: 'flex', alignItems: 'flex-end' }}>
+                <textarea
+                  ref={chatInputRef}
                   className="search-input"
                   style={{
                     width: '100%',
@@ -607,18 +792,26 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                     borderRadius: '10px',
                     border: '1px solid var(--border-color)',
                     outline: 'none',
-                    height: '46px'
+                    minHeight: '46px',
+                    maxHeight: '280px',
+                    lineHeight: '1.45',
+                    resize: 'none',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    overflowY: userInput.length > 250 ? 'auto' : 'hidden'
                   }}
                   placeholder={isListening ? "Ich höre zu... Sprich jetzt..." : "Schreibe oder sprich deine Antwort..."}
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
+                  onKeyDown={handleChatKeyDown}
                   disabled={isLoading}
+                  rows={1}
                   autoFocus
                   autoComplete="off"
                   spellCheck="false"
                 />
                 
-                <div style={{ position: 'absolute', right: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ position: 'absolute', right: '10px', bottom: '9px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                   {userInput.length > 0 && (
                     <button
                       type="button"
@@ -658,7 +851,7 @@ Output raw JSON only. Do not wrap in markdown code blocks.`;
                 type="submit" 
                 className="feedback-btn good"
                 disabled={!userInput.trim() || isLoading}
-                style={{ width: '46px', height: '46px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '10px', flexShrink: 0, maxWidth: 'none', minHeight: 'auto' }}
+                style={{ width: '46px', height: '46px', padding: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '10px', flexShrink: 0, maxWidth: 'none', minHeight: 'auto', alignSelf: 'flex-end', marginBottom: '1px' }}
               >
                 ➔
               </button>
