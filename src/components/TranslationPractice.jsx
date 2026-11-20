@@ -38,7 +38,7 @@ const SENTENCE_LENGTHS = [
   { id: 'auto', label: '⚡ Auto', desc: 'Natural balanced B1 length (~10-18 words)', wordRange: '10 to 18 words' },
   { id: 'small', label: '🔹 Small', desc: 'Short, direct sentences (5-9 words)', wordRange: '5 to 9 words' },
   { id: 'medium', label: '🔸 Medium', desc: 'Standard compound sentences (10-16 words)', wordRange: '10 to 16 words' },
-  { id: 'long', label: '🔺 Long', desc: 'Longer multi-clause sentences (17-26 words)', wordRange: '17 to 26 words' }
+  { id: 'long', label: '🔺 Long', desc: 'Longer multi-clause sentences (17-26 words) focusing on grammar with common nouns', wordRange: '17 to 26 words' }
 ];
 
 // Diverse real-world scenarios to prevent repetitive generations
@@ -1279,13 +1279,13 @@ const capitalizeSentenceStart = (text) => {
     }
 
     const lengthInstruction = lengthId === 'auto'
-      ? "Sentence Length: Natural B1 length (approx. 10 to 18 words)."
+      ? "Sentence Length: Natural B1 length (approx. 10 to 18 words). Keep nouns familiar and everyday; ensure challenge comes from grammatical structure."
       : `Sentence Length Requirement: Strictly ${targetLengthObj.label.toUpperCase()} (${targetLengthObj.wordRange}). ${
           lengthId === 'small'
             ? 'Must be a concise, short sentence between 5 and 9 words long.'
             : lengthId === 'medium'
-            ? 'Must be a medium-length sentence between 10 and 16 words long.'
-            : 'Must be a longer, more elaborate multi-clause sentence between 17 and 26 words long.'
+            ? 'Must be a medium-length sentence between 10 and 16 words long with standard compound grammar.'
+            : 'Must be a longer multi-clause sentence between 17 and 26 words long. CRITICAL: Sentence length MUST come purely from grammatical complexity (such as multi-clause subordination, relative clauses, connectors, infinitive clauses with "um...zu"), NEVER from uncommon, difficult, or specialized nouns!'
         }`;
 
     // Topic-specific last 10 questions for effective anti-repetition
@@ -1325,6 +1325,20 @@ ${isMixed ? `CRITICAL "MIXED B1" ROTATION MANDATE: Although the user selected "M
 Required Scenario Domain: "${randomScenario.domain}" (Aspects: ${randomScenario.details}).
 Required Sentence Style / Perspective: "${randomPerspective}".
 
+CRITICAL VOCABULARY & GRAMMAR EMPHASIS (APPLIES TO ALL TOPICS, ESPECIALLY FOR LONG SENTENCES):
+1. NO DIFFICULT OR UNCOMMON NOUNS:
+   - Absolutely DO NOT use rare, obscure, technical, bureaucratic, academic, or uncommon compound nouns (e.g., avoid "Wohnungsgeberbestätigung", "Feinstaubemissionsgrenzwert", "Arbeitsvermittlungsstelle", "Mietminderungsanzeige", "Sondervorschrift", etc.).
+   - All nouns MUST be common, everyday, and familiar to any B1 learner (e.g., friend, colleague, neighbor, doctor, apartment, train, letter, car, office, kitchen, key, ticket, meeting, dinner, phone).
+2. GRAMMAR IS THE SOLE DRIVER OF COMPLEXITY:
+   - For Long sentences (and across all topics), length and challenge must come 100% from GRAMMATICAL STRUCTURE, such as:
+     * Multi-clause subordination (e.g., "obwohl...", "weil...", "dass...", "wenn...", "nachdem...", "da...", "während...")
+     * Relative clauses in various cases (Akkusativ, Dativ, or with prepositions: "in dem...", "über die...", "mit denen...")
+     * Infinitive constructions with "zu" (e.g., "um... zu", "ohne... zu", "statt... zu")
+     * Connectors and word order inversion (e.g., "trotzdem", "deshalb", "außerdem")
+     * Two-part conjunctions (e.g., "nicht nur... sondern auch", "zwar... aber", "entweder... oder", "sowohl... als auch", "je... desto")
+     * Dative/Accusative prepositions, modal verbs, Konjunktiv II, or Passive
+   - The user's focus must be on word order, clause connections, verb placement (verbs at the end in subordinate clauses, verb in position 2 in main clauses), and case endings—NOT on deciphering obscure or uncommon nouns!
+
 CRITICAL VARIETY & DIVERSITY RULES:
 1. NEVER produce generic, cliché textbook sentences (strictly avoid repetitive tropes like missed trains, delayed doctor appointments, put the book on the table, if the weather is good we walk, call after work).
 2. Root the exercise authentically in the required scenario domain ("${randomScenario.domain}") using realistic, practical B1 vocabulary.
@@ -1334,8 +1348,8 @@ ${recentAvoidBlock}
 ${lengthInstruction}
 
 Instructions:
-1. Provide a realistic, natural English sentence testing the selected B1 topic and designated scenario domain.
-2. If the sentence includes difficult, formal, or specialized nouns, verbs, or prepositions, provide their German equivalents as hints (including article/gender for nouns and auxiliary/participle for verbs).
+1. Provide a realistic, natural English sentence testing the selected B1 topic and designated scenario domain, using common, everyday B1 nouns and rich grammatical structures.
+2. Provide German hints for any verbs (with preposition/auxiliary) or prepositions tested. Nouns should be standard everyday B1 words, but include hints if an everyday noun has a tricky gender/article.
 3. Provide 2-3 natural German reference translations. For past actions, provide reference translations in natural conversational Perfekt (haben/sein + Partizip II) rather than narrative Präteritum, reserving Präteritum only for modal verbs (musste, konnte, wollte), war, hatte, and es gab.
 4. Explain the key grammar focus tested in German.
 
@@ -1369,11 +1383,12 @@ CONTEXT DOMAIN: "${randomScenario.domain}" (Aspects: ${randomScenario.details})
 RHETORICAL PERSPECTIVE: "${randomPerspective}"
 TARGET LENGTH: ${targetLengthObj.label} (${targetLengthObj.wordRange})
 ${recentAvoidBlock}
-CRITICAL MANDATE:
-1. Do NOT repeat or resemble any of the previous exercises listed above.
-2. Avoid overused textbook clichés.
-3. Ensure the German translation directly and naturally uses: "${effectiveSubFocus || effectiveTopicObj.label}".
-4. Use rich, idiomatic B1 everyday German.
+CRITICAL MANDATES (APPLIES TO ALL TOPICS):
+1. NO DIFFICULT OR UNCOMMON NOUNS: Do NOT use uncommon, specialized, bureaucratic, or rare nouns. Use strictly everyday, familiar B1 vocabulary (colleagues, friends, apartment, train, meeting, tickets, keys, boss, doctor, etc.).
+2. GRAMMAR-DRIVEN COMPLEXITY: Especially for Long sentences, sentence length MUST be achieved through multi-clause grammatical coordination/subordination (conjunctions, relative clauses, infinitive clauses, connectors, verb placement), NOT through complex or obscure vocabulary.
+3. Do NOT repeat or resemble any of the previous exercises listed above.
+4. Avoid overused textbook clichés.
+5. Ensure the German translation directly and naturally uses: "${effectiveSubFocus || effectiveTopicObj.label}".
 Seed: ${randomSeed}`;
 
     try {
