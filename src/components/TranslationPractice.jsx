@@ -37,7 +37,7 @@ const DEFAULT_TOPIC_WEIGHTS = {
 const SENTENCE_LENGTHS = [
   { id: 'auto', label: '⚡ Auto', desc: 'Natural balanced B1 length (~10-18 words)', wordRange: '10 to 18 words' },
   { id: 'small', label: '🔹 Small', desc: 'Short, direct sentences (5-9 words)', wordRange: '5 to 9 words' },
-  { id: 'medium', label: '🔸 Medium', desc: 'Standard compound sentences (10-16 words)', wordRange: '10 to 16 words' },
+  { id: 'medium', label: '🔸 Medium', desc: 'Compound sentences (10-16 words) focusing on grammar with common nouns', wordRange: '10 to 16 words' },
   { id: 'long', label: '🔺 Long', desc: 'Longer multi-clause sentences (17-26 words) focusing on grammar with common nouns', wordRange: '17 to 26 words' }
 ];
 
@@ -1282,9 +1282,9 @@ const capitalizeSentenceStart = (text) => {
       ? "Sentence Length: Natural B1 length (approx. 10 to 18 words). Keep nouns familiar and everyday; ensure challenge comes from grammatical structure."
       : `Sentence Length Requirement: Strictly ${targetLengthObj.label.toUpperCase()} (${targetLengthObj.wordRange}). ${
           lengthId === 'small'
-            ? 'Must be a concise, short sentence between 5 and 9 words long.'
+            ? 'Must be a concise, short sentence between 5 and 9 words long using simple everyday nouns.'
             : lengthId === 'medium'
-            ? 'Must be a medium-length sentence between 10 and 16 words long with standard compound grammar.'
+            ? 'Must be a medium-length sentence between 10 and 16 words long with compound grammar. CRITICAL: Use strictly common, everyday nouns; the complexity MUST come from grammatical structures (connectors, subclauses, prepositions, word order), NOT difficult or uncommon nouns!'
             : 'Must be a longer multi-clause sentence between 17 and 26 words long. CRITICAL: Sentence length MUST come purely from grammatical complexity (such as multi-clause subordination, relative clauses, connectors, infinitive clauses with "um...zu"), NEVER from uncommon, difficult, or specialized nouns!'
         }`;
 
@@ -1325,12 +1325,12 @@ ${isMixed ? `CRITICAL "MIXED B1" ROTATION MANDATE: Although the user selected "M
 Required Scenario Domain: "${randomScenario.domain}" (Aspects: ${randomScenario.details}).
 Required Sentence Style / Perspective: "${randomPerspective}".
 
-CRITICAL VOCABULARY & GRAMMAR EMPHASIS (APPLIES TO ALL TOPICS, ESPECIALLY FOR LONG SENTENCES):
+CRITICAL VOCABULARY & GRAMMAR EMPHASIS (APPLIES TO ALL TOPICS, ESPECIALLY FOR MEDIUM & LONG SENTENCES):
 1. NO DIFFICULT OR UNCOMMON NOUNS:
    - Absolutely DO NOT use rare, obscure, technical, bureaucratic, academic, or uncommon compound nouns (e.g., avoid "Wohnungsgeberbestätigung", "Feinstaubemissionsgrenzwert", "Arbeitsvermittlungsstelle", "Mietminderungsanzeige", "Sondervorschrift", etc.).
    - All nouns MUST be common, everyday, and familiar to any B1 learner (e.g., friend, colleague, neighbor, doctor, apartment, train, letter, car, office, kitchen, key, ticket, meeting, dinner, phone).
 2. GRAMMAR IS THE SOLE DRIVER OF COMPLEXITY:
-   - For Long sentences (and across all topics), length and challenge must come 100% from GRAMMATICAL STRUCTURE, such as:
+   - For Medium and Long sentences (and across all topics), length and challenge must come 100% from GRAMMATICAL STRUCTURE, such as:
      * Multi-clause subordination (e.g., "obwohl...", "weil...", "dass...", "wenn...", "nachdem...", "da...", "während...")
      * Relative clauses in various cases (Akkusativ, Dativ, or with prepositions: "in dem...", "über die...", "mit denen...")
      * Infinitive constructions with "zu" (e.g., "um... zu", "ohne... zu", "statt... zu")
@@ -1385,7 +1385,7 @@ TARGET LENGTH: ${targetLengthObj.label} (${targetLengthObj.wordRange})
 ${recentAvoidBlock}
 CRITICAL MANDATES (APPLIES TO ALL TOPICS):
 1. NO DIFFICULT OR UNCOMMON NOUNS: Do NOT use uncommon, specialized, bureaucratic, or rare nouns. Use strictly everyday, familiar B1 vocabulary (colleagues, friends, apartment, train, meeting, tickets, keys, boss, doctor, etc.).
-2. GRAMMAR-DRIVEN COMPLEXITY: Especially for Long sentences, sentence length MUST be achieved through multi-clause grammatical coordination/subordination (conjunctions, relative clauses, infinitive clauses, connectors, verb placement), NOT through complex or obscure vocabulary.
+2. GRAMMAR-DRIVEN COMPLEXITY: Especially for Medium and Long sentences, sentence length and depth MUST be achieved through grammatical coordination/subordination (conjunctions, relative clauses, infinitive clauses, connectors, verb placement), NOT through complex or obscure vocabulary.
 3. Do NOT repeat or resemble any of the previous exercises listed above.
 4. Avoid overused textbook clichés.
 5. Ensure the German translation directly and naturally uses: "${effectiveSubFocus || effectiveTopicObj.label}".
