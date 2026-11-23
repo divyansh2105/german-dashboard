@@ -174,6 +174,60 @@ export default function GrammarPractice() {
 
   const [fallbackNotice, setFallbackNotice] = useState('');
 
+  const getQueueSignature = (mode = questionMode, preps = selectedPreps) =>
+    `${mode}::${[...preps].sort().join(',')}`;
+
+  const [questionQueue, setQuestionQueue] = useState(() => {
+    try {
+      const saved = localStorage.getItem('b1_grammar_question_queue');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed &&
+          parsed.signature === getQueueSignature(questionMode, selectedPreps) &&
+          Array.isArray(parsed.items)
+        ) {
+          return parsed.items;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
+  const [isPrefetching, setIsPrefetching] = useState(false);
+
+  const questionQueueRef = useRef(questionQueue);
+  const queueSignatureRef = useRef(getQueueSignature(questionMode, selectedPreps));
+  const isPrefetchingRef = useRef(false);
+  const deckRemainingRef = useRef(deckRemaining);
+  const festVerbsRemainingRef = useRef(festVerbsRemaining);
+  const topicHistoryRef = useRef(topicHistory);
+  const recentHistoryRef = useRef(recentHistory);
+  const prepWeightsRef = useRef(prepWeights);
+
+  useEffect(() => { questionQueueRef.current = questionQueue; }, [questionQueue]);
+  useEffect(() => { deckRemainingRef.current = deckRemaining; }, [deckRemaining]);
+  useEffect(() => { festVerbsRemainingRef.current = festVerbsRemaining; }, [festVerbsRemaining]);
+  useEffect(() => { topicHistoryRef.current = topicHistory; }, [topicHistory]);
+  useEffect(() => { recentHistoryRef.current = recentHistory; }, [recentHistory]);
+  useEffect(() => { prepWeightsRef.current = prepWeights; }, [prepWeights]);
+
+  const saveQuestionQueue = (items, signatureOverride) => {
+    const sig = signatureOverride || queueSignatureRef.current;
+    questionQueueRef.current = items;
+    setQuestionQueue(items);
+    try {
+      localStorage.setItem('b1_grammar_question_queue', JSON.stringify({ signature: sig, items }));
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    const nextSig = getQueueSignature(questionMode, selectedPreps);
+    if (nextSig !== queueSignatureRef.current) {
+      queueSignatureRef.current = nextSig;
+      saveQuestionQueue([], nextSig);
+    }
+  }, [questionMode, selectedPreps]);
+
   // Fetch available models if API key is present
   useEffect(() => {
     if (apiKey) {
@@ -297,8 +351,10 @@ export default function GrammarPractice() {
   // Deck Management Helpers
   const handleRefillDeck = (customWeights = prepWeights) => {
     const refilled = { ...customWeights };
+    deckRemainingRef.current = refilled;
     setDeckRemaining(refilled);
     localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(refilled));
+    saveQuestionQueue([]);
   };
 
   const [tempWeights, setTempWeights] = useState({ ...DEFAULT_PREP_WEIGHTS });
@@ -387,31 +443,16 @@ export default function GrammarPractice() {
         Object.keys(tempWeights).forEach(p => {
           next[p] = Math.min(tempWeights[p] ?? 0, next[p] ?? (tempWeights[p] ?? 0));
         });
+        deckRemainingRef.current = next;
         localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(next));
         return next;
       });
+      saveQuestionQueue([]);
     }
     setShowDeckModal(false);
   };
 
-  const generateQuestion = async (targetVerbInput = null) => {
-    // Sanitize targetVerbInput: if invoked as an event handler (e.g. onClick={generateQuestion}), ignore the event object!
-    const overrideTargetVerb = (targetVerbInput && typeof targetVerbInput === 'object' && targetVerbInput.verb)
-      ? targetVerbInput
-      : null;
-
-    if (questionMode !== 'verbs' && !overrideTargetVerb && selectedPreps.length === 0) {
-      alert("Bitte wähle mindestens eine Präposition aus!");
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMsg('');
-    setHasChecked(false);
-    setCheckResults([]);
-    setUserInputs([]);
-    setCurrentQuestions([]);
-
+  const fetchQuestionBatch = async (count = 2, overrideTargetVerb = null, isBackground = false) => {
     const randomSeed = Math.floor(Math.random() * 1000000);
     let pickedVerbs = [];
     let targetPreps = [];
@@ -419,12 +460,11 @@ export default function GrammarPractice() {
     let systemInstruction = '';
 
     if (questionMode === 'verbs' || overrideTargetVerb) {
-      // 1. Strictly select 2 verbs from the 65 high-frequency B1 verbs
       if (overrideTargetVerb) {
-        pickedVerbs = [overrideTargetVerb, overrideTargetVerb];
-        setCurrentVerbTarget(overrideTargetVerb);
+        pickedVerbs = Array.from({ length: count }, () => overrideTargetVerb);
+        if (!isBackground) setCurrentVerbTarget(overrideTargetVerb);
       } else {
-        let currentRemainingIds = [...festVerbsRemaining];
+        let currentRemainingIds = [...festVerbsRemainingRef.current];
         let iterationBump = 0;
 
         const drawOneVerb = () => {
@@ -445,19 +485,17 @@ export default function GrammarPractice() {
           }
           if (candidates.length === 0) candidates = ALL_FIXED_VERBS;
 
-          // Prefer a different verb than the first draw if possible
-          const pool = pickedVerbs.length > 0 && candidates.length > 1
-            ? candidates.filter(v => v.id !== pickedVerbs[0].id)
-            : candidates;
+          const usedIds = new Set(pickedVerbs.map(v => v.id));
+          const distinctPool = candidates.filter(v => !usedIds.has(v.id));
+          const pool = distinctPool.length > 0 ? distinctPool : candidates;
           const chosen = pool[Math.floor(Math.random() * pool.length)];
           currentRemainingIds = currentRemainingIds.filter(id => id !== chosen.id);
           return chosen;
         };
 
-        const v1 = drawOneVerb();
-        pickedVerbs.push(v1);
-        const v2 = drawOneVerb();
-        pickedVerbs.push(v2);
+        for (let i = 0; i < count; i++) {
+          pickedVerbs.push(drawOneVerb());
+        }
 
         if (currentRemainingIds.length === 0) {
           currentRemainingIds = ALL_FIXED_VERBS.map(v => v.id);
@@ -470,21 +508,22 @@ export default function GrammarPractice() {
             return nextIt;
           });
         }
+        festVerbsRemainingRef.current = currentRemainingIds;
         setFestVerbsRemaining(currentRemainingIds);
         localStorage.setItem('b1_grammar_fest_verbs_remaining', JSON.stringify(currentRemainingIds));
-        setCurrentVerbTarget(v1);
+        if (!isBackground) setCurrentVerbTarget(pickedVerbs[0]);
       }
 
       targetPreps = pickedVerbs.map(v => v.prep);
 
       const topicSpecificList = Array.from(new Set(
         pickedVerbs.flatMap(v => [
-          ...(topicHistory[`verb_${v.verb}`] || []),
-          ...(topicHistory[`prep_${v.prep}`] || [])
+          ...(topicHistoryRef.current[`verb_${v.verb}`] || []),
+          ...(topicHistoryRef.current[`prep_${v.prep}`] || [])
         ])
       )).slice(0, 10);
 
-      const otherRecentList = recentHistory
+      const otherRecentList = recentHistoryRef.current
         .filter(s => !topicSpecificList.some(ts => s === ts || s.startsWith(ts) || ts.startsWith(s)))
         .slice(0, Math.max(0, 10 - topicSpecificList.length));
 
@@ -509,7 +548,23 @@ STRICT REQUIREMENT: Use different everyday situations and subjects than the ones
 - Plain-text formula: "${vFormula}"`;
       }).join('\n\n');
 
-      promptText = `Generate 2 distinct B1-level German sentences testing fixed verb-preposition combinations (Verben mit festen Präpositionen).
+      const schemaItems = pickedVerbs.map((v, i) => {
+        const vCase = (v.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ';
+        return `    {
+      "sentence": "German sentence ${i + 1} with a single '___' blank representing '${v.prep}'.",
+      "correctPreposition": "${v.prep}",
+      "translation": "English translation of sentence ${i + 1}.",
+      "category": "Feste Verbverbindung",
+      "targetVerb": "${v.verb}",
+      "formula": "${v.verb} + ${v.prep} + ${vCase}",
+      "case": "${vCase}",
+      "meaning": "${v.meaning}",
+      "daWo": "${v.daWo}",
+      "explanation": "Concise English explanation in plain text without LaTeX math syntax."
+    }`;
+      }).join(',\n');
+
+      promptText = `Generate ${count} distinct B1-level German sentences testing fixed verb-preposition combinations (Verben mit festen Präpositionen).
 
 ${verbSpecs}
 
@@ -524,7 +579,7 @@ CRITICAL FILL-IN-THE-BLANK RULE:
 2. Replace ONLY its target preposition with three underscores '___'.
 3. Each blank '___' must be followed by a noun, pronoun, or clause in the required case.
 4. Each sentence MUST unambiguously require its target preposition based strictly on the verb collocation.
-5. The 2 sentences MUST have different everyday situations and subjects.
+5. All ${count} sentences MUST have different everyday situations and subjects.
 
 CRITICAL FORMULA IN EXPLANATION:
 In each explanation field, explain clearly in plain English why the verb requires its preposition and case, what it means, and its da-/wo- form. State the formula simply in clean plain text. DO NOT use LaTeX formatting, dollar signs ($$), or \\textbf.
@@ -535,49 +590,26 @@ Requirements:
 2. Vary everyday subjects naturally ('ich', 'wir', 'du', 'mein Freund', 'meine Kollegin', formal 'Sie', etc.).
 Seed: ${randomSeed}`;
 
-      systemInstruction = `You are an expert German language teacher generating 2 preposition fill-in-the-blank questions for B1 students.
+      systemInstruction = `You are an expert German language teacher generating ${count} preposition fill-in-the-blank questions for B1 students.
 Use simple, functional everyday German vocabulary and short, natural sentences so the student can focus purely on preposition grammar.
 You must return a raw JSON object matching this schema exactly:
 {
   "questions": [
-    {
-      "sentence": "German sentence 1 with a single '___' blank representing '${pickedVerbs[0].prep}'.",
-      "correctPreposition": "${pickedVerbs[0].prep}",
-      "translation": "English translation of sentence 1.",
-      "category": "Feste Verbverbindung",
-      "targetVerb": "${pickedVerbs[0].verb}",
-      "formula": "${pickedVerbs[0].verb} + ${pickedVerbs[0].prep} + ${(pickedVerbs[0].case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ'}",
-      "case": "${(pickedVerbs[0].case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ'}",
-      "meaning": "${pickedVerbs[0].meaning}",
-      "daWo": "${pickedVerbs[0].daWo}",
-      "explanation": "Concise English explanation in plain text without LaTeX math syntax."
-    },
-    {
-      "sentence": "German sentence 2 with a single '___' blank representing '${pickedVerbs[1].prep}'.",
-      "correctPreposition": "${pickedVerbs[1].prep}",
-      "translation": "English translation of sentence 2.",
-      "category": "Feste Verbverbindung",
-      "targetVerb": "${pickedVerbs[1].verb}",
-      "formula": "${pickedVerbs[1].verb} + ${pickedVerbs[1].prep} + ${(pickedVerbs[1].case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ'}",
-      "case": "${(pickedVerbs[1].case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ'}",
-      "meaning": "${pickedVerbs[1].meaning}",
-      "daWo": "${pickedVerbs[1].daWo}",
-      "explanation": "Concise English explanation in plain text without LaTeX math syntax."
-    }
+${schemaItems}
   ]
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
 
     } else {
-      // Situational or Mixed mode: draw 2 prepositions sequentially from deckRemaining
-      setCurrentVerbTarget(null);
-      let activeDeck = { ...deckRemaining };
+      if (!isBackground) setCurrentVerbTarget(null);
+      let activeDeck = { ...deckRemainingRef.current };
+      const currentWeights = prepWeightsRef.current;
 
       const drawOnePrep = () => {
         let eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
         if (eligible.length === 0) {
           selectedPreps.forEach(p => {
-            activeDeck[p] = Math.max(1, prepWeights[p] || 1);
+            activeDeck[p] = Math.max(1, currentWeights[p] || 1);
           });
           eligible = selectedPreps.filter(p => (activeDeck[p] || 0) > 0);
         }
@@ -601,19 +633,22 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
         return chosen;
       };
 
-      targetPreps = [drawOnePrep(), drawOnePrep()];
+      for (let i = 0; i < count; i++) {
+        targetPreps.push(drawOnePrep());
+      }
+      deckRemainingRef.current = activeDeck;
       setDeckRemaining(activeDeck);
       localStorage.setItem('b1_grammar_deck_remaining', JSON.stringify(activeDeck));
 
       const topicSpecificList = Array.from(new Set(
-        targetPreps.flatMap(p => topicHistory[`prep_${p}`] || [])
+        targetPreps.flatMap(p => topicHistoryRef.current[`prep_${p}`] || [])
       )).slice(0, 10);
-      const otherRecentList = recentHistory
+      const otherRecentList = recentHistoryRef.current
         .filter(s => !topicSpecificList.some(ts => s === ts || s.startsWith(ts) || ts.startsWith(s)))
         .slice(0, Math.max(0, 10 - topicSpecificList.length));
 
       const recentAvoidBlock = (topicSpecificList.length > 0 || otherRecentList.length > 0)
-        ? `\nCRITICAL ANTI-REPETITION CONSTRAINT FOR PREPOSITIONS "${targetPreps[0].toUpperCase()}" & "${targetPreps[1].toUpperCase()}":
+        ? `\nCRITICAL ANTI-REPETITION CONSTRAINT FOR THESE PREPOSITIONS:
 ${topicSpecificList.length > 0 ? `PREVIOUS QUESTIONS ON THESE PREPOSITIONS:
 ${topicSpecificList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}` : ''}
 ${otherRecentList.length > 0 ? `\nOTHER RECENTLY GENERATED QUESTIONS (DO NOT REUSE THE SAME CONTEXT OR SUBJECTS):
@@ -624,7 +659,7 @@ STRICT REQUIREMENT: Use different everyday situations and subjects than the ones
       let modeConstraint = '';
       if (questionMode === 'situational') {
         modeConstraint = `CRITICAL FOCUS: SIMPLER SITUATIONAL PREPOSITIONS (NOT VERB-DEPENDENT).
-Both sentences MUST use their target preposition purely for situational context:
+All ${count} sentences MUST use their target preposition purely for situational context:
 - Spatial / Location & Direction (Wo? / Wohin? e.g. location of an object or destination of movement in a room, city, street, or building)
 - Temporal (Wann? / Wie lange? e.g. times of day, before/after an appointment, days, months, seasons, duration)
 - Modal / Means / Cause / Circumstance (Wie? / Womit? / Warum? e.g. travel with a vehicle, food with/without ingredients, weather/circumstances)
@@ -634,13 +669,26 @@ STRICT REQUIREMENT: DO NOT use fixed verb-preposition idioms ("Verben mit festen
 You may generate either simple situational prepositions (Lokal: Wo/Wohin, Temporal: Wann, or Modal/Kausal) OR fixed verb collocations (Verb mit Präposition). Vary the sentence structures naturally.`;
       }
 
-      promptText = `Generate 2 distinct B1-level German sentences.
+      const prepTargetLines = targetPreps
+        .map((p, idx) => `- Question ${idx + 1} MUST specifically and unambiguously test the preposition: "${p}".`)
+        .join('\n');
+
+      const schemaItems = targetPreps.map((p, i) => `    {
+      "sentence": "German sentence ${i + 1} with a single '___' blank representing '${p}'.",
+      "correctPreposition": "${p}",
+      "translation": "English translation of sentence ${i + 1}.",
+      "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
+      "targetVerb": "Verb used if fixed collocation, or null",
+      "formula": "Plain-text formula if fixed collocation (e.g. 'warten auf + Akkusativ'), or null",
+      "explanation": "A concise grammatical explanation in English detailing why '${p}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage or a fixed verb-preposition combination."
+    }`).join(',\n');
+
+      promptText = `Generate ${count} distinct B1-level German sentences.
 CRITICAL TARGET PREPOSITIONS:
-- Question 1 MUST specifically and unambiguously test the preposition: "${targetPreps[0]}".
-- Question 2 MUST specifically and unambiguously test the preposition: "${targetPreps[1]}".
+${prepTargetLines}
 Replace the target preposition in each sentence with three underscores '___' for a blank challenge.
 For each sentence, the only natural and grammatically correct solution for the blank must be its target preposition.
-The 2 sentences MUST have different everyday situations and subjects.
+All ${count} sentences MUST have different everyday situations and subjects.
 
 CRITICAL VOCABULARY & SIMPLICITY RULE:
 1. Use functional, everyday spoken German with high-frequency A2–B1 core vocabulary only.
@@ -657,110 +705,189 @@ Requirements:
 
 Seed: ${randomSeed}`;
 
-      systemInstruction = `You are an expert German language teacher generating 2 preposition fill-in-the-blank questions for B1 students.
+      systemInstruction = `You are an expert German language teacher generating ${count} preposition fill-in-the-blank questions for B1 students.
 Use simple, functional everyday German vocabulary and short, natural sentences so the student can focus purely on preposition grammar.
 You must return a raw JSON object matching this schema exactly:
 {
   "questions": [
-    {
-      "sentence": "German sentence 1 with a single '___' blank representing '${targetPreps[0]}'.",
-      "correctPreposition": "${targetPreps[0]}",
-      "translation": "English translation of sentence 1.",
-      "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
-      "targetVerb": "Verb used if fixed collocation, or null",
-      "formula": "Plain-text formula if fixed collocation (e.g. 'warten auf + Akkusativ'), or null",
-      "explanation": "A concise grammatical explanation in English detailing why '${targetPreps[0]}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage or a fixed verb-preposition combination."
-    },
-    {
-      "sentence": "German sentence 2 with a single '___' blank representing '${targetPreps[1]}'.",
-      "correctPreposition": "${targetPreps[1]}",
-      "translation": "English translation of sentence 2.",
-      "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
-      "targetVerb": "Verb used if fixed collocation, or null",
-      "formula": "Plain-text formula if fixed collocation (e.g. 'warten auf + Akkusativ'), or null",
-      "explanation": "A concise grammatical explanation in English detailing why '${targetPreps[1]}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage or a fixed verb-preposition combination."
-    }
+${schemaItems}
   ]
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
     }
 
-    try {
-      const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
-        apiKey,
-        preferredModel: selectedModel,
-        availableModels,
-        prompt: promptText,
-        systemInstruction,
-        jsonMode: true,
-        onFallback: ({ failedModel, nextModel }) => {
+    const { parsedJson, text: rawJson, usedModel, wasFallback } = await queryGemini({
+      apiKey,
+      preferredModel: selectedModel,
+      availableModels,
+      prompt: promptText,
+      systemInstruction,
+      jsonMode: true,
+      onFallback: ({ failedModel, nextModel }) => {
+        if (!isBackground) {
           setFallbackNotice(`Modell ${failedModel} war überlastet. Versuche automatisch ${nextModel}...`);
         }
-      });
+      }
+    });
 
+    if (!isBackground) {
       if (wasFallback) {
         setFallbackNotice(`⚡ Sätze über Backup-Modell (${usedModel}) generiert, da ${selectedModel} ausgelastet war.`);
         setTimeout(() => setFallbackNotice(''), 7000);
       } else {
         setFallbackNotice('');
       }
+    }
 
-      const parsed = parsedJson || JSON.parse(rawJson);
-      const rawList = Array.isArray(parsed?.questions)
-        ? parsed.questions
-        : (parsed?.sentence && parsed?.correctPreposition ? [parsed] : []);
+    const parsed = parsedJson || JSON.parse(rawJson);
+    const rawList = Array.isArray(parsed?.questions)
+      ? parsed.questions
+      : (parsed?.sentence && parsed?.correctPreposition ? [parsed] : []);
 
-      if (rawList.length === 0 || rawList.some(q => !q?.sentence || !q?.correctPreposition)) {
-        throw new Error('Invalid question format returned.');
-      }
+    const validList = rawList.filter(q => q?.sentence && q?.correctPreposition);
+    if (validList.length === 0) {
+      throw new Error('Invalid question format returned.');
+    }
 
-      const enrichedQuestions = rawList.map((q, idx) => {
-        const pv = pickedVerbs[idx] || null;
-        const pvCase = pv ? ((pv.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ') : null;
-        const pvFormula = pv ? `${pv.verb} + ${pv.prep} + ${pvCase}` : null;
-        return {
-          ...q,
-          targetVerb: q.targetVerb || (pv ? pv.verb : null),
-          formula: q.formula || pvFormula,
-          case: q.case || pvCase,
-          meaning: q.meaning || (pv ? pv.meaning : null),
-          daWo: q.daWo || (pv ? pv.daWo : null)
-        };
-      });
+    const enrichedQuestions = validList.map((q, idx) => {
+      const pv = pickedVerbs[idx] || null;
+      const pvCase = pv ? ((pv.case || '').toLowerCase().startsWith('akk') ? 'Akkusativ' : 'Dativ') : null;
+      const pvFormula = pv ? `${pv.verb} + ${pv.prep} + ${pvCase}` : null;
+      return {
+        ...q,
+        targetVerb: q.targetVerb || (pv ? pv.verb : null),
+        formula: q.formula || pvFormula,
+        case: q.case || pvCase,
+        meaning: q.meaning || (pv ? pv.meaning : null),
+        daWo: q.daWo || (pv ? pv.daWo : null)
+      };
+    });
 
-      setCurrentQuestions(enrichedQuestions);
-      setUserInputs(enrichedQuestions.map(() => ''));
+    // Save all generated sentences to recent history
+    let nextTopicHistory = { ...topicHistoryRef.current };
+    let nextRecentHistory = [...recentHistoryRef.current];
 
-      // Save all generated sentences to recent history
-      let nextTopicHistory = { ...topicHistory };
-      let nextRecentHistory = [...recentHistory];
+    enrichedQuestions.forEach((q, idx) => {
+      const fullSentence = q.sentence.replace('___', q.correctPreposition);
+      const pv = pickedVerbs[idx] || null;
+      const prepTopicKey = `prep_${q.correctPreposition || targetPreps[idx]}`;
+      const verbTopicKey = pv ? `verb_${pv.verb}` : null;
+      const keysToUpdate = [prepTopicKey];
+      if (verbTopicKey) keysToUpdate.push(verbTopicKey);
 
-      enrichedQuestions.forEach((q, idx) => {
-        const fullSentence = q.sentence.replace('___', q.correctPreposition);
-        const pv = pickedVerbs[idx] || null;
-        const prepTopicKey = `prep_${q.correctPreposition || targetPreps[idx]}`;
-        const verbTopicKey = pv ? `verb_${pv.verb}` : null;
-        const keysToUpdate = [prepTopicKey];
-        if (verbTopicKey) keysToUpdate.push(verbTopicKey);
-
-        keysToUpdate.forEach(k => {
-          const prevList = nextTopicHistory[k] || [];
-          nextTopicHistory[k] = [
-            fullSentence,
-            ...prevList.filter(s => s !== fullSentence)
-          ].slice(0, 10);
-        });
-
-        nextRecentHistory = [
+      keysToUpdate.forEach(k => {
+        const prevList = nextTopicHistory[k] || [];
+        nextTopicHistory[k] = [
           fullSentence,
-          ...nextRecentHistory.filter(s => s !== fullSentence)
+          ...prevList.filter(s => s !== fullSentence)
         ].slice(0, 10);
       });
 
-      setTopicHistory(nextTopicHistory);
-      localStorage.setItem('b1_grammar_topic_history', JSON.stringify(nextTopicHistory));
-      setRecentHistory(nextRecentHistory);
-      localStorage.setItem('b1_grammar_history', JSON.stringify(nextRecentHistory));
+      nextRecentHistory = [
+        fullSentence,
+        ...nextRecentHistory.filter(s => s !== fullSentence)
+      ].slice(0, 10);
+    });
+
+    topicHistoryRef.current = nextTopicHistory;
+    setTopicHistory(nextTopicHistory);
+    localStorage.setItem('b1_grammar_topic_history', JSON.stringify(nextTopicHistory));
+    recentHistoryRef.current = nextRecentHistory;
+    setRecentHistory(nextRecentHistory);
+    localStorage.setItem('b1_grammar_history', JSON.stringify(nextRecentHistory));
+
+    return enrichedQuestions;
+  };
+
+  const prefetchMoreInBackground = async (count = 2) => {
+    if (isPrefetchingRef.current || !apiKey) return;
+    if (questionMode !== 'verbs' && selectedPreps.length === 0) return;
+    if (questionQueueRef.current.length >= 6) return;
+
+    const reqSig = queueSignatureRef.current;
+    isPrefetchingRef.current = true;
+    setIsPrefetching(true);
+    try {
+      const batch = await fetchQuestionBatch(count, null, true);
+      if (queueSignatureRef.current === reqSig && batch.length > 0) {
+        saveQuestionQueue([...questionQueueRef.current, ...batch], reqSig);
+      }
+    } catch (err) {
+      console.warn('Background prefetch error:', err);
+    } finally {
+      isPrefetchingRef.current = false;
+      setIsPrefetching(false);
+    }
+  };
+
+  const generateQuestion = async (targetVerbInput = null) => {
+    const overrideTargetVerb = (targetVerbInput && typeof targetVerbInput === 'object' && targetVerbInput.verb)
+      ? targetVerbInput
+      : null;
+
+    if (questionMode !== 'verbs' && !overrideTargetVerb && selectedPreps.length === 0) {
+      alert("Bitte wähle mindestens eine Präposition aus!");
+      return;
+    }
+
+    // Specific verb override: always fetch 2 fresh sentences for that verb
+    if (overrideTargetVerb) {
+      setIsLoading(true);
+      setErrorMsg('');
+      setHasChecked(false);
+      setCheckResults([]);
+      setUserInputs([]);
+      setCurrentQuestions([]);
+      try {
+        const batch = await fetchQuestionBatch(2, overrideTargetVerb, false);
+        setCurrentQuestions(batch);
+        setUserInputs(batch.map(() => ''));
+      } catch (err) {
+        console.error(err);
+        setErrorMsg(`Fehler bei der Verbindung mit Gemini: ${err.message}. Bitte API-Key oder Netzwerk prüfen.`);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Instant 0ms swap from localStorage backlog when >= 2 questions are buffered
+    if (questionQueueRef.current.length >= 2) {
+      const nextBatch = questionQueueRef.current.slice(0, 2);
+      const rest = questionQueueRef.current.slice(2);
+      saveQuestionQueue(rest);
+      setErrorMsg('');
+      setHasChecked(false);
+      setCheckResults([]);
+      setCurrentQuestions(nextBatch);
+      setUserInputs(nextBatch.map(() => ''));
+      setIsLoading(false);
+
+      if (rest.length < 6) {
+        prefetchMoreInBackground(2);
+      }
+      return;
+    }
+
+    // Cold start (or < 2 buffered): generate 8 sentences at once (show 2, buffer 6)
+    const reqSig = queueSignatureRef.current;
+    setIsLoading(true);
+    setErrorMsg('');
+    setHasChecked(false);
+    setCheckResults([]);
+    setUserInputs([]);
+    setCurrentQuestions([]);
+
+    try {
+      const batch = await fetchQuestionBatch(8, null, false);
+      const combined = [...questionQueueRef.current, ...batch];
+      const nextBatch = combined.slice(0, 2);
+      const rest = combined.slice(2);
+      if (queueSignatureRef.current === reqSig) {
+        saveQuestionQueue(rest, reqSig);
+      }
+      setCurrentQuestions(nextBatch);
+      setUserInputs(nextBatch.map(() => ''));
     } catch (err) {
       console.error(err);
       setErrorMsg(`Fehler bei der Verbindung mit Gemini: ${err.message}. Bitte API-Key oder Netzwerk prüfen.`);
@@ -780,6 +907,11 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
     });
     setCheckResults(results);
     setHasChecked(true);
+
+    // Trigger background prefetch immediately on submit so the next 2 are ready
+    if (questionQueueRef.current.length < 6) {
+      prefetchMoreInBackground(2);
+    }
 
     // Speak the first completed German sentence
     const firstFullSentence = currentQuestions[0].sentence.replace('___', currentQuestions[0].correctPreposition);
@@ -1931,8 +2063,8 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           {isLoading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px', width: '100%', height: '100%', minHeight: '260px' }}>
               <div style={{ fontSize: '32px', animation: 'spin 1.5s linear infinite' }}>🔄</div>
-              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontStyle: 'italic' }} className="animate-pulse">
-                Gemini generiert 2 Präpositionalsätze...
+              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontStyle: 'italic', textAlign: 'center' }} className="animate-pulse">
+                Gemini generiert 8 Präpositionalsätze (2 sofort + 6 im Puffer)...
               </div>
             </div>
           )}
@@ -1983,7 +2115,21 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
             const correctCount = checkResults.filter(Boolean).length;
 
             return (
-              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '22px', animation: 'fadeIn 0.3s ease', width: '100%' }}>
+              <form onSubmit={handleCheck} style={{ display: 'flex', flexDirection: 'column', gap: '18px', animation: 'fadeIn 0.3s ease', width: '100%' }}>
+                {/* Subtle Backlog Status Badge */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    padding: '3px 10px',
+                    borderRadius: '10px',
+                    background: 'rgba(16, 185, 129, 0.12)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    color: '#6ee7b7'
+                  }}>
+                    ⚡ {questionQueue.length} im Puffer{isPrefetching ? ' · 🔄 +2...' : ''}
+                  </span>
+                </div>
                 {currentQuestions.map((q, qIdx) => {
                   const val = userInputs[qIdx] || '';
                   const trimmedVal = val.trim().toLowerCase();
@@ -2230,7 +2376,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       className="feedback-btn good"
                       style={{ width: '100%', maxWidth: '340px', padding: '12px', borderRadius: '10px', fontSize: '14px', background: 'var(--color-verb)', border: '1px solid rgba(59,130,246,0.3)' }}
                     >
-                      Nächste 2 Sätze ➔
+                      {questionQueue.length >= 2 ? 'Nächste 2 Sätze (Sofort) ⚡ ➔' : 'Nächste 2 Sätze ➔'}
                     </button>
                   )}
                 </div>
