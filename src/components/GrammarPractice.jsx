@@ -18,6 +18,15 @@ const ALL_PREPOSITIONS = [
 
 const DEFAULT_PREP_WEIGHTS = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 2]));
 
+const CORE_15_PREPS = [
+  'für', 'gegen', 'um',
+  'bei', 'mit', 'nach', 'seit', 'von', 'zu', 'gegenüber',
+  'an', 'auf', 'in', 'über', 'vor'
+];
+const CORE_15_WEIGHTS = Object.fromEntries(
+  ALL_PREPOSITIONS.map(p => [p, CORE_15_PREPS.includes(p) ? 2 : 0])
+);
+
 // Helper to strip any raw LaTeX math syntax ($$\textbf{...}$$) and return clean plain text
 export const cleanFormulaText = (text) => {
   if (!text) return '';
@@ -293,7 +302,19 @@ export default function GrammarPractice() {
     }
   };
 
+  const handleApplyCore15Template = () => {
+    setPrepWeights(CORE_15_WEIGHTS);
+    localStorage.setItem('b1_grammar_prep_weights', JSON.stringify(CORE_15_WEIGHTS));
+    setTempWeights(CORE_15_WEIGHTS);
+    setSelectedPreps([...CORE_15_PREPS]);
+    handleRefillDeck(CORE_15_WEIGHTS);
+  };
+
   const handlePresetInDialog = (presetType) => {
+    if (presetType === 'core_15') {
+      handleApplyCore15Template();
+      return;
+    }
     let next = {};
     if (presetType === 'balanced_2') {
       next = Object.fromEntries(ALL_PREPOSITIONS.map(p => [p, 2]));
@@ -995,6 +1016,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>Vorlagen:</span>
                 {[
+                  { id: 'core_15', label: '⭐ Core 15 (30)', highlight: true },
                   { id: 'balanced_2', label: 'Ausgeglichen (je 2)' },
                   { id: 'balanced_1', label: 'Kompakt (je 1)' },
                   { id: 'genitiv_focus', label: 'Genitiv-Fokus' },
@@ -1007,14 +1029,16 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                     type="button"
                     onClick={() => handlePresetInDialog(p.id)}
                     style={{
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      background: p.highlight ? 'rgba(245, 158, 11, 0.16)' : 'rgba(255, 255, 255, 0.05)',
+                      border: p.highlight ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       padding: '2px 8px',
                       fontSize: '11px',
-                      color: '#e2e8f0',
+                      fontWeight: p.highlight ? '700' : '400',
+                      color: p.highlight ? '#fcd34d' : '#e2e8f0',
                       cursor: 'pointer'
                     }}
+                    title={p.highlight ? 'Reassigns weights (15 core prepositions × 2, others 0) and restarts the deck cycle' : undefined}
                   >
                     {p.label}
                   </button>
@@ -1716,6 +1740,44 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
               {68 - festVerbsRemaining.length}/68
             </span>
           </button>
+
+          {/* Choosable Core 15 Template */}
+          {(() => {
+            const isCore15Active =
+              selectedPreps.length === CORE_15_PREPS.length &&
+              CORE_15_PREPS.every(p => selectedPreps.includes(p)) &&
+              ALL_PREPOSITIONS.every(p => (prepWeights[p] ?? 0) === (CORE_15_WEIGHTS[p] ?? 0));
+            return (
+              <button
+                type="button"
+                onClick={handleApplyCore15Template}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  background: isCore15Active
+                    ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(234, 179, 8, 0.18))'
+                    : 'rgba(245, 158, 11, 0.1)',
+                  border: isCore15Active
+                    ? '1px solid rgba(245, 158, 11, 0.65)'
+                    : '1px solid rgba(245, 158, 11, 0.3)',
+                  color: '#fcd34d',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '6px'
+                }}
+                title="Reassigns weights (15 core prepositions × 2, others 0) and restarts the deck cycle"
+              >
+                <span>⭐ Core 15 Template</span>
+                <span style={{ fontSize: '10px', background: 'rgba(0,0,0,0.35)', padding: '1px 6px', borderRadius: '8px' }}>
+                  30
+                </span>
+              </button>
+            );
+          })()}
 
           <div style={{ overflowY: 'auto', maxHeight: '420px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {Object.keys(PREPOSITION_GROUPS).map(groupName => {
