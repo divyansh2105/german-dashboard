@@ -443,7 +443,7 @@ ${topicSpecificList.length > 0 ? `PREVIOUS QUESTIONS ON THIS SPECIFIC VERB/PREPO
 ${topicSpecificList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}` : ''}
 ${otherRecentList.length > 0 ? `\nOTHER RECENTLY GENERATED QUESTIONS (DO NOT REUSE THE SAME CONTEXT OR SUBJECTS):
 ${otherRecentList.map((s, idx) => `  • "${s}"`).join('\n')}` : ''}
-STRICT REQUIREMENT: Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create an entirely DIFFERENT context, subject person, and story!\n`
+STRICT REQUIREMENT: Use a different everyday situation and subject than the ones listed above, while keeping the vocabulary simple and natural.\n`
         : '';
 
       promptText = `Generate a single B1-level German sentence testing a fixed verb-preposition combination (Verben mit festen Präpositionen).
@@ -454,6 +454,12 @@ MANDATORY TARGET VERB COLLOCATION:
 - Required Case: ${targetCase} (${pickedVerb.case})
 - Verb Meaning: "${pickedVerb.meaning}"
 - Pronominal Adverbs (da-/wo-): "${pickedVerb.daWo}"
+
+CRITICAL VOCABULARY & SIMPLICITY RULE:
+1. Use functional, everyday spoken German with high-frequency A2–B1 core vocabulary only.
+2. Keep the sentence short, clear, and natural (about 6–12 words, straightforward structure).
+3. The ONLY challenge must be the preposition and its grammar/case — never difficult vocabulary.
+4. STRICTLY AVOID B2/C1, academic, formal, bureaucratic, technical, or literary words, rare compound nouns, and needlessly complex nested clauses.
 
 CRITICAL FILL-IN-THE-BLANK RULE:
 1. Conjugate and naturally use the verb "${pickedVerb.verb}" in the main clause.
@@ -468,12 +474,12 @@ DO NOT use LaTeX formatting, dollar signs ($$), or \\textbf. Write in normal, cl
 
 ${recentAvoidBlock}
 Requirements:
-1. Provide a diverse, natural, real-life B1 everyday situation (office, appointments, friends, home, transport, hobbies).
-2. DO NOT use generic textbook clichés.
-3. Vary sentence structure and grammatical subjects ('wir', 'die Kollegin', 'Herr Schmidt', 'unsere Nachbarn', formal 'Sie', etc.).
+1. Use a simple, natural everyday situation (home, work, friends, shopping, appointments, transport, food, weather, free time).
+2. Vary everyday subjects naturally ('ich', 'wir', 'du', 'mein Freund', 'meine Kollegin', formal 'Sie', etc.).
 Seed: ${randomSeed}`;
 
       systemInstruction = `You are an expert German language teacher generating preposition fill-in-the-blank questions for B1 students.
+Use simple, functional everyday German vocabulary and short, natural sentences so the student can focus purely on preposition grammar.
 You must return a raw JSON object matching this schema exactly:
 {
   "sentence": "German sentence with a single '___' blank representing the missing preposition '${pickedVerb.prep}'.",
@@ -542,7 +548,7 @@ ${topicSpecificList.length > 0 ? `PREVIOUS QUESTIONS SPECIFICALLY TESTING "${tar
 ${topicSpecificList.map((s, idx) => `  ${idx + 1}. "${s}"`).join('\n')}` : ''}
 ${otherRecentList.length > 0 ? `\nOTHER RECENTLY GENERATED QUESTIONS (DO NOT REUSE THE SAME CONTEXT OR SUBJECTS):
 ${otherRecentList.map((s, idx) => `  • "${s}"`).join('\n')}` : ''}
-STRICT REQUIREMENT: Do NOT repeat, mirror, or paraphrase any of these recently generated sentences. Create an entirely DIFFERENT context, subject person, and story!\n`
+STRICT REQUIREMENT: Use a different everyday situation and subject than the ones listed above, while keeping the vocabulary simple and natural.\n`
         : '';
 
       let modeConstraint = '';
@@ -562,17 +568,24 @@ You may generate either a simple situational preposition (Lokal: Wo/Wohin, Tempo
 CRITICAL TARGET PREPOSITION: The sentence MUST specifically and unambiguously test the preposition: "${targetPrep}".
 Replace "${targetPrep}" in the sentence with three underscores '___' for a blank challenge.
 The only natural and grammatically correct solution for the blank must be "${targetPrep}".
+
+CRITICAL VOCABULARY & SIMPLICITY RULE:
+1. Use functional, everyday spoken German with high-frequency A2–B1 core vocabulary only.
+2. Keep the sentence short, clear, and natural (about 6–12 words, straightforward structure).
+3. The ONLY challenge must be the preposition and its grammar/case — never difficult vocabulary.
+4. STRICTLY AVOID B2/C1, academic, formal, bureaucratic, technical, or literary words, rare compound nouns, and needlessly complex nested clauses.
+
 ${modeConstraint}
 ${recentAvoidBlock}
 Requirements:
-1. Provide a diverse, natural, real-life B1 sentence representing everyday scenarios (work, appointments, apartment, travel, conversations, hobbies).
-2. DO NOT use generic textbook clichés (like putting a book on the table).
-3. Vary sentence structure and grammatical subjects (use 'wir', 'der Kollege', 'die Nachbarin', formal 'Sie', etc.).
-4. Do NOT excessively use reflexive verbs.
+1. Use a clear, practical everyday sentence (home, friends, work, transport, appointments, shopping, weather, food, free time).
+2. Vary everyday subjects naturally ('ich', 'wir', 'du', 'mein Freund', 'meine Kollegin', formal 'Sie', etc.).
+3. Do NOT excessively use reflexive verbs.
 
 Seed: ${randomSeed}`;
 
       systemInstruction = `You are an expert German language teacher generating preposition fill-in-the-blank questions for B1 students.
+Use simple, functional everyday German vocabulary and short, natural sentences so the student can focus purely on preposition grammar.
 You must return a raw JSON object matching this schema exactly:
 {
   "sentence": "German sentence with a single '___' blank representing the missing preposition.",
@@ -580,7 +593,7 @@ You must return a raw JSON object matching this schema exactly:
   "translation": "English translation of the German sentence.",
   "category": "Lokal | Temporal | Modal | Kausal | Feste Verbverbindung",
   "targetVerb": "Verb used if fixed collocation, or null",
-  "formula": "LaTeX formula if fixed collocation, or null",
+  "formula": "Plain-text formula if fixed collocation (e.g. 'warten auf + Akkusativ'), or null",
   "explanation": "A concise grammatical explanation in English detailing why '${targetPrep}' is correct, which case it governs in this context (Akkusativ, Dativ, Genitiv), and clarifying whether it is a situational usage or a fixed verb-preposition combination."
 }
 Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
