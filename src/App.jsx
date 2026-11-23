@@ -565,6 +565,124 @@ function App() {
     }, 1500);
   }, [syncCode]);
 
+  // Persistent Review List position for My List (synced across devices via Upstash KV)
+  const [myListReviewPosition, setMyListReviewPosition] = useState(() => {
+    try {
+      const savedIdx = localStorage.getItem('b1_mylist_review_last_index');
+      const savedWord = localStorage.getItem('b1_mylist_review_last_word') || '';
+      const savedUp = localStorage.getItem('b1_mylist_review_last_updated');
+      if (savedIdx !== null) {
+        const parsed = parseInt(savedIdx, 10);
+        return {
+          index: isNaN(parsed) ? 0 : parsed,
+          word: savedWord,
+          updatedAt: savedUp ? parseInt(savedUp, 10) : 0
+        };
+      }
+    } catch (e) {}
+    return { index: 0, word: '', updatedAt: 0 };
+  });
+
+  const myListReviewPositionRef = useRef(myListReviewPosition);
+  useEffect(() => {
+    myListReviewPositionRef.current = myListReviewPosition;
+  }, [myListReviewPosition]);
+
+  const syncMyListReviewPositionWithCloud = async (codeVal, forceIndex, forceWord) => {
+    if (!codeVal || codeVal.trim().length < 3) return { success: false, error: 'Sync code must be at least 3 characters.' };
+    try {
+      const cleanCode = codeVal.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      const res = await fetch(`/api/sync?code=${cleanCode}&type=mylist_review_pos&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!res.ok) {
+        return { success: false, error: `Cloud fetch failed: ${res.status}` };
+      }
+      const cloudData = await res.json();
+      let cloudRecord = null;
+      if (Array.isArray(cloudData) && cloudData.length > 0) {
+        cloudRecord = cloudData[0];
+      }
+
+      let currentLocalIdx = 0;
+      let currentLocalWord = '';
+      let currentLocalUp = 0;
+      try {
+        const sIdx = localStorage.getItem('b1_mylist_review_last_index');
+        const sWord = localStorage.getItem('b1_mylist_review_last_word');
+        const sUp = localStorage.getItem('b1_mylist_review_last_updated');
+        if (sIdx !== null) {
+          const p = parseInt(sIdx, 10);
+          if (!isNaN(p)) currentLocalIdx = p;
+        }
+        if (sWord) currentLocalWord = sWord;
+        if (sUp) {
+          const up = parseInt(sUp, 10);
+          if (!isNaN(up)) currentLocalUp = up;
+        }
+      } catch (e) {}
+
+      if (typeof forceIndex === 'number' && forceIndex >= 0) {
+        currentLocalIdx = forceIndex;
+        if (forceWord !== undefined) currentLocalWord = forceWord || '';
+        currentLocalUp = Date.now();
+        localStorage.setItem('b1_mylist_review_last_index', String(currentLocalIdx));
+        localStorage.setItem('b1_mylist_review_last_updated', String(currentLocalUp));
+        localStorage.setItem('b1_mylist_review_last_word', currentLocalWord);
+      }
+
+      let finalIndex = currentLocalIdx;
+      let finalWord = currentLocalWord;
+      let finalUpdatedAt = currentLocalUp;
+
+      if (cloudRecord && typeof cloudRecord.index === 'number') {
+        const cloudUp = cloudRecord.updatedAt || 0;
+        if (cloudUp > currentLocalUp && forceIndex === undefined) {
+          finalIndex = cloudRecord.index;
+          finalWord = cloudRecord.word || '';
+          finalUpdatedAt = cloudUp;
+          localStorage.setItem('b1_mylist_review_last_index', String(finalIndex));
+          localStorage.setItem('b1_mylist_review_last_updated', String(finalUpdatedAt));
+          localStorage.setItem('b1_mylist_review_last_word', finalWord);
+        } else if (currentLocalUp > cloudUp || forceIndex !== undefined) {
+          finalIndex = currentLocalIdx;
+        }
+      }
+
+      setMyListReviewPosition({ index: finalIndex, word: finalWord, updatedAt: finalUpdatedAt });
+
+      const shouldPush = !cloudRecord || finalUpdatedAt > (cloudRecord.updatedAt || 0) || forceIndex !== undefined;
+      if (shouldPush) {
+        try {
+          await fetch(`/api/sync?code=${cleanCode}&type=mylist_review_pos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([{ index: finalIndex, word: finalWord, updatedAt: finalUpdatedAt }]),
+            cache: 'no-store'
+          });
+        } catch (postErr) {
+          console.warn("Could not sync My List review position back to cloud:", postErr);
+        }
+      }
+
+      return { success: true, index: finalIndex };
+    } catch (err) {
+      console.warn("Cloud My List review position sync error:", err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const myListReviewPosSyncTimeoutRef = useRef(null);
+  const handleUpdateMyListReviewPosition = useCallback((newIndex, wordStr) => {
+    setMyListReviewPosition({ index: newIndex, word: wordStr || '', updatedAt: Date.now() });
+    if (myListReviewPosSyncTimeoutRef.current) clearTimeout(myListReviewPosSyncTimeoutRef.current);
+    myListReviewPosSyncTimeoutRef.current = setTimeout(() => {
+      if (syncCode && syncCode.trim().length >= 3) {
+        syncMyListReviewPositionWithCloud(syncCode, newIndex, wordStr);
+      }
+    }, 1500);
+  }, [syncCode]);
+
   // Initial cloud sync on load
   useEffect(() => {
     if (syncCode) {
@@ -572,6 +690,7 @@ function App() {
       syncDeletedWithCloud(syncCode);
       syncDeletedVerbsWithCloud(syncCode);
       syncReviewPositionWithCloud(syncCode);
+      syncMyListReviewPositionWithCloud(syncCode);
     }
 
     // Try loading local backup from project directory if deletedWords is empty on mount
@@ -629,6 +748,7 @@ function App() {
         syncDeletedWithCloud(syncCode);
         syncDeletedVerbsWithCloud(syncCode);
         syncReviewPositionWithCloud(syncCode);
+        syncMyListReviewPositionWithCloud(syncCode);
       }
     };
 
@@ -641,6 +761,7 @@ function App() {
         syncDeletedWithCloud(syncCode);
         syncDeletedVerbsWithCloud(syncCode);
         syncReviewPositionWithCloud(syncCode);
+        syncMyListReviewPositionWithCloud(syncCode);
       }
     }, 45000);
 
@@ -651,13 +772,16 @@ function App() {
     };
   }, [syncCode]);
 
-  // Auto-sync when switching active tab to Ankii Speaking or Verb Tenses
+  // Auto-sync when switching active tab to Ankii Speaking, Verb Tenses, or My List
   useEffect(() => {
     if (activeTab === 'ankii-speaking' && syncCode && syncCode.trim().length >= 3) {
       syncDeletedWithCloud(syncCode);
       syncReviewPositionWithCloud(syncCode);
     } else if (activeTab === 'verb-tenses' && syncCode && syncCode.trim().length >= 3) {
       syncDeletedVerbsWithCloud(syncCode);
+    } else if (activeTab === 'mylist' && syncCode && syncCode.trim().length >= 3) {
+      syncWithCloud(syncCode);
+      syncMyListReviewPositionWithCloud(syncCode);
     }
   }, [activeTab, syncCode]);
 
@@ -2224,13 +2348,17 @@ function App() {
                 setSyncCode(code);
                 localStorage.setItem('b1_sync_code', code);
                 syncDeletedWithCloud(code);
+                syncMyListReviewPositionWithCloud(code);
               }}
               syncStatus={syncStatus}
               syncError={syncError}
               onSyncNow={(code, list) => {
                 syncWithCloud(code, list);
                 syncDeletedWithCloud(code);
+                syncMyListReviewPositionWithCloud(code);
               }}
+              reviewPosition={myListReviewPosition}
+              onUpdateReviewPosition={handleUpdateMyListReviewPosition}
             />
           )
         )}
