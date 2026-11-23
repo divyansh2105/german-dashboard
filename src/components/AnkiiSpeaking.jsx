@@ -174,6 +174,7 @@ export default function AnkiiSpeaking({
 
   // Modal state for viewing/restoring deleted words
   const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [showDeletedStatsModal, setShowDeletedStatsModal] = useState(false);
 
   // Review List (Deleted Words in Order) state & refs
   const [isReviewActive, setIsReviewActive] = useState(false);
@@ -517,6 +518,64 @@ export default function AnkiiSpeaking({
     });
     return counts;
   }, [vocabData, priorityFilters, deletedWordsSet]);
+
+  // Stats breakdown for Deleted Words (by word type/category, priority, and Category x Priority matrix)
+  const deletedWordsStats = useMemo(() => {
+    const byCategory = { nouns: 0, verbs: 0, reflexive: 0, adjectives: 0, connectors: 0, other: 0 };
+    const byPriority = { 1: 0, 2: 0, 3: 0, 0: 0 };
+    const vocabTotalsByCategory = { nouns: 0, verbs: 0, reflexive: 0, adjectives: 0, connectors: 0 };
+    const vocabTotalsByPriority = { 1: 0, 2: 0, 3: 0 };
+    const matrix = {
+      nouns: { 1: 0, 2: 0, 3: 0, 0: 0 },
+      verbs: { 1: 0, 2: 0, 3: 0, 0: 0 },
+      reflexive: { 1: 0, 2: 0, 3: 0, 0: 0 },
+      adjectives: { 1: 0, 2: 0, 3: 0, 0: 0 },
+      connectors: { 1: 0, 2: 0, 3: 0, 0: 0 },
+      other: { 1: 0, 2: 0, 3: 0, 0: 0 }
+    };
+    let totalVocab = 0;
+
+    if (vocabData) {
+      Object.keys(vocabData).forEach(cat => {
+        const items = vocabData[cat] || [];
+        totalVocab += items.length;
+        if (vocabTotalsByCategory[cat] !== undefined) {
+          vocabTotalsByCategory[cat] = items.length;
+        }
+        items.forEach(item => {
+          const p = parseInt(item?.priority, 10) || 1;
+          if (vocabTotalsByPriority[p] !== undefined) {
+            vocabTotalsByPriority[p] += 1;
+          }
+        });
+      });
+    }
+
+    deletedWords.forEach(entry => {
+      const card = getCardForWord(entry);
+      if (!card) return;
+      const rawCat = card.category;
+      const cat = byCategory[rawCat] !== undefined ? rawCat : 'other';
+      const p = card.category !== 'vocabulary'
+        ? (parseInt(card.priority, 10) || 1)
+        : (card.priority ? parseInt(card.priority, 10) : 0);
+      const priorityKey = byPriority[p] !== undefined ? p : 0;
+
+      byCategory[cat] += 1;
+      byPriority[priorityKey] += 1;
+      matrix[cat][priorityKey] += 1;
+    });
+
+    return {
+      totalDeleted: deletedWords.length,
+      totalVocab,
+      byCategory,
+      byPriority,
+      vocabTotalsByCategory,
+      vocabTotalsByPriority,
+      matrix
+    };
+  }, [deletedWords, vocabData, getCardForWord]);
 
   // Toggle priority filter
   const togglePriority = (priorityNumber) => {
@@ -1821,7 +1880,7 @@ export default function AnkiiSpeaking({
   // Desktop Keyboard Shortcuts
   // ----------------------------------------------------
   useEffect(() => {
-    if ((!sessionActive && !isReviewActive) || (sessionActive && sessionFinished) || showDeletedModal) return;
+    if ((!sessionActive && !isReviewActive) || (sessionActive && sessionFinished) || showDeletedModal || showDeletedStatsModal) return;
 
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
@@ -1901,7 +1960,7 @@ export default function AnkiiSpeaking({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [sessionActive, sessionFinished, showDeletedModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleSpellWord, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast, isReviewActive, handleToggleReviewPause, handleReviewNext, handleReviewPrev, handleReviewRepeat, handleReviewRestoreCurrent, handleExitReview]);
+  }, [sessionActive, sessionFinished, showDeletedModal, showDeletedStatsModal, revealedState, handleMastered, handleForgotEnglish, handleMoreContext, handleAdvanceNext, replayGerman, handleSpellWord, handleToggleStar, handleDeleteWord, handleUndoDelete, undoToast, isReviewActive, handleToggleReviewPause, handleReviewNext, handleReviewPrev, handleReviewRepeat, handleReviewRestoreCurrent, handleExitReview]);
 
   // ----------------------------------------------------
   // Full-Screen Mobile Touch Gestures & Swipe Physics
@@ -2918,7 +2977,27 @@ export default function AnkiiSpeaking({
                 <span>🗑️</span>
                 <span>{deletedWords.length} word{deletedWords.length !== 1 ? 's' : ''} deleted from future sessions</span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedStatsModal(true)}
+                  style={{
+                    background: 'rgba(59, 130, 246, 0.16)',
+                    border: '1px solid rgba(59, 130, 246, 0.4)',
+                    color: '#93c5fd',
+                    borderRadius: '8px',
+                    padding: '5px 10px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                  title="View breakdown of deleted words by type and priority"
+                >
+                  <span>📊</span> Stats
+                </button>
                 <button
                   type="button"
                   onClick={() => handleStartReviewList()}
@@ -3671,6 +3750,210 @@ export default function AnkiiSpeaking({
                     Done
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Deleted Words Stats */}
+        {showDeletedStatsModal && (
+          <div
+            onClick={() => setShowDeletedStatsModal(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 10000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px'
+            }}
+          >
+            <div
+              className="glass-card animate-fade-in"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: '560px',
+                width: '100%',
+                padding: '24px',
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📊</span> Deleted Words Stats
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedStatsModal(false)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '18px', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {deletedWordsStats.totalDeleted === 0 ? (
+                <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.5 }}>
+                  No deleted words yet. Words you delete during Ankii Speaking sessions will appear here.
+                </div>
+              ) : (
+                <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px', paddingRight: '4px' }}>
+                  {/* Summary KPI Row */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                    <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: '#f87171' }}>{deletedWordsStats.totalDeleted}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', marginTop: '2px' }}>Total Deleted</div>
+                    </div>
+                    <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: '#60a5fa' }}>
+                        {deletedWordsStats.totalVocab > 0 ? Math.round((deletedWordsStats.totalDeleted / deletedWordsStats.totalVocab) * 100) : 0}%
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', marginTop: '2px' }}>
+                        Of Deck ({deletedWordsStats.totalDeleted} / {deletedWordsStats.totalVocab})
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '22px', fontWeight: '800', color: '#4ade80' }}>{deletedWordsStats.byPriority[1]}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontWeight: '600', marginTop: '2px' }}>High Priority</div>
+                    </div>
+                  </div>
+
+                  {/* By Word Type (Category) */}
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                      By Word Type
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {[
+                        { key: 'nouns', label: '🟢 Nouns', color: '#22c55e' },
+                        { key: 'verbs', label: '🔵 Verbs', color: '#3b82f6' },
+                        { key: 'reflexive', label: '🔄 Reflexive', color: '#06b6d4' },
+                        { key: 'adjectives', label: '🟡 Adjectives', color: '#eab308' },
+                        { key: 'connectors', label: '🟣 Connectors', color: '#a855f7' },
+                        ...(deletedWordsStats.byCategory.other > 0 ? [{ key: 'other', label: '⚪ Other / Unmatched', color: '#94a3b8' }] : [])
+                      ].map(row => {
+                        const count = deletedWordsStats.byCategory[row.key] || 0;
+                        const totalInCat = deletedWordsStats.vocabTotalsByCategory[row.key] || 0;
+                        const pctOfDeleted = deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0;
+                        return (
+                          <div key={row.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', marginBottom: '5px' }}>
+                              <span style={{ fontWeight: '700', color: '#fff' }}>{row.label}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                <strong style={{ color: '#fff' }}>{count}</strong> ({pctOfDeleted}%)
+                                {totalInCat > 0 && <span style={{ color: 'var(--text-muted)' }}> · {count}/{totalInCat} deck</span>}
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pctOfDeleted}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* By Priority */}
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+                      By Priority
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {[
+                        { key: 1, label: '🟢 High Priority (P1)', color: '#22c55e' },
+                        { key: 2, label: '🟡 Medium Priority (P2)', color: '#eab308' },
+                        { key: 3, label: '🔴 Low Priority (P3)', color: '#ef4444' },
+                        ...(deletedWordsStats.byPriority[0] > 0 ? [{ key: 0, label: '⚪ Uncategorized', color: '#94a3b8' }] : [])
+                      ].map(row => {
+                        const count = deletedWordsStats.byPriority[row.key] || 0;
+                        const totalAtPri = deletedWordsStats.vocabTotalsByPriority[row.key] || 0;
+                        const pctOfDeleted = deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0;
+                        return (
+                          <div key={row.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', marginBottom: '5px' }}>
+                              <span style={{ fontWeight: '700', color: '#fff' }}>{row.label}</span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                <strong style={{ color: '#fff' }}>{count}</strong> ({pctOfDeleted}%)
+                                {totalAtPri > 0 && <span style={{ color: 'var(--text-muted)' }}> · {count}/{totalAtPri} deck</span>}
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{ width: `${pctOfDeleted}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Category x Priority Breakdown */}
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                      Category × Priority Breakdown
+                    </div>
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'rgba(255,255,255,0.02)' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'center' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                            <th style={{ textAlign: 'left', padding: '8px 10px' }}>Type</th>
+                            <th style={{ padding: '8px 6px' }}>🟢 High</th>
+                            <th style={{ padding: '8px 6px' }}>🟡 Med</th>
+                            <th style={{ padding: '8px 6px' }}>🔴 Low</th>
+                            <th style={{ padding: '8px 10px' }}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[
+                            { key: 'nouns', label: 'Nouns' },
+                            { key: 'verbs', label: 'Verbs' },
+                            { key: 'reflexive', label: 'Reflexive' },
+                            { key: 'adjectives', label: 'Adjectives' },
+                            { key: 'connectors', label: 'Connectors' },
+                            { key: 'other', label: 'Other' }
+                          ]
+                            .filter(r => (deletedWordsStats.vocabTotalsByCategory[r.key] || 0) > 0 || (deletedWordsStats.byCategory[r.key] || 0) > 0)
+                            .map(r => {
+                              const m = deletedWordsStats.matrix[r.key];
+                              const rowTotal = deletedWordsStats.byCategory[r.key] || 0;
+                              return (
+                                <tr key={r.key} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <td style={{ textAlign: 'left', padding: '7px 10px', fontWeight: '600', color: '#fff' }}>{r.label}</td>
+                                  <td style={{ padding: '7px 6px', color: m[1] > 0 ? '#4ade80' : 'var(--text-muted)' }}>{m[1]}</td>
+                                  <td style={{ padding: '7px 6px', color: m[2] > 0 ? '#facc15' : 'var(--text-muted)' }}>{m[2]}</td>
+                                  <td style={{ padding: '7px 6px', color: m[3] > 0 ? '#f87171' : 'var(--text-muted)' }}>{m[3]}</td>
+                                  <td style={{ padding: '7px 10px', fontWeight: '700', color: '#fff' }}>{rowTotal}</td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowDeletedStatsModal(false)}
+                  style={{
+                    background: 'rgba(255,255,255,0.1)',
+                    border: '1px solid var(--border-color)',
+                    color: '#fff',
+                    borderRadius: '8px',
+                    padding: '8px 18px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
