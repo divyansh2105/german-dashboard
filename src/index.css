@@ -1328,9 +1328,18 @@ h2.section-title {
   padding: 36px 32px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 440px;
   position: relative;
+  overflow: visible;
+}
+
+.grammar-question-row-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  width: 100%;
 }
 
 .grammar-sentence-box {
@@ -1388,6 +1397,7 @@ h2.section-title {
 @media (max-width: 768px) {
   .grammar-container {
     gap: 12px;
+    padding-bottom: 48px;
   }
 
   .grammar-top-bar {
@@ -1438,8 +1448,19 @@ h2.section-title {
   }
 
   .grammar-question-card {
-    padding: 20px 16px;
+    flex: none;
+    width: 100%;
+    height: auto;
     min-height: auto;
+    padding: 14px 12px;
+    overflow: visible;
+    justify-content: flex-start;
+    touch-action: pan-y;
+  }
+
+  .grammar-question-row-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .grammar-sentence-box {

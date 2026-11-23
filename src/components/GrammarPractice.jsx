@@ -2027,7 +2027,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                       </div>
 
                       {/* Responsive grid: Sentence + Input on left, Preposition Quick-Pick Menu on right */}
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', alignItems: 'start' }}>
+                      <div className="grammar-question-row-grid">
                         {/* Left: Sentence, Translation, Manual Input */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           <div className="grammar-sentence-box" style={{ fontSize: '18px', padding: '14px 16px' }}>
@@ -2069,7 +2069,7 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                             disabled={hasChecked}
                             style={{
                               textAlign: 'center',
-                              fontSize: '15px',
+                              fontSize: '16px',
                               padding: '10px 12px',
                               borderRadius: '10px',
                               border: hasChecked
@@ -2078,7 +2078,6 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
                               outline: 'none',
                               width: '100%'
                             }}
-                            autoFocus={qIdx === 0}
                             autoComplete="off"
                           />
                         </div>
