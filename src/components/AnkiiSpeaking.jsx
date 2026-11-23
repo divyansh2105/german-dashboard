@@ -3839,18 +3839,27 @@ export default function AnkiiSpeaking({
                       ].map(row => {
                         const count = deletedWordsStats.byCategory[row.key] || 0;
                         const totalInCat = deletedWordsStats.vocabTotalsByCategory[row.key] || 0;
-                        const pctOfDeleted = deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0;
+                        const pct = totalInCat > 0
+                          ? Math.round((count / totalInCat) * 100)
+                          : (deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0);
                         return (
                           <div key={row.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', marginBottom: '5px' }}>
                               <span style={{ fontWeight: '700', color: '#fff' }}>{row.label}</span>
                               <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                <strong style={{ color: '#fff' }}>{count}</strong> ({pctOfDeleted}%)
-                                {totalInCat > 0 && <span style={{ color: 'var(--text-muted)' }}> · {count}/{totalInCat} deck</span>}
+                                {totalInCat > 0 ? (
+                                  <>
+                                    <strong style={{ color: '#fff' }}>{count}</strong> / {totalInCat} ({pct}%)
+                                  </>
+                                ) : (
+                                  <>
+                                    <strong style={{ color: '#fff' }}>{count}</strong> ({pct}% of deleted)
+                                  </>
+                                )}
                               </span>
                             </div>
                             <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ width: `${pctOfDeleted}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
+                              <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
                             </div>
                           </div>
                         );
@@ -3872,18 +3881,27 @@ export default function AnkiiSpeaking({
                       ].map(row => {
                         const count = deletedWordsStats.byPriority[row.key] || 0;
                         const totalAtPri = deletedWordsStats.vocabTotalsByPriority[row.key] || 0;
-                        const pctOfDeleted = deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0;
+                        const pct = totalAtPri > 0
+                          ? Math.round((count / totalAtPri) * 100)
+                          : (deletedWordsStats.totalDeleted > 0 ? Math.round((count / deletedWordsStats.totalDeleted) * 100) : 0);
                         return (
                           <div key={row.key} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 12px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', marginBottom: '5px' }}>
                               <span style={{ fontWeight: '700', color: '#fff' }}>{row.label}</span>
                               <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
-                                <strong style={{ color: '#fff' }}>{count}</strong> ({pctOfDeleted}%)
-                                {totalAtPri > 0 && <span style={{ color: 'var(--text-muted)' }}> · {count}/{totalAtPri} deck</span>}
+                                {totalAtPri > 0 ? (
+                                  <>
+                                    <strong style={{ color: '#fff' }}>{count}</strong> / {totalAtPri} ({pct}%)
+                                  </>
+                                ) : (
+                                  <>
+                                    <strong style={{ color: '#fff' }}>{count}</strong> ({pct}% of deleted)
+                                  </>
+                                )}
                               </span>
                             </div>
                             <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ width: `${pctOfDeleted}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
+                              <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: row.color, borderRadius: '3px', transition: 'width 0.25s ease' }} />
                             </div>
                           </div>
                         );
