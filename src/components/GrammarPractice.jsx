@@ -1968,9 +1968,10 @@ Do not wrap the JSON output in markdown code blocks. Output raw JSON.`;
           )}
 
           {currentQuestions.length > 0 && !isLoading && (() => {
-            const menuPreps = selectedPreps.length > 0
+            const menuPreps = (selectedPreps.length > 0
               ? ALL_PREPOSITIONS.filter(p => selectedPreps.includes(p))
-              : ALL_PREPOSITIONS;
+              : ALL_PREPOSITIONS
+            ).slice().sort((a, b) => a.localeCompare(b, 'de'));
             const getPrepGroupColor = (prep) => {
               if (PREPOSITION_GROUPS.Akkusativ.includes(prep)) return 'var(--color-noun)';
               if (PREPOSITION_GROUPS.Dativ.includes(prep)) return 'var(--color-verb)';
